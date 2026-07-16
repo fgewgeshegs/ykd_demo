@@ -1,0 +1,17 @@
+# ============================================
+# Claw Assistant Configuration
+# ============================================
+
+# Weather API Configuration
+
+
+# --- OpenWeatherMap ( https://openweathermap.org/api) ---
+weather.api.url=https://api.openweathermap.org/data/2.5/weather?q={city}&appid={key}&units=metric&lang=zh_cn
+weather.api.key=YOUR_KEY
+
+# ============================================
+# WeChat iLink Configuration
+# ============================================
+wechat.ilink.enabled=true
+wechat.ilink.poll-interval-ms=3000
+wechat.ilink.login-poll-interval-ms=3000

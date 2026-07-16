@@ -1,40 +1,33 @@
 package com.youkeda.exercise.claw.config;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Properties;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 /**
  * 天气 API 配置
- * 从 application.properties 加载天气服务配置
+ * 从 application.properties 读取天气服务配置
  */
+@Slf4j
+@Component
 public class WeatherConfig {
 
-    private final String apiKey;
-    private final String apiUrl;
+    @Value("${weather.api.key}")
+    private String apiKey;
 
-    private static final String PROPERTIES_FILE = "application.properties";
+    @Value("${weather.api.url}")
+    private String apiUrl;
 
-    public WeatherConfig() {
-        Properties props = new Properties();
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream(PROPERTIES_FILE)) {
-            if (is == null) {
-                throw new RuntimeException("找不到配置文件: " + PROPERTIES_FILE);
-            }
-            props.load(is);
-
-            this.apiKey = props.getProperty("weather.api.key");
-            this.apiUrl = props.getProperty("weather.api.url");
-
-            if (apiKey == null || apiKey.isEmpty() || "YOUR_API_KEY_HERE".equals(apiKey)) {
-                throw new RuntimeException("请在 application.properties 中配置 weather.api.key");
-            }
-            if (apiUrl == null || apiUrl.isEmpty()) {
-                throw new RuntimeException("请在 application.properties 中配置 weather.api.url");
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("读取配置文件失败", e);
+    @PostConstruct
+    public void init() {
+        if (apiKey == null || apiKey.isEmpty() || "YOUR_API_KEY_HERE".equals(apiKey)) {
+            log.warn("weather.api.key 未配置或为默认值，天气功能将不可用");
         }
+        if (apiUrl == null || apiUrl.isEmpty()) {
+            log.warn("weather.api.url 未配置，天气功能将不可用");
+        }
+        log.info("天气配置加载完成");
     }
 
     public String getApiKey() {

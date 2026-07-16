@@ -1,11 +1,13 @@
 package com.youkeda.exercise.claw.command;
 
 import com.youkeda.exercise.claw.exception.ClawException;
+import org.springframework.stereotype.Component;
 
 /**
  * help 命令
  * 显示所有支持的命令列表
  */
+@Component
 public class HelpCommand implements CommandHandler {
 
     @Override
