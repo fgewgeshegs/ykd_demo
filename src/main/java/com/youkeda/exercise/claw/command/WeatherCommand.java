@@ -1,20 +1,21 @@
 package com.youkeda.exercise.claw.command;
 
-import com.youkeda.exercise.claw.config.WeatherConfig;
 import com.youkeda.exercise.claw.exception.ClawException;
 import com.youkeda.exercise.claw.model.WeatherResponse;
 import com.youkeda.exercise.claw.tool.WeatherTool;
+import org.springframework.stereotype.Component;
 
 /**
  * weather 命令
  * 查询指定城市的天气信息
  */
+@Component
 public class WeatherCommand implements CommandHandler {
 
     private final WeatherTool weatherTool;
 
-    public WeatherCommand(WeatherConfig weatherConfig) {
-        this.weatherTool = new WeatherTool(weatherConfig);
+    public WeatherCommand(WeatherTool weatherTool) {
+        this.weatherTool = weatherTool;
     }
 
     @Override

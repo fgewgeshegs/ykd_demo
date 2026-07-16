@@ -1,11 +1,13 @@
 package com.youkeda.exercise.claw.command;
 
 import com.youkeda.exercise.claw.exception.ClawException;
+import org.springframework.stereotype.Component;
 
 /**
  * status 命令
  * 显示程序运行状态
  */
+@Component
 public class StatusCommand implements CommandHandler {
 
     @Override

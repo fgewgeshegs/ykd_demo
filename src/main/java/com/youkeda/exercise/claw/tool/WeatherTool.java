@@ -6,6 +6,8 @@ import com.youkeda.exercise.claw.config.WeatherConfig;
 import com.youkeda.exercise.claw.exception.ClawException;
 import com.youkeda.exercise.claw.model.WeatherResponse;
 import com.youkeda.exercise.claw.util.HttpClientUtil;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +16,8 @@ import java.nio.charset.StandardCharsets;
  * 天气查询工具
  * 调用外部天气 API 获取天气信息
  */
+@Slf4j
+@Component
 public class WeatherTool {
 
     private final WeatherConfig config;
