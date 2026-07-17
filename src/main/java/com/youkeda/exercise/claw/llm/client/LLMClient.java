@@ -48,9 +48,27 @@ public class LLMClient {
      * @return 模型回复内容，调用失败时返回 null
      */
     public String chat(String userId, String text) {
+        return callLLM(systemPromptProvider.getSystemPrompt(), text);
+    }
+
+    /**
+     * 使用自定义系统提示词调用大模型
+     *
+     * @param systemPrompt 自定义系统提示词
+     * @param text         用户消息
+     * @return 模型回复内容，调用失败时返回 null
+     */
+    public String chatWithSystemPrompt(String systemPrompt, String text) {
+        return callLLM(systemPrompt, text);
+    }
+
+    /**
+     * 调用大模型（内部方法）
+     */
+    private String callLLM(String systemPrompt, String text) {
         try {
             // 1. 构建请求体
-            String requestBody = buildRequestBody(text);
+            String requestBody = buildRequestBody(systemPrompt, text);
             log.info("调用LLM，message={}", text);
 
             // 2. 发送 HTTP 请求
@@ -80,7 +98,7 @@ public class LLMClient {
     /**
      * 构建请求 JSON 体
      */
-    private String buildRequestBody(String text) throws Exception {
+    private String buildRequestBody(String systemPrompt, String text) throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", properties.getModel());
 
@@ -89,7 +107,7 @@ public class LLMClient {
         // system prompt
         ObjectNode systemMsg = messages.addObject();
         systemMsg.put("role", "system");
-        systemMsg.put("content", systemPromptProvider.getSystemPrompt());
+        systemMsg.put("content", systemPrompt);
 
         // user message
         ObjectNode userMsg = messages.addObject();

@@ -1,15 +1,16 @@
 package com.youkeda.exercise.claw.wechat.service;
 
 import com.lth.wechat.ilink.dto.message.ReceiveMessagesResult;
+import com.youkeda.exercise.claw.router.MessageRouter;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
-import com.youkeda.exercise.claw.wechat.handler.MessageHandler;
+import com.youkeda.exercise.claw.wechat.model.MessageType;
+import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -17,8 +18,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * 职责：
  * - 定时轮询微信消息
- * - 将文本消息分发到各 MessageHandler
- * - 将 Handler 返回的回复内容通过客户端发送
+ * - 将消息交由 MessageRouter 路由分发
+ * - 将 Router 返回的回复内容通过客户端发送
  */
 @Slf4j
 @Service
@@ -26,7 +27,7 @@ public class WechatMessageService {
 
     private final WechatILinkClient wechatClient;
     private final WechatProperties wechatProperties;
-    private final List<MessageHandler> messageHandlers;
+    private final MessageRouter messageRouter;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
@@ -36,10 +37,10 @@ public class WechatMessageService {
 
     public WechatMessageService(WechatILinkClient wechatClient,
                                 WechatProperties wechatProperties,
-                                List<MessageHandler> messageHandlers) {
+                                MessageRouter messageRouter) {
         this.wechatClient = wechatClient;
         this.wechatProperties = wechatProperties;
-        this.messageHandlers = messageHandlers;
+        this.messageRouter = messageRouter;
     }
 
     @PostConstruct
@@ -91,25 +92,33 @@ public class WechatMessageService {
                         }
 
                         msg.getItemList().forEach(item -> {
-                            String text = item.getText();
-                            if (text == null || text.isEmpty()) {
+                            // 1. 构建统一消息模型
+                            WechatMessage wechatMsg = new WechatMessage();
+                            wechatMsg.setUserId(fromUserId);
+
+                            if (item.isText() && item.getText() != null && !item.getText().isEmpty()) {
+                                wechatMsg.setType(MessageType.TEXT);
+                                wechatMsg.setText(item.getText());
+                                log.info("收到消息 | from={} | text={}", fromUserId, item.getText());
+                            } else if (item.isImage() && item.getImage() != null) {
+                                wechatMsg.setType(MessageType.IMAGE);
+                                wechatMsg.setImageUrl(item.getImage().getUrl());
+                                wechatMsg.setEncryptQueryParam(item.getImage().getEncryptQueryParam());
+                                wechatMsg.setAesKey(item.getImage().getAesKey());
+                                log.info("收到图片消息 | from={}", fromUserId);
+                            } else {
+                                // 暂不支持的消类型，跳过
                                 return;
                             }
 
-                            log.info("收到消息 | from={} | text={}", fromUserId, text);
-
-                            // 遍历所有消息处理器
-                            for (MessageHandler handler : messageHandlers) {
-                                try {
-                                    String reply = handler.handle(fromUserId, text);
-                                    if (reply != null && !reply.isEmpty()) {
-                                        wechatClient.sendTextMessage(fromUserId, contextToken, reply);
-                                        break; // 只使用第一个有回复的 handler
-                                    }
-                                } catch (Exception e) {
-                                    log.error("消息处理器异常 | handler={} | error={}",
-                                            handler.getClass().getSimpleName(), e.getMessage());
+                            // 2. 交由 MessageRouter 路由处理
+                            try {
+                                String reply = messageRouter.route(wechatMsg);
+                                if (reply != null && !reply.isEmpty()) {
+                                    wechatClient.sendTextMessage(fromUserId, contextToken, reply);
                                 }
+                            } catch (Exception e) {
+                                log.error("消息路由处理异常 | error={}", e.getMessage());
                             }
                         });
                     });
