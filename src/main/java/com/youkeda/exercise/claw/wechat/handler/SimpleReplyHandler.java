@@ -2,7 +2,6 @@ package com.youkeda.exercise.claw.wechat.handler;
 
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -12,7 +11,6 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@Order(3)
 public class SimpleReplyHandler implements MessageHandler {
 
     private static final String FALLBACK_REPLY = "暂时无法理解该消息类型";

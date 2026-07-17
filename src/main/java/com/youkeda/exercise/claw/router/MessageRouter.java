@@ -2,7 +2,6 @@ package com.youkeda.exercise.claw.router;
 
 import com.youkeda.exercise.claw.intent.Intent;
 import com.youkeda.exercise.claw.intent.IntentClassifier;
-import com.youkeda.exercise.claw.intent.IntentResult;
 import com.youkeda.exercise.claw.wechat.handler.AIChatHandler;
 import com.youkeda.exercise.claw.wechat.handler.ImageGenerationHandler;
 import com.youkeda.exercise.claw.wechat.handler.MessageHandler;
@@ -61,8 +60,7 @@ public class MessageRouter {
 
         // 文本消息：先识别意图，再按意图路由
         if (message.getType() == MessageType.TEXT) {
-            IntentResult result = intentClassifier.classify(message.getText());
-            Intent intent = result.getIntent();
+            Intent intent = intentClassifier.classify(message.getText());
             log.info("路由：文本消息 intent={} | from={}", intent, message.getUserId());
 
             MessageHandler targetHandler = selectHandler(intent);
@@ -83,6 +81,7 @@ public class MessageRouter {
             case CHAT -> chatHandler;
             case IMAGE_GENERATE -> imageGenerationHandler;
             case IMAGE_ANALYZE -> visionHandler;
+            default -> fallbackHandler;
         };
     }
 

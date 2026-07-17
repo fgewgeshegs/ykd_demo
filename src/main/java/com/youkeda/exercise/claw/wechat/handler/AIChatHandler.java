@@ -4,7 +4,6 @@ import com.youkeda.exercise.claw.ai.chat.ChatService;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,7 +14,6 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@Order(2)
 public class AIChatHandler implements MessageHandler {
 
     private static final String FALLBACK_REPLY = "抱歉，我现在暂时无法回复，请稍后再试。";

@@ -13,5 +13,5 @@ public interface IntentClassifier {
      * @param message 用户消息文本
      * @return 意图分类结果
      */
-    IntentResult classify(String message);
+    Intent classify(String message);
 }

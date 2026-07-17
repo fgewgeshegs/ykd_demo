@@ -33,7 +33,7 @@ public class WechatMessageService {
     private Thread pollThread;
     private String cursor = "";
 
-    static final int ERROR_SLEEP_MS = 5000;
+    private static final int ERROR_SLEEP_MS = 5000;
 
     public WechatMessageService(WechatILinkClient wechatClient,
                                 WechatProperties wechatProperties,
@@ -107,7 +107,7 @@ public class WechatMessageService {
                                 wechatMsg.setAesKey(item.getImage().getAesKey());
                                 log.info("收到图片消息 | from={}", fromUserId);
                             } else {
-                                // 暂不支持的消类型，跳过
+                                // 暂不支持的消息类型，跳过
                                 return;
                             }
 

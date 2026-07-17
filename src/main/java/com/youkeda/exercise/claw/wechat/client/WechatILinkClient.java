@@ -11,11 +11,13 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.CompletableFuture;
+
 /**
  * 微信 iLink 客户端封装
  *
  * 职责：
- * - SDK 初始化和登录ss
+ * - SDK 初始化和登录
  * - 消息收发
  * - 异常处理（确保不因 SDK 异常导致服务退出）
  */
@@ -47,7 +49,7 @@ public class WechatILinkClient {
 
         log.info("微信 iLink 客户端初始化开始");
         client = new ILinkClient();
-        login();
+        CompletableFuture.runAsync(this::login);
     }
 
     /**

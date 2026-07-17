@@ -22,10 +22,10 @@ public class ImageProperties {
     /**
      * API 基础地址（默认阿里云 DashScope）
      */
-    private String baseUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis";
+    private String baseUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 
     /**
      * 图片生成模型名称
      */
-    private String model = "wanx-v1";
+    private String model = "qwen-image-2.0";
 }

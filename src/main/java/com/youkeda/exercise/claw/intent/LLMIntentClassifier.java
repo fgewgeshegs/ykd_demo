@@ -41,7 +41,7 @@ public class LLMIntentClassifier implements IntentClassifier {
     }
 
     @Override
-    public IntentResult classify(String message) {
+    public Intent classify(String message) {
         log.info("开始意图分类 | message={}", message);
 
         try {
@@ -50,17 +50,17 @@ public class LLMIntentClassifier implements IntentClassifier {
 
             if (rawResult == null || rawResult.isEmpty()) {
                 log.warn("意图分类返回为空，默认归类为 CHAT");
-                return new IntentResult(Intent.CHAT);
+                return Intent.CHAT;
             }
 
             // 解析 LLM 返回的 JSON
             Intent intent = parseIntent(rawResult.trim());
             log.info("意图分类完成 | message={} | intent={}", message, intent);
-            return new IntentResult(intent);
+            return intent;
 
         } catch (Exception e) {
             log.error("意图分类异常，默认归类为 CHAT | error={}", e.getMessage());
-            return new IntentResult(Intent.CHAT);
+            return Intent.CHAT;
         }
     }
 

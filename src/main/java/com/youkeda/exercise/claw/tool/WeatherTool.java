@@ -51,9 +51,8 @@ public class WeatherTool {
             // 3. 解析 JSON
             return parseResponse(responseBody, city);
 
-        } catch (ClawException e) {
-            throw e;
         } catch (Exception e) {
+            if (e instanceof ClawException ce) throw ce;
             throw new ClawException("天气服务暂时不可用", e);
         }
     }
@@ -92,9 +91,8 @@ public class WeatherTool {
 
             return new WeatherResponse(cityName, weatherDesc, temp, humidity);
 
-        } catch (ClawException e) {
-            throw e;
         } catch (Exception e) {
+            if (e instanceof ClawException ce) throw ce;
             throw new ClawException("解析天气数据失败", e);
         }
     }
