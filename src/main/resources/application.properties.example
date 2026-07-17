@@ -7,7 +7,7 @@
 
 # --- OpenWeatherMap ( https://openweathermap.org/api) ---
 weather.api.url=https://api.openweathermap.org/data/2.5/weather?q={city}&appid={key}&units=metric&lang=zh_cn
-weather.api.key=YOUR_KEY
+weather.api.key=
 
 # ============================================
 # WeChat iLink Configuration
@@ -15,3 +15,24 @@ weather.api.key=YOUR_KEY
 wechat.ilink.enabled=true
 wechat.ilink.poll-interval-ms=3000
 wechat.ilink.login-poll-interval-ms=3000
+
+# ============================================
+# LLM Configuration
+# ============================================
+llm.api-key=
+llm.base-url=https://api.deepseek.com
+llm.model=deepseek-v4-flash
+
+# ============================================
+# Vision Model Configuration
+# ============================================
+vision.api-key=
+vision.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
+vision.model=qwen-vl-max
+
+# ============================================
+
+# ============================================
+image.api-key=
+image.model=Qwen-Image-2.0
+image.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
