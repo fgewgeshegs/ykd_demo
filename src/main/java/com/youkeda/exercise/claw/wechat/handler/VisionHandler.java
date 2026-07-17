@@ -5,7 +5,6 @@ import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.Base64;
@@ -18,7 +17,6 @@ import java.util.Base64;
  */
 @Slf4j
 @Component
-@Order(1)
 public class VisionHandler implements MessageHandler {
 
     private static final String FALLBACK_REPLY = "抱歉，我暂时无法分析图片，请稍后再试。";
