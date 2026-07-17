@@ -152,4 +152,26 @@ public class WechatILinkClient {
             return null;
         }
     }
+
+    /**
+     * 从微信 CDN 下载媒体文件（图片、语音等）
+     *
+     * @param encryptQueryParam 加密查询参数
+     * @param aesKey            解密密钥
+     * @return 媒体文件字节数组，失败时返回 null
+     */
+    public byte[] downloadMedia(String encryptQueryParam, String aesKey) {
+        if (!loggedIn || credentials == null) {
+            log.warn("微信未登录，无法下载媒体");
+            return null;
+        }
+        try {
+            byte[] data = client.downloadMedia(encryptQueryParam, aesKey);
+            log.info("媒体下载成功，大小={} bytes", data.length);
+            return data;
+        } catch (Exception e) {
+            log.error("媒体下载失败: {}", e.getMessage());
+            return null;
+        }
+    }
 }

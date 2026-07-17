@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.wechat.handler;
 
-import com.youkeda.exercise.claw.llm.client.LLMClient;
-import lombok.RequiredArgsConstructor;
+import com.youkeda.exercise.claw.ai.chat.ChatService;
+import com.youkeda.exercise.claw.wechat.model.MessageType;
+import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -9,26 +10,33 @@ import org.springframework.stereotype.Component;
 /**
  * AI 聊天处理器
  *
- * 调用大模型生成回复，优先级最高
- * AI 调用失败时返回降级提示
+ * 职责：接收 TEXT 类型的消息，委托 ChatService 完成对话逻辑
+ * 不包含业务逻辑，仅负责请求接收与结果转交
  */
 @Slf4j
 @Component
-@Order(1)
-@RequiredArgsConstructor
+@Order(2)
 public class AIChatHandler implements MessageHandler {
 
     private static final String FALLBACK_REPLY = "抱歉，我现在暂时无法回复，请稍后再试。";
 
-    private final LLMClient llmClient;
+    private final ChatService chatService;
+
+    public AIChatHandler(ChatService chatService) {
+        this.chatService = chatService;
+    }
 
     @Override
-    public String handle(String userId, String text) {
-        log.debug("AIChatHandler 处理消息 | from={} | text={}", userId, text);
+    public String handle(WechatMessage message) {
+        if (message.getType() != MessageType.TEXT) {
+            return null;
+        }
 
-        String reply = llmClient.chat(userId, text);
+        log.debug("AIChatHandler 处理消息 | from={} | text={}", message.getUserId(), message.getText());
+
+        String reply = chatService.chat(message.getUserId(), message.getText());
         if (reply == null || reply.isEmpty()) {
-            log.warn("AI 回复为空，使用降级回复 | from={}", userId);
+            log.warn("AI 回复为空，使用降级回复 | from={}", message.getUserId());
             return FALLBACK_REPLY;
         }
 
