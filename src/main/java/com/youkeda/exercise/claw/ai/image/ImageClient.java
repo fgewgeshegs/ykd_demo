@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.ai.image;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.config.ImageProperties;
 import lombok.extern.slf4j.Slf4j;
@@ -16,8 +17,8 @@ import java.time.Duration;
 /**
  * 图片生成客户端
  *
- * 负责调用图片生成模型（如 Qwen-Image-2.0）生成图片
- * 请求格式兼容 OpenAI 图片生成 API，同时也支持 DashScope 原生接口
+ * 负责调用图片生成模型（如阿里云 qwen-image-2.0）生成图片
+ * 请求格式兼容阿里云百炼 multimodal-generation API
  */
 @Slf4j
 @Component
@@ -49,7 +50,7 @@ public class ImageClient {
             log.info("调用图片生成模型 | model={} | prompt={}", properties.getModel(), prompt);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(buildUrl()))
+                    .uri(URI.create(properties.getBaseUrl()))
                     .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                     .header("Authorization", "Bearer " + properties.getApiKey())
                     .header("Content-Type", "application/json")
@@ -70,60 +71,99 @@ public class ImageClient {
     }
 
     /**
-     * 构建完整的请求 URL
+     * 构建百炼 multimodal-generation 请求体
      *
-     * OpenAI 兼容接口需要追加 /images/generations 路径；
-     * DashScope 原生接口（wanx-v1）的 baseUrl 已是完整端点，直接使用。
-     */
-    private String buildUrl() {
-        String baseUrl = properties.getBaseUrl();
-        // DashScope 原生端点已有具体路径（以 /image-synthesis 结尾），直接使用
-        if (baseUrl.endsWith("/image-synthesis")) {
-            return baseUrl;
-        }
-        // OpenAI 兼容接口：追加 /images/generations
-        if (!baseUrl.endsWith("/images/generations")) {
-            return baseUrl + (baseUrl.endsWith("/") ? "" : "/") + "images/generations";
-        }
-        return baseUrl;
-    }
-
-    /**
-     * 构建 OpenAI 兼容的图片生成请求体
-     *
-     * 格式：
+     * 格式（qwen-image-2.0 系列）：
      * {
-     *   "model": "Qwen-Image-2.0",
-     *   "prompt": "...",
-     *   "n": 1,
-     *   "size": "1024x1024"
+     *   "model": "qwen-image-2.0",
+     *   "input": {
+     *     "messages": [
+     *       {
+     *         "role": "user",
+     *         "content": [{ "text": "..." }]
+     *       }
+     *     ]
+     *   },
+     *   "parameters": { "size": "1024*1024", "n": 1, "prompt_extend": true, "watermark": false }
      * }
      */
     private String buildRequestBody(String prompt) throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", properties.getModel());
-        root.put("prompt", prompt);
-        root.put("n", 1);
-        root.put("size", "1024x1024");
+
+        // input.messages[0]
+        ObjectNode input = root.putObject("input");
+        ArrayNode messages = input.putArray("messages");
+        ObjectNode message = messages.addObject();
+        message.put("role", "user");
+
+        // input.messages[0].content[{text: "..."}]
+        ArrayNode content = message.putArray("content");
+        ObjectNode textItem = content.addObject();
+        textItem.put("text", prompt);
+
+        // parameters
+        ObjectNode parameters = root.putObject("parameters");
+        parameters.put("size", "1024*1024");
+        parameters.put("n", 1);
+        parameters.put("prompt_extend", true);
+        parameters.put("watermark", false);
+
         return objectMapper.writeValueAsString(root);
     }
 
     /**
-     * 解析 OpenAI 兼容的图片生成响应，提取图片 URL
+     * 解析图片生成响应 JSON，提取图片 URL
      *
-     * 响应格式：
-     * { "data": [{ "url": "..." }] }
+     * multimodal-generation 同步响应格式：
+     * {
+     *   "output": {
+     *     "choices": [{
+     *       "message": {
+     *         "content": [{ "image": "https://..." }]
+     *       }
+     *     }]
+     *   }
+     * }
+     *
+     * 异步响应（开启 X-DashScope-Async 时）：
+     * { "output": { "task_status": "PENDING", "task_id": "..." } }
      */
     private String parseResponse(String responseBody) throws Exception {
         JsonNode root = objectMapper.readTree(responseBody);
 
-        // OpenAI 兼容格式：data[].url
-        JsonNode data = root.get("data");
-        if (data != null && data.isArray() && data.size() > 0) {
-            JsonNode url = data.get(0).get("url");
-            if (url != null) {
-                return url.asText();
+        // 同步响应：output.choices[0].message.content[0].image
+        JsonNode output = root.get("output");
+        if (output != null) {
+            JsonNode choices = output.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode content = choices.get(0).path("message").path("content");
+                if (content.isArray() && content.size() > 0) {
+                    JsonNode image = content.get(0).get("image");
+                    if (image != null) {
+                        return image.asText();
+                    }
+                }
             }
+        }
+
+        // 兼容旧格式：output.results[0].url
+        if (output != null) {
+            JsonNode results = output.get("results");
+            if (results != null && results.isArray() && results.size() > 0) {
+                JsonNode url = results.get(0).get("url");
+                if (url != null) {
+                    return url.asText();
+                }
+            }
+        }
+
+        // 异步响应：返回 task_id 供后续查询
+        JsonNode taskIdNode = root.path("output").path("task_id");
+        if (!taskIdNode.isMissingNode()) {
+            String taskId = taskIdNode.asText();
+            log.info("图片生成任务已提交 | taskId={}", taskId);
+            return "[异步任务] taskId=" + taskId;
         }
 
         log.warn("图片生成响应格式异常: {}", responseBody);
