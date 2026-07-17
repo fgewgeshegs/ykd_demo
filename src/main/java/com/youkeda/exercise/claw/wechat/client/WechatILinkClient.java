@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  * 微信 iLink 客户端封装
  *
  * 职责：
- * - SDK 初始化和登录
+ * - SDK 初始化和登录ss
  * - 消息收发
  * - 异常处理（确保不因 SDK 异常导致服务退出）
  */
