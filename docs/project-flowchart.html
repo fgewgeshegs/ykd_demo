@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claw Assistant 项目流程图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #1a1a2e;
+    --card-bg: #f8f9fa;
+    --border: #e0e0e0;
+    --accent: #4f46e5;
+    --accent-light: #eef2ff;
+    --mermaid-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a;
+      --text: #e2e8f0;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --accent: #818cf8;
+      --accent-light: #1e1b4b;
+      --mermaid-bg: #1e293b;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 0.5rem;
+    color: var(--accent);
+  }
+  .subtitle {
+    text-align: center;
+    color: #64748b;
+    margin-bottom: 2.5rem;
+    font-size: 0.95rem;
+  }
+  .section {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 2rem;
+  }
+  .section h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--accent-light);
+    color: var(--accent);
+  }
+  .mermaid {
+    display: flex;
+    justify-content: center;
+    background: var(--mermaid-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+    margin: 1.5rem 0;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #64748b;
+  }
+  .legend-dot {
+    width: 12px; height: 12px; border-radius: 3px;
+  }
+  .dot-entry { background: #22c55e; }
+  .dot-cli { background: #f59e0b; }
+  .dot-wechat { background: #3b82f6; }
+  .dot-ai { background: #8b5cf6; }
+  .dot-router { background: #ef4444; }
+  .dot-external { background: #ec4899; }
+  footer {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    margin-top: 2rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🦞 Claw Assistant 项目流程图</h1>
+<p class="subtitle">Spring Boot 3.3.2 · Java 21 · 微信 iLink 智能助手</p>
+
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot dot-entry"></span> 入口</span>
+  <span class="legend-item"><span class="legend-dot dot-cli"></span> CLI 命令</span>
+  <span class="legend-item"><span class="legend-dot dot-wechat"></span> 微信通道</span>
+  <span class="legend-item"><span class="legend-dot dot-ai"></span> AI 服务</span>
+  <span class="legend-item"><span class="legend-dot dot-router"></span> 路由/调度</span>
+  <span class="legend-item"><span class="legend-dot dot-external"></span> 外部 API</span>
+</div>
+
+<!-- ==================== 1. 系统架构总览 ==================== -->
+<div class="section">
+  <h2>1. 系统架构总览</h2>
+  <div class="mermaid">
+graph TB
+    subgraph ENTRY["🚪 入口层"]
+        SB[SpringBootApplication<br/>ClawAssistantApplication]
+        CLI[CLI Main<br/>Scanner REPL 线程]
+    end
+
+    subgraph CMD["⌨️ CLI 命令层"]
+        HELP[HelpCommand]
+        VER[VersionCommand]
+        STA[StatusCommand]
+        WEA[WeatherCommand]
+    end
+
+    subgraph WECHAT["💬 微信 iLink 通道"]
+        WMS[WechatMessageService<br/>轮询线程]
+        WIC[WechatILinkClient<br/>SDK 封装]
+        WM[WechatMessage<br/>消息模型]
+    end
+
+    subgraph ROUTER["🔀 消息路由层"]
+        MR[MessageRouter<br/>中央调度器]
+        IC[LLMIntentClassifier<br/>意图分类]
+    end
+
+    subgraph HANDLERS["📨 消息处理器"]
+        ACH[AIChatHandler<br/>优先级2]
+        VH[VisionHandler<br/>优先级1]
+        IGH[ImageGenerationHandler]
+        SRH[SimpleReplyHandler<br/>优先级3-兜底]
+    end
+
+    subgraph AI["🤖 AI 服务层"]
+        CS[ChatService<br/>文本对话]
+        VS[VisionService<br/>图像分析]
+        IGS[ImageGenerationService<br/>图像生成]
+    end
+
+    subgraph CLIENTS["🌐 API 客户端"]
+        LLC[LLMClient<br/>DeepSeek v4]
+        VC[VisionClient<br/>Qwen-VL-Max]
+        IC2[ImageClient<br/>DashScope wanx]
+        WT[WeatherTool<br/>OpenWeatherMap]
+    end
+
+    subgraph AGENT["🧠 Agent 框架"]
+        SAE[SimpleAgentExecutor]
+        TR[ToolRegistry<br/>工具注册表]
+        CT[ChatTool]
+        VT[VisionTool]
+        IGT[ImageGenerationTool]
+    end
+
+    SB --> CLI
+    SB --> WMS
+    CLI --> CMD
+    CMD --> WT
+
+    WMS --> WIC
+    WIC --> WM
+    WM --> MR
+
+    MR --> IC
+    MR --> HANDLERS
+    HANDLERS --> AI
+    AI --> CLIENTS
+
+    AGENT --> TR
+    TR --> CT & VT & IGT
+    CT --> CS
+    VT --> VS
+    IGT --> IGS
+    SAE --> MR
+
+    WIC -.->|QR 登录| WECHAT_SDK[微信 iLink SDK]
+    LLC -.->|HTTP| DEEPSEEK[DeepSeek API]
+    VC -.->|HTTP| QWEN[Qwen-VL API]
+    IC2 -.->|HTTP| DASHSCOPE[DashScope API]
+    WT -.->|HTTP| OWM[OpenWeatherMap]
+
+    style ENTRY fill:#dcfce7,stroke:#22c55e,color:#166534
+    style CMD fill:#fef3c7,stroke:#f59e0b,color:#92400e
+    style WECHAT fill:#dbeafe,stroke:#3b82f6,color:#1e40af
+    style ROUTER fill:#fee2e2,stroke:#ef4444,color:#991b1b
+    style HANDLERS fill:#fce7f3,stroke:#ec4899,color:#9d174d
+    style AI fill:#ede9fe,stroke:#8b5cf6,color:#5b21b6
+    style CLIENTS fill:#e0e7ff,stroke:#6366f1,color:#3730a3
+    style AGENT fill:#f0fdf4,stroke:#22c55e,color:#166534
+  </div>
+</div>
+
+<!-- ==================== 2. 启动流程 ==================== -->
+<div class="section">
+  <h2>2. 应用启动流程</h2>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant JVM as JVM
+    participant SB as Spring Boot
+    participant MAIN as Main CLI
+    participant WMS as WechatMessageService
+    participant WIC as WechatILinkClient
+    participant EXT as 微信 iLink SDK
+
+    JVM->>SB: main() 启动
+    SB->>SB: 扫描 Bean · 注入依赖
+    SB->>MAIN: @PostConstruct 初始化
+    MAIN->>MAIN: 发现所有 CommandHandler<br/>自动注册命令映射
+    MAIN->>MAIN: 启动 cli-thread 守护线程<br/>等待 System.in 输入
+
+    SB->>WMS: @PostConstruct 初始化
+    alt wechat.ilink.enabled = true
+        WMS->>WIC: login()
+        WIC->>EXT: 获取登录二维码
+        EXT-->>WIC: 二维码信息
+        WIC-->>WMS: 打印二维码到控制台
+        loop 轮询等扫码 (最长60s)
+            WIC->>EXT: 检查登录状态
+            EXT-->>WIC: 未扫描/已扫描/已确认
+        end
+        WIC-->>WMS: 登录成功 (token, userId)
+        WMS->>WMS: 启动消息轮询线程<br/>(间隔 wechat.ilink.poll-interval-ms)
+    else wechat.ilink.enabled = false
+        WMS->>WMS: 跳过微信初始化
+    end
+
+    Note over MAIN,WMS: 两条线程并行运行<br/>CLI 线程 + 微信轮询线程
+  </div>
+</div>
+
+<!-- ==================== 3. CLI 命令流程 ==================== -->
+<div class="section">
+  <h2>3. CLI 命令处理流程</h2>
+  <div class="mermaid">
+flowchart TD
+    START([用户输入命令]) --> SCAN[Scanner 读取 System.in]
+    SCAN --> TRIM[去除首尾空格]
+    TRIM --> EMPTY{是否为空?}
+    EMPTY -->|是| START
+    EMPTY -->|否| EXIT{exit / quit?}
+    EXIT -->|是| SHUTDOWN[关闭应用<br/>SpringApplication.exit]
+    EXIT -->|否| PARTS[按空格分割<br/>parts = cmd.split]
+    PARTS --> CMD{命令名 = parts[0]}
+
+    CMD -->|help| HELP[HelpCommand.execute]
+    CMD -->|version| VER[VersionCommand.execute]
+    CMD -->|status| STA[StatusCommand.execute]
+    CMD -->|weather| WEA[WeatherCommand.execute]
+    CMD -->|未知| UNKNOWN[输出: 未知命令,输入 help 查看]
+
+    HELP --> PRINT[打印所有已注册命令]
+    VER --> VEROUT[输出版本号 · Git 信息 · 构建时间]
+    STA --> STAOUT[输出运行状态 · 内存使用 · 微信连接状态]
+
+    WEA --> WPARSE{参数数量?}
+    WPARSE -->|1 个| WDEF[使用默认城市 'Beijing']
+    WPARSE -->|2 个| WCITY[使用用户指定的城市]
+    WDEF & WCITY --> WCALL[WeatherTool.getWeather]
+    WCALL --> WAPI[GET OpenWeatherMap API<br/>?q={city}&appid={key}&units=metric&lang=zh_cn]
+    WAPI --> WRESP[解析 JSON → 输出温度/湿度/天气描述]
+
+    PRINT & VEROUT & STAOUT & WRESP & UNKNOWN --> START
+  </div>
+</div>
+
+<!-- ==================== 4. 微信消息核心流程 ==================== -->
+<div class="section">
+  <h2>4. 微信消息核心处理流程</h2>
+  <div class="mermaid">
+flowchart TD
+    LOOP[WechatMessageService 轮询线程] --> POLL[WechatILinkClient.receiveMessages]
+    POLL --> HASMSG{有新消息?}
+    HASMSG -->|否| SLEEP[sleep poll-interval-ms]
+    SLEEP --> LOOP
+    HASMSG -->|是| BUILD[构建 WechatMessage<br/>userId · type · content]
+
+    BUILD --> ROUTE[MessageRouter.route]
+
+    ROUTE --> MTYPE{消息类型?}
+    MTYPE -->|TEXT| CLASSIFY[LLMIntentClassifier.classify<br/>→ Intent 枚举]
+    MTYPE -->|IMAGE| VISION[VisionHandler.handle<br/>优先级1]
+
+    CLASSIFY --> INTENT{分类结果?}
+    INTENT -->|CHAT| CHAT[AIChatHandler.handle<br/>优先级2]
+    INTENT -->|IMAGE_GENERATE| IMGGEN[ImageGenerationHandler.handle]
+    INTENT -->|IMAGE_ANALYZE| VISION
+
+    CHAT --> CHATSVC[ChatService.chat]
+    VISION --> VISIONSVC[VisionService.analyze]
+
+    IMGGEN --> IMGSVC[ImageGenerationService.generate]
+
+    CHATSVC --> LLM[LLMClient<br/>POST DeepSeek API<br/>model: deepseek-v4-flash]
+    VISIONSVC --> VL[VisionClient<br/>POST Qwen-VL API<br/>model: qwen-vl-max]
+    IMGSVC --> IMG[ImageClient<br/>POST DashScope API<br/>model: wanx-v1]
+
+    LLM & VL & IMG --> REPLY[组装回复文本]
+
+    CHAT & VISION & IMGGEN --> HANDLED{handler 返回了<br/>回复?}
+    HANDLED -->|是| REPLY
+    HANDLED -->|否| FALLBACK[SimpleReplyHandler.handle<br/>兜底回复]
+
+    REPLY & FALLBACK --> SEND[WechatILinkClient.sendTextMessage]
+    SEND --> LOOP
+  </div>
+</div>
+
+<!-- ==================== 5. AI 服务详细流程 ==================== -->
+<div class="section">
+  <h2>5. AI 服务详细流程</h2>
+  <div class="mermaid">
+flowchart LR
+    subgraph TEXT["📝 文本对话"]
+        T1[用户消息] --> T2[ChatService]
+        T2 --> T3[加载 SystemPrompt<br/>system-prompt.txt]
+        T3 --> T4[构建消息列表<br/>system + history + user]
+        T4 --> T5[LLMClient.chat]
+        T5 --> T6[POST api.deepseek.com<br/>Authorization: Bearer sk-xxx]
+        T6 --> T7[解析 choices[0].message.content]
+        T7 --> T8[返回回复文本]
+    end
+
+    subgraph VISION["🖼️ 图像分析"]
+        V1[用户发送图片] --> V2[WechatILinkClient<br/>下载图片媒体文件]
+        V2 --> V3[VisionService.analyze]
+        V3 --> V4[Base64 编码图片]
+        V4 --> V5[构建多模态消息<br/>text + image_url]
+        V5 --> V6[VisionClient.analyze]
+        V6 --> V7a[POST dashscope.aliyuncs.com<br/>model: qwen-vl-max]
+        V7a --> V8[解析回复]
+        V8 --> V9[返回分析结果]
+    end
+
+    subgraph IMAGE["🎨 图像生成"]
+        I1[用户文本描述] --> I2[LLMIntentClassifier<br/>识别为 IMAGE_GENERATE]
+        I2 --> I3[ImageGenerationService.generate]
+        I3 --> I4[构建生成参数<br/>prompt · size · n]
+        I4 --> I5[ImageClient.generate]
+        I5 --> I6[POST dashscope.aliyuncs.com<br/>X-DashScope-Async: enable<br/>model: wanx-v1]
+        I6 --> I7b[轮询异步任务状态]
+        I7b --> I8a[获取生成图片 URL]
+        I8a --> I9[返回图片链接]
+    end
+
+    style TEXT fill:#ede9fe,stroke:#8b5cf6,color:#5b21b6
+    style VISION fill:#dbeafe,stroke:#3b82f6,color:#1e40af
+    style IMAGE fill:#fce7f3,stroke:#ec4899,color:#9d174d
+  </div>
+</div>
+
+<!-- ==================== 6. 意图分类流程 ==================== -->
+<div class="section">
+  <h2>6. 意图分类流程</h2>
+  <div class="mermaid">
+flowchart TD
+    INPUT[用户文本消息] --> LC[LLMIntentClassifier.classify]
+    LC --> PROMPT[构建分类 Prompt<br/>包含意图枚举定义]
+    PROMPT --> CALL[调用 LLMClient<br/>复用 DeepSeek API]
+    CALL --> PARSE[解析 JSON 响应]
+    PARSE --> VALID{JSON 有效?}
+
+    VALID -->|是| EXTRACT[提取 intent 字段]
+    EXTRACT --> MATCH{匹配 Intent 枚举?}
+    MATCH -->|CHAT| R_CHAT[返回 Intent.CHAT]
+    MATCH -->|IMAGE_GENERATE| R_IG[返回 Intent.IMAGE_GENERATE]
+    MATCH -->|IMAGE_ANALYZE| R_IA[返回 Intent.IMAGE_ANALYZE]
+    MATCH -->|未知| R_DEFAULT[默认 Intent.CHAT]
+
+    VALID -->|否| R_DEFAULT
+
+    R_CHAT & R_IG & R_IA & R_DEFAULT --> ROUTER[MessageRouter.selectHandler]
+    ROUTER --> DISPATCH[分发到对应 Handler]
+
+    style INPUT fill:#dbeafe,stroke:#3b82f6,color:#1e40af
+    style CALL fill:#ede9fe,stroke:#8b5cf6,color:#5b21b6
+    style ROUTER fill:#fee2e2,stroke:#ef4444,color:#991b1b
+  </div>
+</div>
+
+<!-- ==================== 7. Agent 框架 ==================== -->
+<div class="section">
+  <h2>7. Agent 框架 (可扩展架构)</h2>
+  <div class="mermaid">
+flowchart TD
+    subgraph NOW["✅ 当前实现"]
+        CTX[AgentContext<br/>userId · message · intent]
+        SAE[SimpleAgentExecutor]
+        SAE --> MR2[MessageRouter]
+        MR2 --> HANDLERS2[Handler 链]
+    end
+
+    subgraph FUTURE["🔮 未来扩展方向"]
+        CTX2[AgentContext]
+        REACT[ReActAgentExecutor]
+        PLANNER[Planner 规划器]
+        TR2[ToolRegistry]
+        TOOLS[ChatTool · VisionTool · ImageGenerationTool · ...]
+        REACT --> PLANNER
+        PLANNER --> TR2
+        TR2 --> TOOLS
+        REACT -->|loop until done| PLANNER
+    end
+
+    CTX --> SAE
+    CTX2 --> REACT
+
+    style NOW fill:#dcfce7,stroke:#22c55e,color:#166534
+    style FUTURE fill:#fef3c7,stroke:#f59e0b,color:#92400e
+  </div>
+</div>
+
+<!-- ==================== 8. 完整数据流 ==================== -->
+<div class="section">
+  <h2>8. 完整数据流总览</h2>
+  <div class="mermaid">
+flowchart LR
+    subgraph INPUT["输入源"]
+        A[用户 CLI 输入]
+        B[微信消息]
+    end
+
+    subgraph ENTRY["入口"]
+        C[Main CLI]
+        D[WechatMessageService]
+    end
+
+    subgraph DISPATCH["调度"]
+        E[命令分发]
+        F[MessageRouter]
+        G[LLMIntentClassifier]
+    end
+
+    subgraph BUSINESS["业务处理"]
+        H[命令处理]
+        I[消息处理]
+        J[Agent 执行]
+    end
+
+    subgraph AI_SVC["AI 能力"]
+        K[ChatService<br/>DeepSeek]
+        L[VisionService<br/>Qwen-VL]
+        M[ImageService<br/>wanx]
+    end
+
+    subgraph EXTERNAL["外部"]
+        N[微信 iLink]
+        O[OpenWeatherMap]
+        P[DeepSeek API]
+        Q[Qwen-VL API]
+        R[DashScope API]
+    end
+
+    subgraph OUTPUT["输出"]
+        S[控制台]
+        T[微信回复]
+    end
+
+    A --> C --> E --> H --> K --> P
+    H --> O
+    H --> S
+
+    B --> D --> F
+    D --> N
+    F --> G
+    G --> P
+    F --> I
+    I --> K --> P
+    I --> L --> Q
+    I --> M --> R
+    I --> T
+    J --> F
+
+    style INPUT fill:#dcfce7,stroke:#22c55e
+    style ENTRY fill:#fef3c7,stroke:#f59e0b
+    style DISPATCH fill:#fee2e2,stroke:#ef4444
+    style BUSINESS fill:#fce7f3,stroke:#ec4899
+    style AI_SVC fill:#ede9fe,stroke:#8b5cf6
+    style EXTERNAL fill:#e0e7ff,stroke:#6366f1
+    style OUTPUT fill:#dbeafe,stroke:#3b82f6
+  </div>
+</div>
+
+<footer>
+  Claw Assistant Project Flowchart · Generated on 2026-07-17 · Branch: feature/wechat-ilink-integration
+</footer>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+    sequence: { useMaxWidth: true },
+  });
+</script>
+</body>
+</html>
