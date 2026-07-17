@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.wechat.handler;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
+@Order(2)
 public class SimpleReplyHandler implements MessageHandler {
 
     private static final String REPLY_TEXT = "你好，我是Claw助手";
