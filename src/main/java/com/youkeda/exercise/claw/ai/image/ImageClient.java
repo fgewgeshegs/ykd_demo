@@ -16,8 +16,8 @@ import java.time.Duration;
 /**
  * 图片生成客户端
  *
- * 负责调用图片生成模型（如阿里云 wanx-v1）生成图片
- * 请求格式兼容阿里云 DashScope 文本生成图像 API
+ * 负责调用图片生成模型（如 Qwen-Image-2.0）生成图片
+ * 请求格式兼容 OpenAI 图片生成 API，同时也支持 DashScope 原生接口
  */
 @Slf4j
 @Component
@@ -49,11 +49,10 @@ public class ImageClient {
             log.info("调用图片生成模型 | model={} | prompt={}", properties.getModel(), prompt);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(properties.getBaseUrl()))
+                    .uri(URI.create(buildUrl()))
                     .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                     .header("Authorization", "Bearer " + properties.getApiKey())
                     .header("Content-Type", "application/json")
-                    .header("X-DashScope-Async", "enable")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
@@ -71,59 +70,60 @@ public class ImageClient {
     }
 
     /**
-     * 构建 DashScope 文本生成图像请求体
+     * 构建完整的请求 URL
+     *
+     * OpenAI 兼容接口需要追加 /images/generations 路径；
+     * DashScope 原生接口（wanx-v1）的 baseUrl 已是完整端点，直接使用。
+     */
+    private String buildUrl() {
+        String baseUrl = properties.getBaseUrl();
+        // DashScope 原生端点已有具体路径（以 /image-synthesis 结尾），直接使用
+        if (baseUrl.endsWith("/image-synthesis")) {
+            return baseUrl;
+        }
+        // OpenAI 兼容接口：追加 /images/generations
+        if (!baseUrl.endsWith("/images/generations")) {
+            return baseUrl + (baseUrl.endsWith("/") ? "" : "/") + "images/generations";
+        }
+        return baseUrl;
+    }
+
+    /**
+     * 构建 OpenAI 兼容的图片生成请求体
      *
      * 格式：
      * {
-     *   "model": "wanx-v1",
-     *   "input": { "prompt": "..." },
-     *   "parameters": { "size": "1024*1024", "n": 1 }
+     *   "model": "Qwen-Image-2.0",
+     *   "prompt": "...",
+     *   "n": 1,
+     *   "size": "1024x1024"
      * }
      */
     private String buildRequestBody(String prompt) throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", properties.getModel());
-
-        ObjectNode input = root.putObject("input");
-        input.put("prompt", prompt);
-
-        ObjectNode parameters = root.putObject("parameters");
-        parameters.put("size", "1024*1024");
-        parameters.put("n", 1);
-
+        root.put("prompt", prompt);
+        root.put("n", 1);
+        root.put("size", "1024x1024");
         return objectMapper.writeValueAsString(root);
     }
 
     /**
-     * 解析图片生成响应 JSON，提取图片 URL
+     * 解析 OpenAI 兼容的图片生成响应，提取图片 URL
      *
-     * DashScope 同步响应格式：
-     * { "output": { "results": [{ "url": "..." }] } }
-     *
-     * DashScope 异步响应（X-DashScope-Async: enable）：
-     * { "output": { "task_status": "PENDING", "task_id": "..." } }
+     * 响应格式：
+     * { "data": [{ "url": "..." }] }
      */
     private String parseResponse(String responseBody) throws Exception {
         JsonNode root = objectMapper.readTree(responseBody);
 
-        // 同步响应：直接取 results
-        JsonNode output = root.get("output");
-        if (output != null) {
-            JsonNode results = output.get("results");
-            if (results != null && results.isArray() && results.size() > 0) {
-                JsonNode url = results.get(0).get("url");
-                if (url != null) {
-                    return url.asText();
-                }
+        // OpenAI 兼容格式：data[].url
+        JsonNode data = root.get("data");
+        if (data != null && data.isArray() && data.size() > 0) {
+            JsonNode url = data.get(0).get("url");
+            if (url != null) {
+                return url.asText();
             }
-        }
-
-        // 异步响应：返回 task_id 供后续查询
-        JsonNode taskIdNode = root.path("output").path("task_id");
-        if (!taskIdNode.isMissingNode()) {
-            String taskId = taskIdNode.asText();
-            log.info("图片生成任务已提交 | taskId={}", taskId);
-            return "[异步任务] taskId=" + taskId;
         }
 
         log.warn("图片生成响应格式异常: {}", responseBody);
