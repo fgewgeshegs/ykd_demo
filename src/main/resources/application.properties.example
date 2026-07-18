@@ -5,8 +5,8 @@
 # Weather API Configuration
 
 
-# --- OpenWeatherMap ( https://openweathermap.org/api) ---
-weather.api.url=https://api.openweathermap.org/data/2.5/weather?q={city}&appid={key}&units=metric&lang=zh_cn
+# --- WeatherAPI.com (https://www.weatherapi.com) ---
+weather.api.url=https://api.weatherapi.com/v1/current.json?key={key}&q={city}&lang=zh
 weather.api.key=
 
 # ============================================

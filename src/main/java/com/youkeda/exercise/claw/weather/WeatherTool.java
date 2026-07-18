@@ -59,35 +59,34 @@ public class WeatherTool {
 
     /**
      * 解析天气 API 返回的 JSON 数据
-     * 支持 OpenWeatherMap 格式
+     * 支持 WeatherAPI.com 格式
      */
     private WeatherResponse parseResponse(String json, String originalCity) throws ClawException {
         try {
             JsonNode root = objectMapper.readTree(json);
 
             // 检查 API 是否返回错误
-            JsonNode codNode = root.get("cod");
-            if (codNode != null) {
-                String cod = codNode.asText();
-                if (!"200".equals(cod)) {
-                    if ("404".equals(cod)) {
-                        throw new ClawException("城市不存在");
-                    }
-                    String message = root.has("message") ? root.get("message").asText() : "未知错误";
-                    throw new ClawException("天气 API 返回错误: " + message);
-                }
+            JsonNode errorNode = root.get("error");
+            if (errorNode != null) {
+                String message = errorNode.has("message") ? errorNode.get("message").asText() : "未知错误";
+                throw new ClawException("天气 API 返回错误: " + message);
             }
 
             // 解析天气数据
-            String cityName = root.has("name") ? root.get("name").asText() : originalCity;
-            JsonNode weatherArray = root.get("weather");
-            String weatherDesc = weatherArray != null && weatherArray.isArray() && weatherArray.size() > 0
-                    ? weatherArray.get(0).get("description").asText()
-                    : "未知";
+            JsonNode location = root.get("location");
+            String cityName = location != null && location.has("name")
+                    ? location.get("name").asText()
+                    : originalCity;
 
-            JsonNode main = root.get("main");
-            double temp = main != null && main.has("temp") ? main.get("temp").asDouble() : 0.0;
-            int humidity = main != null && main.has("humidity") ? main.get("humidity").asInt() : 0;
+            JsonNode current = root.get("current");
+            String weatherDesc = "未知";
+            if (current != null && current.has("condition")) {
+                JsonNode condition = current.get("condition");
+                weatherDesc = condition.has("text") ? condition.get("text").asText() : "未知";
+            }
+
+            double temp = current != null && current.has("temp_c") ? current.get("temp_c").asDouble() : 0.0;
+            int humidity = current != null && current.has("humidity") ? current.get("humidity").asInt() : 0;
 
             return new WeatherResponse(cityName, weatherDesc, temp, humidity);
 
