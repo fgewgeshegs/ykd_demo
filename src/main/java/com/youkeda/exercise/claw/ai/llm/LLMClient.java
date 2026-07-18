@@ -4,16 +4,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.ai.llm.LLMProperties;
-import com.youkeda.exercise.claw.ai.llm.SystemPromptProvider;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.stream.Collectors;
 
 /**
  * LLM 客户端
@@ -25,19 +29,39 @@ import java.time.Duration;
 public class LLMClient {
 
     private static final int TIMEOUT_SECONDS = 30;
+    private static final String SYSTEM_PROMPT_PATH = "prompts/system-prompt.txt";
+    private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手，一个智能AI助手。";
 
     private final LLMProperties properties;
-    private final SystemPromptProvider systemPromptProvider;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    public LLMClient(LLMProperties properties, SystemPromptProvider systemPromptProvider) {
+    private String systemPrompt;
+
+    public LLMClient(LLMProperties properties) {
         this.properties = properties;
-        this.systemPromptProvider = systemPromptProvider;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build();
         this.objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * 加载系统提示词
+     */
+    @PostConstruct
+    public void init() {
+        try {
+            ClassPathResource resource = new ClassPathResource(SYSTEM_PROMPT_PATH);
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+                this.systemPrompt = reader.lines().collect(Collectors.joining("\n"));
+            }
+            log.info("系统提示词加载完成，共 {} 字符", systemPrompt.length());
+        } catch (Exception e) {
+            log.error("加载系统提示词失败，使用默认提示词", e);
+            this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+        }
     }
 
     /**
@@ -48,7 +72,7 @@ public class LLMClient {
      * @return 模型回复内容，调用失败时返回 null
      */
     public String chat(String userId, String text) {
-        return callLLM(systemPromptProvider.getSystemPrompt(), text);
+        return callLLM(systemPrompt, text);
     }
 
     /**
