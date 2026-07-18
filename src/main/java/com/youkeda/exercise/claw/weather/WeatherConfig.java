@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 天气 API 配置
- * 从 application.properties 读取天气服务配置
+ * 从 application.properties 读取天气服务配置（WeatherAPI.com）
  */
 @Slf4j
 @Component
