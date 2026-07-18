@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.ai.image;
 
+import com.youkeda.exercise.claw.ai.llm.ImageClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

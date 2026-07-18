@@ -1,18 +1,23 @@
-package com.youkeda.exercise.claw.ai.image;
+package com.youkeda.exercise.claw.ai.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.ai.image.ImageProperties;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.stream.Collectors;
 
 /**
  * 图片生成客户端
@@ -25,10 +30,14 @@ import java.time.Duration;
 public class ImageClient {
 
     private static final int TIMEOUT_SECONDS = 120;
+    private static final String SYSTEM_PROMPT_PATH = "prompts/image-system-prompt.txt";
+    private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手的图片生成模块，请根据用户描述生成高质量图片。";
 
     private final ImageProperties properties;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+
+    private String systemPrompt;
 
     public ImageClient(ImageProperties properties) {
         this.properties = properties;
@@ -36,6 +45,24 @@ public class ImageClient {
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build();
         this.objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * 加载图片生成系统提示词
+     */
+    @PostConstruct
+    public void init() {
+        try {
+            ClassPathResource resource = new ClassPathResource(SYSTEM_PROMPT_PATH);
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+                this.systemPrompt = reader.lines().collect(Collectors.joining("\n"));
+            }
+            log.info("图片生成系统提示词加载完成，共 {} 字符", systemPrompt.length());
+        } catch (Exception e) {
+            log.error("加载图片生成系统提示词失败，使用默认提示词", e);
+            this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+        }
     }
 
     /**
@@ -78,10 +105,7 @@ public class ImageClient {
      *   "model": "qwen-image-2.0",
      *   "input": {
      *     "messages": [
-     *       {
-     *         "role": "user",
-     *         "content": [{ "text": "..." }]
-     *       }
+     *       { "role": "user", "content": [{ "text": "systemPrompt + userPrompt" }] }
      *     ]
      *   },
      *   "parameters": { "size": "1024*1024", "n": 1, "prompt_extend": true, "watermark": false }
@@ -97,10 +121,10 @@ public class ImageClient {
         ObjectNode message = messages.addObject();
         message.put("role", "user");
 
-        // input.messages[0].content[{text: "..."}]
+        // 合并系统提示词和用户提示词
         ArrayNode content = message.putArray("content");
         ObjectNode textItem = content.addObject();
-        textItem.put("text", prompt);
+        textItem.put("text", systemPrompt + "\n\n用户需求：" + prompt);
 
         // parameters
         ObjectNode parameters = root.putObject("parameters");

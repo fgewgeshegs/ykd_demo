@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.image;
+package com.youkeda.exercise.claw.ai.llm;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
