@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.wechat.service;
 
 import com.lth.wechat.ilink.dto.message.ReceiveMessagesResult;
-import com.youkeda.exercise.claw.router.MessageRouter;
+import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import com.youkeda.exercise.claw.wechat.model.MessageType;

@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.ai.vision;
 
-import com.youkeda.exercise.claw.llm.client.VisionClient;
+import com.youkeda.exercise.claw.ai.llm.VisionClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

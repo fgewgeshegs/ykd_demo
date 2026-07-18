@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.agent;
 
 import com.youkeda.exercise.claw.ai.chat.ChatService;
-import com.youkeda.exercise.claw.intent.Intent;
+import com.youkeda.exercise.claw.ai.classifier.Intent;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

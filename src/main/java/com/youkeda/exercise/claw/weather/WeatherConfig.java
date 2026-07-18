@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.config;
+package com.youkeda.exercise.claw.weather;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;

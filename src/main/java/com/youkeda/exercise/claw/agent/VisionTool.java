@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.agent;
 
 import com.youkeda.exercise.claw.ai.vision.VisionService;
-import com.youkeda.exercise.claw.intent.Intent;
+import com.youkeda.exercise.claw.ai.classifier.Intent;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;

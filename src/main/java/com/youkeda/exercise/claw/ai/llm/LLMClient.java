@@ -1,11 +1,11 @@
-package com.youkeda.exercise.claw.llm.client;
+package com.youkeda.exercise.claw.ai.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.llm.config.LLMProperties;
-import com.youkeda.exercise.claw.llm.prompt.SystemPromptProvider;
+import com.youkeda.exercise.claw.ai.llm.LLMProperties;
+import com.youkeda.exercise.claw.ai.llm.SystemPromptProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

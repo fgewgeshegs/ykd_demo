@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.agent;
 
-import com.youkeda.exercise.claw.intent.Intent;
+import com.youkeda.exercise.claw.ai.classifier.Intent;
 
 /**
  * 工具接口

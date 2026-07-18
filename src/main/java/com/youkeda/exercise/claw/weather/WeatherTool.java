@@ -1,11 +1,11 @@
-package com.youkeda.exercise.claw.tool;
+package com.youkeda.exercise.claw.weather;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.config.WeatherConfig;
-import com.youkeda.exercise.claw.exception.ClawException;
-import com.youkeda.exercise.claw.model.WeatherResponse;
-import com.youkeda.exercise.claw.util.HttpClientUtil;
+import com.youkeda.exercise.claw.ClawException;
+import com.youkeda.exercise.claw.common.HttpClientUtil;
+import com.youkeda.exercise.claw.weather.WeatherConfig;
+import com.youkeda.exercise.claw.weather.WeatherResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
