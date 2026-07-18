@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.agent;
 
-import com.youkeda.exercise.claw.router.MessageRouter;
+import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import lombok.extern.slf4j.Slf4j;

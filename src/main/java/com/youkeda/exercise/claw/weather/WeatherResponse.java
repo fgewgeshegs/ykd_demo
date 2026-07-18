@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.model;
+package com.youkeda.exercise.claw.weather;
 
 /**
  * 天气响应数据模型

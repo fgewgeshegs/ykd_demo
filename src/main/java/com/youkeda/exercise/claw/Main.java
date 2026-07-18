@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw;
 
 import com.youkeda.exercise.claw.command.CommandHandler;
-import com.youkeda.exercise.claw.exception.ClawException;
+import com.youkeda.exercise.claw.ClawException;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

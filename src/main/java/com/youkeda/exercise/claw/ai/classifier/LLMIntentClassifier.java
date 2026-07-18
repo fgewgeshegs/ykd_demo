@@ -1,6 +1,6 @@
-package com.youkeda.exercise.claw.intent;
+package com.youkeda.exercise.claw.ai.classifier;
 
-import com.youkeda.exercise.claw.llm.client.LLMClient;
+import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

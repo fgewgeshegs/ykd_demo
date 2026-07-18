@@ -1,8 +1,7 @@
-package com.youkeda.exercise.claw.command;
+package com.youkeda.exercise.claw.weather;
 
-import com.youkeda.exercise.claw.exception.ClawException;
-import com.youkeda.exercise.claw.model.WeatherResponse;
-import com.youkeda.exercise.claw.tool.WeatherTool;
+import com.youkeda.exercise.claw.ClawException;
+import com.youkeda.exercise.claw.command.CommandHandler;
 import org.springframework.stereotype.Component;
 
 /**

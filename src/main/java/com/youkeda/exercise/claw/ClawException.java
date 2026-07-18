@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.exception;
+package com.youkeda.exercise.claw;
 
 /**
  * Claw Assistant 自定义异常

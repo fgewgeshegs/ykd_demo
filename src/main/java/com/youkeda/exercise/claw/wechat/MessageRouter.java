@@ -1,7 +1,7 @@
-package com.youkeda.exercise.claw.router;
+package com.youkeda.exercise.claw.wechat;
 
-import com.youkeda.exercise.claw.intent.Intent;
-import com.youkeda.exercise.claw.intent.IntentClassifier;
+import com.youkeda.exercise.claw.ai.classifier.Intent;
+import com.youkeda.exercise.claw.ai.classifier.IntentClassifier;
 import com.youkeda.exercise.claw.wechat.handler.AIChatHandler;
 import com.youkeda.exercise.claw.wechat.handler.ImageGenerationHandler;
 import com.youkeda.exercise.claw.wechat.handler.MessageHandler;

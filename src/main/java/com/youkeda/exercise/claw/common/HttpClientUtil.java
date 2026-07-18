@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.util;
+package com.youkeda.exercise.claw.common;
 
 import java.net.URI;
 import java.net.http.HttpClient;

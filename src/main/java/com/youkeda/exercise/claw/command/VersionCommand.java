@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.command;
 
-import com.youkeda.exercise.claw.exception.ClawException;
+import com.youkeda.exercise.claw.ClawException;
 import org.springframework.stereotype.Component;
 
 /**

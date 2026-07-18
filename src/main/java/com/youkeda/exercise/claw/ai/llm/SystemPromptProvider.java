@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.llm.prompt;
+package com.youkeda.exercise.claw.ai.llm;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
