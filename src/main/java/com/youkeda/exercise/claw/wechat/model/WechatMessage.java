@@ -44,4 +44,24 @@ public class WechatMessage {
      * 回复上下文 token，用于发送消息时关联原始会话
      */
     private String contextToken;
+
+    /**
+     * 引用消息的文字内容（用户引用了一条消息后发送的消息时有效）
+     */
+    private String refMessageText;
+
+    /**
+     * 引用消息的图片 CDN 加密参数（用户引用了图片消息时有效）
+     */
+    private String refImageEncryptParam;
+
+    /**
+     * 引用消息的图片解密密钥（用户引用了图片消息时有效）
+     */
+    private String refImageAesKey;
+
+    /**
+     * 是否附带图片（图文合并消息时有效）
+     */
+    private boolean hasAttachedImage;
 }
