@@ -10,7 +10,8 @@ import java.time.Duration;
  * HTTP 客户端工具类
  * 基于 Java 21 原生 java.net.http.HttpClient
  */
-public class HttpClientUtil {
+public class
+HttpClientUtil {
 
     private static final int TIMEOUT_SECONDS = 10;
 

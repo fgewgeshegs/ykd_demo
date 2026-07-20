@@ -14,6 +14,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
+import static java.net.http.HttpResponse.BodyHandlers;
+
 /**
  * 图片生成客户端
  *
@@ -66,6 +68,33 @@ public class ImageClient {
 
         } catch (Exception e) {
             log.error("图片生成失败 | error={}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 从图片 URL 下载字节流
+     *
+     * @param imageUrl 图片公开可访问地址
+     * @return 图片字节数组，下载失败时返回 null
+     */
+    public byte[] downloadImage(String imageUrl) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(imageUrl))
+                    .timeout(Duration.ofSeconds(60))
+                    .GET()
+                    .build();
+
+            HttpResponse<byte[]> response = httpClient.send(request, BodyHandlers.ofByteArray());
+            if (response.statusCode() == 200) {
+                log.info("图片下载成功 | size={} bytes | url={}", response.body().length, imageUrl);
+                return response.body();
+            }
+            log.warn("图片下载失败 | status={} | url={}", response.statusCode(), imageUrl);
+            return null;
+        } catch (Exception e) {
+            log.error("图片下载异常 | url={} | error={}", imageUrl, e.getMessage());
             return null;
         }
     }

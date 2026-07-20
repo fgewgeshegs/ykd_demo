@@ -138,10 +138,34 @@ public class WechatILinkClient {
     }
 
     /**
-     * 接收消息
+     * 发送图片消息
      *
-     * @param cursor 分页游标，首次传空字符串
-     * @return 接收消息结果，异常时返回 null
+     * 步骤：uploadMedia 上传图片字节 → MediaInfo → sendImageMessage
+     *
+     * @param toUserId    接收方 userId
+     * @param contextToken 上下文 token
+     * @param imageBytes   图片字节数据
+     */
+    public void sendImageMessage(String toUserId, String contextToken, byte[] imageBytes) {
+        if (!loggedIn || credentials == null) {
+            log.warn("微信未登录，无法发送图片消息");
+            return;
+        }
+        try {
+            // 1. 上传媒体文件，mediaType=1 表示图片；第3个参数是 toUserId（接收方用户ID）
+            ILinkClient.MediaInfo mediaInfo = client.uploadMedia(credentials, 1, toUserId, imageBytes);
+            log.info("图片上传成功 | encryptQueryParam={} | fileSize={}", mediaInfo.getEncryptQueryParam(), mediaInfo.getFileSize());
+
+            // 2. 发送图片消息
+            client.sendImageMessage(credentials, toUserId, contextToken, mediaInfo);
+            log.info("发送图片消息 | to={} | size={} bytes", toUserId, imageBytes.length);
+        } catch (Exception e) {
+            log.error("发送图片消息失败 | to={} | error={}", toUserId, e.getMessage());
+        }
+    }
+
+    /**
+     * 接收消息
      */
     public ReceiveMessagesResult receiveMessages(String cursor) {
         if (!loggedIn || credentials == null) {

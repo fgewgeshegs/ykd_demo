@@ -12,8 +12,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class ImageGenerationService {
 
-    private static final String FALLBACK_MESSAGE = "抱歉，图片生成失败，请稍后再试。";
-
     private final ImageClient imageClient;
 
     public ImageGenerationService(ImageClient imageClient) {
@@ -24,7 +22,7 @@ public class ImageGenerationService {
      * 根据提示词生成图片
      *
      * @param prompt 图片描述提示词
-     * @return 生成结果文本（包含图片 URL 或错误信息）
+     * @return 生成的图片 URL，失败时返回 null
      */
     public String generate(String prompt) {
         log.info("ImageGenerationService 开始生成 | prompt={}", prompt);
@@ -33,13 +31,13 @@ public class ImageGenerationService {
             String imageUrl = imageClient.generateImage(prompt);
             if (imageUrl == null) {
                 log.warn("ImageGenerationService 生成失败");
-                return FALLBACK_MESSAGE;
+                return null;
             }
-            log.info("ImageGenerationService 生成完成");
-            return "已为您生成图片：" + imageUrl;
+            log.info("ImageGenerationService 生成完成 | url={}", imageUrl);
+            return imageUrl;
         } catch (Exception e) {
             log.error("ImageGenerationService 生成异常 | error={}", e.getMessage());
-            return FALLBACK_MESSAGE;
+            return null;
         }
     }
 }

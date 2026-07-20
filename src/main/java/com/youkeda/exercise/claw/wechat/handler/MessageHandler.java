@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.wechat.handler;
 
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.wechat.model.WechatReply;
 
 /**
  * 微信消息处理器接口
@@ -16,5 +17,5 @@ public interface MessageHandler {
      * @param message 微信消息（包含类型、发送者、内容等）
      * @return 回复内容，返回 null 表示不回复（由下一个 Handler 处理）
      */
-    String handle(WechatMessage message);
+    WechatReply handle(WechatMessage message);
 }
