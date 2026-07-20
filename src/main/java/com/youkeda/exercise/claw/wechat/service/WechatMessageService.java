@@ -101,8 +101,8 @@ public class WechatMessageService {
                                 wechatMsg.setImageUrl(img.getUrl());
                                 if (img.getMedia() != null) {
                                     wechatMsg.setEncryptQueryParam(img.getMedia().getEncrypt_query_param());
+                                    wechatMsg.setAesKey(img.getMedia().getAes_key());
                                 }
-                                wechatMsg.setAesKey(img.getAeskey());
                                 log.info("收到图片消息 | from={}", fromUserId);
 
                             } else if (type == TYPE_VOICE && item.getVoice_item() != null) {
