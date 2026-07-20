@@ -39,4 +39,9 @@ public class WechatMessage {
      * 图片解密密钥（IMAGE 类型时有效）
      */
     private String aesKey;
+
+    /**
+     * 回复上下文 token，用于发送消息时关联原始会话
+     */
+    private String contextToken;
 }

@@ -95,6 +95,7 @@ public class WechatMessageService {
                             // 1. 构建统一消息模型
                             WechatMessage wechatMsg = new WechatMessage();
                             wechatMsg.setUserId(fromUserId);
+                            wechatMsg.setContextToken(contextToken);
 
                             if (item.isText() && item.getText() != null && !item.getText().isEmpty()) {
                                 wechatMsg.setType(MessageType.TEXT);
