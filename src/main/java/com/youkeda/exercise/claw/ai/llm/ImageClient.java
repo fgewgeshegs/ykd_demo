@@ -5,20 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.image.ImageClientException;
+import com.youkeda.exercise.claw.common.PromptLoader;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.stream.Collectors;
 
 /**
  * 图片生成客户端
@@ -31,39 +27,31 @@ import java.util.stream.Collectors;
 public class ImageClient {
 
     private static final int TIMEOUT_SECONDS = 120;
+    /** 默认生成图片尺寸（宽*高） */
+    private static final String DEFAULT_IMAGE_SIZE = "1024*1024";
+
     private static final String SYSTEM_PROMPT_PATH = "prompts/image-system-prompt.txt";
     private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手的图片生成模块，请根据用户描述生成高质量图片。";
 
     private final ImageProperties properties;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final PromptLoader promptLoader;
 
     private String systemPrompt;
 
-    public ImageClient(ImageProperties properties) {
+    public ImageClient(ImageProperties properties, ObjectMapper objectMapper, PromptLoader promptLoader) {
         this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.promptLoader = promptLoader;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build();
-        this.objectMapper = new ObjectMapper();
     }
 
-    /**
-     * 加载图片生成系统提示词
-     */
     @PostConstruct
     public void init() {
-        try {
-            ClassPathResource resource = new ClassPathResource(SYSTEM_PROMPT_PATH);
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
-                this.systemPrompt = reader.lines().collect(Collectors.joining("\n"));
-            }
-            log.info("图片生成系统提示词加载完成，共 {} 字符", systemPrompt.length());
-        } catch (Exception e) {
-            log.error("加载图片生成系统提示词失败，使用默认提示词", e);
-            this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
-        }
+        this.systemPrompt = promptLoader.load(SYSTEM_PROMPT_PATH, DEFAULT_SYSTEM_PROMPT);
     }
 
     /**
@@ -160,7 +148,7 @@ public class ImageClient {
 
         // parameters
         ObjectNode parameters = root.putObject("parameters");
-        parameters.put("size", "1024*1024");
+        parameters.put("size", DEFAULT_IMAGE_SIZE);
         parameters.put("n", 1);
         parameters.put("prompt_extend", true);
         parameters.put("watermark", false);

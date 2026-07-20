@@ -28,7 +28,7 @@ public class HttpClientUtil {
      *
      * @param url 请求 URL
      * @return 响应体内容
-     * @throws Exception 网络请求异常
+     * @throws Exception 网络请求异常或服务端返回非 2xx 状态码
      */
     public String doGet(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
@@ -41,6 +41,7 @@ public class HttpClientUtil {
         HttpResponse<String> response = httpClient.send(request,
                 HttpResponse.BodyHandlers.ofString());
 
+        checkResponseStatus(response.statusCode(), url, response.body());
         return response.body();
     }
 
@@ -49,7 +50,7 @@ public class HttpClientUtil {
      *
      * @param url 请求 URL
      * @return 响应体字节数组
-     * @throws Exception 网络请求异常
+     * @throws Exception 网络请求异常或服务端返回非 2xx 状态码
      */
     public byte[] doGetBytes(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
@@ -61,6 +62,17 @@ public class HttpClientUtil {
         HttpResponse<byte[]> response = httpClient.send(request,
                 HttpResponse.BodyHandlers.ofByteArray());
 
+        checkResponseStatus(response.statusCode(), url, "byte[" + response.body().length + "]");
         return response.body();
+    }
+
+    /**
+     * 检查 HTTP 响应状态码，非 2xx 时抛出异常
+     */
+    private void checkResponseStatus(int statusCode, String url, String bodyPreview) throws Exception {
+        if (statusCode < 200 || statusCode >= 300) {
+            String preview = bodyPreview.length() > 200 ? bodyPreview.substring(0, 200) + "..." : bodyPreview;
+            throw new RuntimeException("HTTP " + statusCode + " 响应异常 | url=" + url + " | body=" + preview);
+        }
     }
 }
