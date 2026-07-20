@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.wechat.handler;
 
+import com.youkeda.exercise.claw.ai.llm.ImageClient;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.context.ContextStore;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
@@ -12,10 +13,9 @@ import org.springframework.stereotype.Component;
 import java.util.Base64;
 
 /**
- * 图片消息处理器
+ * 图片分析处理器
  *
- * 职责：接收 IMAGE 类型的消息，委托 VisionService 完成图片分析，
- * 并将分析结果写入 ContextStore，使后续对话能引用图片内容。
+ * 支持场景：直接发图 / 上下文有最近图片
  */
 @Slf4j
 @Component
@@ -26,44 +26,50 @@ public class VisionHandler implements MessageHandler {
     private final VisionService visionService;
     private final WechatILinkClient wechatClient;
     private final ContextStore contextStore;
+    private final ImageClient imageClient;
 
     public VisionHandler(VisionService visionService,
                          WechatILinkClient wechatClient,
-                         ContextStore contextStore) {
+                         ContextStore contextStore,
+                         ImageClient imageClient) {
         this.visionService = visionService;
         this.wechatClient = wechatClient;
         this.contextStore = contextStore;
+        this.imageClient = imageClient;
     }
 
     @Override
     public WechatReply handle(WechatMessage message) {
-        if (message.getType() != MessageType.IMAGE) {
-            return null;
+        if (message.getType() == MessageType.IMAGE) {
+            return analyzeImage(message);
         }
 
-        log.info("收到图片消息 user={}", message.getUserId());
+        if (message.getType() == MessageType.TEXT
+                && contextStore.getLastImage(message.getUserId()) != null) {
+            log.info("分析上下文中的最近图片 | user={} | text={}", message.getUserId(), message.getText());
+            return analyzeImage(message);
+        }
 
-        // 1. 尝试从微信 CDN 下载图片并转为 base64 data URL
+        return null;
+    }
+
+    private WechatReply analyzeImage(WechatMessage message) {
+        log.info("VisionHandler 分析图片 | user={}", message.getUserId());
+
         String imageDataUrl = downloadImageAsDataUrl(message);
         if (imageDataUrl == null) {
-            // 降级：使用原始 URL（部分模型/提供商可能支持）
-            imageDataUrl = message.getImageUrl();
-        }
-
-        if (imageDataUrl == null) {
-            log.warn("无法获取图片数据，使用降级回复 | from={}", message.getUserId());
+            log.warn("无法获取图片数据 | from={}", message.getUserId());
             return WechatReply.text(FALLBACK_REPLY);
         }
 
-        // 2. 委托 VisionService 分析图片
         String reply = visionService.analyze(imageDataUrl, null);
-
         if (reply == null || reply.isEmpty()) {
-            log.warn("图片分析失败，使用降级回复 | from={}", message.getUserId());
+            log.warn("图片分析失败 | from={}", message.getUserId());
             return WechatReply.text(FALLBACK_REPLY);
         }
 
-        // 3. 将图片分析结果写入上下文（后续对话能引用图片内容）
+        saveImageParams(message);
+
         contextStore.append(message.getUserId(), "user", "[用户发送了一张图片]");
         contextStore.append(message.getUserId(), "assistant", reply);
 
@@ -71,27 +77,51 @@ public class VisionHandler implements MessageHandler {
     }
 
     /**
-     * 通过微信 CDN 下载图片并转换为 base64 data URL
+     * 下载图片：直接 CDN → 上下文 CDN → 上下文 URL → 消息 URL
      */
     private String downloadImageAsDataUrl(WechatMessage message) {
-        String encryptQueryParam = message.getEncryptQueryParam();
+        String encryptParam = message.getEncryptQueryParam();
         String aesKey = message.getAesKey();
 
-        if (encryptQueryParam == null || encryptQueryParam.isEmpty()
-                || aesKey == null || aesKey.isEmpty()) {
-            log.warn("图片加密参数不完整，无法下载 | encryptQueryParam={}", encryptQueryParam);
-            return null;
+        if (isEmpty(encryptParam) || isEmpty(aesKey)) {
+            String[] lastImage = contextStore.getLastImage(message.getUserId());
+            if (lastImage != null && lastImage.length == 2) {
+                encryptParam = lastImage[0];
+                aesKey = lastImage[1];
+            }
         }
 
-        byte[] imageBytes = wechatClient.downloadMedia(encryptQueryParam, aesKey);
-        if (imageBytes == null || imageBytes.length == 0) {
-            log.warn("图片下载失败，返回空数据");
-            return null;
+        if (!isEmpty(encryptParam) && !isEmpty(aesKey)) {
+            byte[] bytes = wechatClient.downloadMedia(encryptParam, aesKey);
+            if (bytes != null && bytes.length > 0) {
+                return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(bytes);
+            }
         }
 
-        String base64 = Base64.getEncoder().encodeToString(imageBytes);
-        String dataUrl = "data:image/jpeg;base64," + base64;
-        log.info("图片已转换为 base64 data URL，大小={} bytes", imageBytes.length);
-        return dataUrl;
+        String contextUrl = contextStore.getLastImageUrl(message.getUserId());
+        if (contextUrl != null && !contextUrl.isEmpty()) {
+            byte[] urlBytes = imageClient.downloadImage(contextUrl);
+            if (urlBytes != null && urlBytes.length > 0) {
+                return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(urlBytes);
+            }
+        }
+
+        if (message.getImageUrl() != null && !message.getImageUrl().isEmpty()) {
+            return message.getImageUrl();
+        }
+
+        return null;
+    }
+
+    private void saveImageParams(WechatMessage message) {
+        String ep = message.getEncryptQueryParam();
+        String ak = message.getAesKey();
+        if (!isEmpty(ep) && !isEmpty(ak)) {
+            contextStore.setLastImage(message.getUserId(), ep, ak);
+        }
+    }
+
+    private boolean isEmpty(String s) {
+        return s == null || s.isEmpty();
     }
 }

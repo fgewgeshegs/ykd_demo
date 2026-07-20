@@ -31,11 +31,9 @@ public class AIChatHandler implements MessageHandler {
             return null;
         }
 
-        String fullText = buildFullText(message);
+        log.debug("AIChatHandler 处理消息 | from={} | text={}", message.getUserId(), message.getText());
 
-        log.debug("AIChatHandler 处理消息 | from={} | text={}", message.getUserId(), fullText);
-
-        String reply = chatService.chat(message.getUserId(), fullText);
+        String reply = chatService.chat(message.getUserId(), message.getText());
         if (reply == null || reply.isEmpty()) {
             log.warn("AI 回复为空，使用降级回复 | from={}", message.getUserId());
             return WechatReply.text(FALLBACK_REPLY);
@@ -44,14 +42,4 @@ public class AIChatHandler implements MessageHandler {
         return WechatReply.text(reply);
     }
 
-    /**
-     * 将引用消息内容拼到用户消息前面，让 LLM 知道用户在引用什么
-     */
-    private String buildFullText(WechatMessage message) {
-        String refText = message.getRefMessageText();
-        if (refText == null || refText.isEmpty()) {
-            return message.getText();
-        }
-        return "[用户引用了: \"" + refText + "\"]\n" + message.getText();
-    }
 }

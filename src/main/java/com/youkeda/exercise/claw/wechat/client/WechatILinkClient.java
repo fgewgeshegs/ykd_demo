@@ -5,6 +5,7 @@ import com.lth.wechat.ilink.LoginCredentials;
 import com.lth.wechat.ilink.dto.login.LoginStatus;
 import com.lth.wechat.ilink.dto.login.QrCodeInfo;
 import com.lth.wechat.ilink.dto.message.ReceiveMessagesResult;
+import com.youkeda.exercise.claw.context.ContextStore;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
@@ -29,6 +30,7 @@ public class WechatILinkClient {
     private static final int MEDIA_TYPE_IMAGE = 1;
 
     private final WechatProperties wechatProperties;
+    private final ContextStore contextStore;
 
     private ILinkClient client;
     private LoginCredentials credentials;
@@ -39,8 +41,9 @@ public class WechatILinkClient {
     private static final int MAX_LOGIN_RETRIES = 3;
     private static final int LOGIN_RETRY_INTERVAL_MS = 5000;
 
-    public WechatILinkClient(WechatProperties wechatProperties) {
+    public WechatILinkClient(WechatProperties wechatProperties, ContextStore contextStore) {
         this.wechatProperties = wechatProperties;
+        this.contextStore = contextStore;
     }
 
     @PostConstruct
@@ -180,6 +183,10 @@ public class WechatILinkClient {
 
             // 2. 发送图片消息
             client.sendImageMessage(credentials, toUserId, contextToken, mediaInfo);
+
+            // 3. 记住 CDN 参数，方便后续下载
+            contextStore.setLastImage(toUserId, mediaInfo.getEncryptQueryParam(), mediaInfo.getAesKey());
+
             log.info("发送图片消息 | to={} | size={} bytes", toUserId, imageBytes.length);
         } catch (Exception e) {
             log.error("发送图片消息失败 | to={} | error={}", toUserId, e.getMessage());

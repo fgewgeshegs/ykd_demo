@@ -26,6 +26,12 @@ public class InMemoryContextStore implements ContextStore {
     /** userId → 消息队列 */
     private final ConcurrentHashMap<String, Deque<Message>> store = new ConcurrentHashMap<>();
 
+    /** userId → [encryptParam, aesKey] */
+    private final ConcurrentHashMap<String, String[]> lastImageStore = new ConcurrentHashMap<>();
+
+    /** userId → imageUrl */
+    private final ConcurrentHashMap<String, String> lastImageUrlStore = new ConcurrentHashMap<>();
+
     @Override
     public List<Message> getHistory(String userId, int maxMessages) {
         Deque<Message> messages = store.get(userId);
@@ -57,6 +63,28 @@ public class InMemoryContextStore implements ContextStore {
     @Override
     public void clear(String userId) {
         store.remove(userId);
+        lastImageStore.remove(userId);
+        lastImageUrlStore.remove(userId);
         log.debug("已清除用户上下文 | userId={}", userId);
+    }
+
+    @Override
+    public void setLastImage(String userId, String encryptParam, String aesKey) {
+        lastImageStore.put(userId, new String[]{encryptParam, aesKey});
+    }
+
+    @Override
+    public String[] getLastImage(String userId) {
+        return lastImageStore.get(userId);
+    }
+
+    @Override
+    public void setLastImageUrl(String userId, String url) {
+        lastImageUrlStore.put(userId, url);
+    }
+
+    @Override
+    public String getLastImageUrl(String userId) {
+        return lastImageUrlStore.get(userId);
     }
 }

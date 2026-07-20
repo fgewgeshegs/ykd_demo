@@ -52,15 +52,8 @@ public class MessageRouter {
      * @return 回复内容（WechatReply，包含 TEXT 或 IMAGE 类型）
      */
     public WechatReply route(WechatMessage message) {
-        // 图片消息：附带文字时走意图分类（可能是编辑指令），否则走 VisionHandler 分析
+        // 图片消息：直接走 VisionHandler
         if (message.getType() == MessageType.IMAGE) {
-            if (message.isHasAttachedImage()) {
-                Intent intent = intentClassifier.classify(message.getText());
-                log.info("路由：图文合并消息 intent={} | from={}", intent, message.getUserId());
-                MessageHandler handler = selectHandler(intent);
-                WechatReply reply = handler.handle(message);
-                return fallbackIfEmpty(reply, message);
-            }
             log.info("路由：图片消息 → VisionHandler | from={}", message.getUserId());
             WechatReply reply = visionHandler.handle(message);
             return fallbackIfEmpty(reply, message);

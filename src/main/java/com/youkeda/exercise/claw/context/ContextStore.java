@@ -29,6 +29,26 @@ public interface ContextStore {
     void append(String userId, String role, String content);
 
     /**
+     * 保存该用户最近一张图片的 CDN 下载参数
+     */
+    void setLastImage(String userId, String encryptParam, String aesKey);
+
+    /**
+     * 获取该用户最近一张图片的 CDN 下载参数
+     */
+    String[] getLastImage(String userId);
+
+    /**
+     * 保存该用户最近一张图片的 HTTP 下载地址
+     */
+    void setLastImageUrl(String userId, String url);
+
+    /**
+     * 获取该用户最近一张图片的 HTTP 下载地址
+     */
+    String getLastImageUrl(String userId);
+
+    /**
      * 清除指定用户的全部历史
      *
      * @param userId 用户标识
