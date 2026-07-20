@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -50,8 +52,17 @@ public class WechatILinkClient {
 
         CompletableFuture.runAsync(() -> {
             try {
-                String qrBase64 = client.executeLogin();
-                log.info("请扫码登录（qrcode={}，图片长度={}）", client.getQrcode(), qrBase64.length());
+                String qrUrl = client.executeLogin();
+                // executeLogin 返回二维码链接或 base64 图片
+                if (qrUrl.startsWith("http")) {
+                    log.info("请扫码登录 → {}", qrUrl);
+                } else {
+                    String qrBase64 = qrUrl.contains(",") ? qrUrl.substring(qrUrl.indexOf(",") + 1) : qrUrl;
+                    byte[] qrBytes = Base64.getDecoder().decode(qrBase64);
+                    Path qrFile = Path.of("qrcode.png");
+                    Files.write(qrFile, qrBytes);
+                    log.info("请扫码登录 → {}", qrFile.toAbsolutePath());
+                }
                 // 等待登录完成
                 long deadline = System.currentTimeMillis() + 120_000;
                 while (!client.isLoggedIn() && System.currentTimeMillis() < deadline) {
