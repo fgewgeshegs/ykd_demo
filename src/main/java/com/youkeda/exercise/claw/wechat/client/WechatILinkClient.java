@@ -158,18 +158,26 @@ public class WechatILinkClient {
     /**
      * 发送图片消息
      *
-     * @param toUserId    目标用户 ID
+     * 步骤：uploadMedia 上传图片字节 → MediaInfo → sendImageMessage
+     *
+     * @param toUserId    接收方 userId
      * @param contextToken 上下文 token
-     * @param mediaInfo   已上传的媒体信息
+     * @param imageBytes   图片字节数据
      */
-    public void sendImageMessage(String toUserId, String contextToken, ILinkClient.MediaInfo mediaInfo) {
+    public void sendImageMessage(String toUserId, String contextToken, byte[] imageBytes) {
         if (!loggedIn || credentials == null) {
             log.warn("微信未登录，无法发送图片消息");
             return;
         }
         try {
+            // 1. 上传媒体文件，mediaType=1 表示图片
+            ILinkClient.MediaInfo mediaInfo = client.uploadMedia(credentials, 1, toUserId, imageBytes);
+            log.info("图片上传成功 | encryptQueryParam={} | fileSize={}",
+                    mediaInfo.getEncryptQueryParam(), mediaInfo.getFileSize());
+
+            // 2. 发送图片消息
             client.sendImageMessage(credentials, toUserId, contextToken, mediaInfo);
-            log.info("发送图片消息 | to={}", toUserId);
+            log.info("发送图片消息 | to={} | size={} bytes", toUserId, imageBytes.length);
         } catch (Exception e) {
             log.error("发送图片消息失败 | to={} | error={}", toUserId, e.getMessage());
         }
@@ -197,25 +205,4 @@ public class WechatILinkClient {
         }
     }
 
-    /**
-     * 上传媒体文件到微信 CDN
-     *
-     * @param data     文件字节数组
-     * @param fileName 文件名（如 "generated.png"）
-     * @return MediaInfo（含 encryptQueryParam / aesKey），失败时返回 null
-     */
-    public ILinkClient.MediaInfo uploadMedia(byte[] data, String fileName) {
-        if (!loggedIn || credentials == null) {
-            log.warn("微信未登录，无法上传媒体");
-            return null;
-        }
-        try {
-            ILinkClient.MediaInfo mediaInfo = client.uploadMedia(credentials, 1, fileName, data);
-            log.info("媒体上传成功 | file={} | size={}", fileName, data.length);
-            return mediaInfo;
-        } catch (Exception e) {
-            log.error("媒体上传失败 | file={} | size={} | error={}", fileName, data.length, e.toString());
-            return null;
-        }
-    }
 }

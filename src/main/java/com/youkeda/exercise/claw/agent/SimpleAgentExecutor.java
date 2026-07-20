@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.agent;
 import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.wechat.model.WechatReply;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -41,6 +42,7 @@ public class SimpleAgentExecutor implements AgentExecutor {
             wechatMsg.setText(context.getMessage());
         }
 
-        return messageRouter.route(wechatMsg);
+        WechatReply wechatReply = messageRouter.route(wechatMsg);
+        return wechatReply != null ? wechatReply.getText() : null;
     }
 }

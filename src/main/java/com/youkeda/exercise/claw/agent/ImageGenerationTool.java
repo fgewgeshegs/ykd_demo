@@ -51,6 +51,10 @@ public class ImageGenerationTool implements Tool {
     public String execute(AgentContext context) {
         log.info("ImageGenerationTool 执行 | user={} | prompt={}",
                 context.getUserId(), context.getMessage());
-        return imageGenerationService.generate(context.getMessage());
+        String imageUrl = imageGenerationService.generate(context.getMessage());
+        if (imageUrl == null) {
+            return "抱歉，图片生成失败，请稍后再试。";
+        }
+        return "已为您生成图片：" + imageUrl;
     }
 }
