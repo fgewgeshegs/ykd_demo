@@ -16,14 +16,10 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * 微信消息监听服务（SDK 2.3.3）
- */
 @Slf4j
 @Service
 public class WechatMessageService {
 
-    // MessageItem type 常量
     private static final int TYPE_TEXT = 1;
     private static final int TYPE_IMAGE = 2;
     private static final int TYPE_VOICE = 3;
@@ -47,10 +43,7 @@ public class WechatMessageService {
 
     @PostConstruct
     public void start() {
-        if (!wechatProperties.isEnabled()) {
-            log.info("微信消息服务未启用");
-            return;
-        }
+        if (!wechatProperties.isEnabled()) return;
 
         long deadline = System.currentTimeMillis() + 60_000;
         while (!wechatClient.isLoggedIn() && System.currentTimeMillis() < deadline) {
@@ -70,11 +63,19 @@ public class WechatMessageService {
     }
 
     private void pollLoop() {
+        log.info("轮询线程启动");
+        int loop = 0;
         while (running.get()) {
+            loop++;
             try {
+                if (loop <= 3 || loop % 10 == 0) {
+                    log.info("轮询第{}次...", loop);
+                }
+
                 List<WeixinMessage> messages = wechatClient.receiveMessages();
 
-                if (messages != null) {
+                if (messages != null && !messages.isEmpty()) {
+                    log.info("收到{}条消息", messages.size());
                     for (WeixinMessage msg : messages) {
                         String fromUserId = msg.getFrom_user_id();
                         if (fromUserId == null || fromUserId.isEmpty()) continue;
@@ -83,41 +84,8 @@ public class WechatMessageService {
                         if (items == null) continue;
 
                         for (MessageItem item : items) {
-                            WechatMessage wechatMsg = new WechatMessage();
-                            wechatMsg.setUserId(fromUserId);
-                            wechatMsg.setContextToken(msg.getContext_token());
-
-                            int type = item.getType();
-
-                            if (type == TYPE_TEXT && item.getText_item() != null
-                                    && item.getText_item().getText() != null) {
-                                wechatMsg.setType(MessageType.TEXT);
-                                wechatMsg.setText(item.getText_item().getText());
-                                log.info("收到消息 | from={} | text={}", fromUserId, item.getText_item().getText());
-
-                            } else if (type == TYPE_IMAGE && item.getImage_item() != null) {
-                                var img = item.getImage_item();
-                                wechatMsg.setType(MessageType.IMAGE);
-                                wechatMsg.setImageUrl(img.getUrl());
-                                if (img.getMedia() != null) {
-                                    wechatMsg.setEncryptQueryParam(img.getMedia().getEncrypt_query_param());
-                                    wechatMsg.setAesKey(img.getMedia().getAes_key());
-                                }
-                                log.info("收到图片消息 | from={}", fromUserId);
-
-                            } else if (type == TYPE_VOICE && item.getVoice_item() != null) {
-                                var voice = item.getVoice_item();
-                                wechatMsg.setType(MessageType.VOICE);
-                                if (voice.getMedia() != null) {
-                                    wechatMsg.setVoiceEncryptQueryParam(voice.getMedia().getEncrypt_query_param());
-                                    wechatMsg.setVoiceAesKey(voice.getMedia().getAes_key());
-                                }
-                                wechatMsg.setVoiceText(voice.getText());
-                                log.info("收到语音消息 | from={} | text={}", fromUserId, voice.getText());
-
-                            } else {
-                                continue;
-                            }
+                            WechatMessage wechatMsg = buildWechatMessage(fromUserId, msg.getContext_token(), item);
+                            if (wechatMsg == null) continue;
 
                             try {
                                 WechatReply reply = messageRouter.route(wechatMsg);
@@ -141,11 +109,46 @@ public class WechatMessageService {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                log.warn("接收消息异常，{}ms后重试: {}", ERROR_SLEEP_MS, e.getMessage());
+                log.error("轮询异常，{}ms后重试", ERROR_SLEEP_MS, e);
                 try { Thread.sleep(ERROR_SLEEP_MS); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
             }
         }
-        log.info("微信消息轮询服务已停止");
+        log.info("轮询线程退出");
+    }
+
+    private WechatMessage buildWechatMessage(String fromUserId, String contextToken, MessageItem item) {
+        WechatMessage m = new WechatMessage();
+        m.setUserId(fromUserId);
+        m.setContextToken(contextToken);
+
+        int type = item.getType();
+
+        if (type == TYPE_TEXT && item.getText_item() != null && item.getText_item().getText() != null) {
+            m.setType(MessageType.TEXT);
+            m.setText(item.getText_item().getText());
+            log.info("收到消息 | from={} | text={}", fromUserId, item.getText_item().getText());
+        } else if (type == TYPE_IMAGE && item.getImage_item() != null) {
+            var img = item.getImage_item();
+            m.setType(MessageType.IMAGE);
+            m.setImageUrl(img.getUrl());
+            if (img.getMedia() != null) {
+                m.setEncryptQueryParam(img.getMedia().getEncrypt_query_param());
+                m.setAesKey(img.getMedia().getAes_key());
+            }
+            log.info("收到图片消息 | from={}", fromUserId);
+        } else if (type == TYPE_VOICE && item.getVoice_item() != null) {
+            var voice = item.getVoice_item();
+            m.setType(MessageType.VOICE);
+            if (voice.getMedia() != null) {
+                m.setVoiceEncryptQueryParam(voice.getMedia().getEncrypt_query_param());
+                m.setVoiceAesKey(voice.getMedia().getAes_key());
+            }
+            m.setVoiceText(voice.getText());
+            log.info("收到语音消息 | from={} | text={}", fromUserId, voice.getText());
+        } else {
+            return null;
+        }
+        return m;
     }
 
     @PreDestroy
