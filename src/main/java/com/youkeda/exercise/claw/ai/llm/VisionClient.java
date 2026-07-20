@@ -4,21 +4,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.common.PromptLoader;
 import com.youkeda.exercise.claw.ai.llm.VisionProperties;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.stream.Collectors;
 
 /**
  * 视觉模型客户端
@@ -37,30 +33,22 @@ public class VisionClient {
     private final VisionProperties properties;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final PromptLoader promptLoader;
 
     private String systemPrompt;
 
-    public VisionClient(VisionProperties properties) {
+    public VisionClient(VisionProperties properties, ObjectMapper objectMapper, PromptLoader promptLoader) {
         this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.promptLoader = promptLoader;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build();
-        this.objectMapper = new ObjectMapper();
     }
 
     @PostConstruct
     public void init() {
-        try {
-            ClassPathResource resource = new ClassPathResource(SYSTEM_PROMPT_PATH);
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
-                this.systemPrompt = reader.lines().collect(Collectors.joining("\n"));
-            }
-            log.info("视觉系统提示词加载完成，共 {} 字符", systemPrompt.length());
-        } catch (Exception e) {
-            log.error("加载视觉系统提示词失败，使用默认提示词", e);
-            this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
-        }
+        this.systemPrompt = promptLoader.load(SYSTEM_PROMPT_PATH, DEFAULT_SYSTEM_PROMPT);
     }
 
     /**
