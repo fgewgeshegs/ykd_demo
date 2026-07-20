@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.ai.image.ImageClientException;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -70,8 +71,9 @@ public class ImageClient {
      *
      * @param prompt 图片描述提示词
      * @return 生成的图片 URL，失败时返回 null
+     * @throws ImageClientException API 返回错误码时抛出（如 DataInspectionFailed），供上层重试
      */
-    public String generateImage(String prompt) {
+    public String generateImage(String prompt) throws ImageClientException {
         try {
             String requestBody = buildRequestBody(prompt);
             log.info("调用图片生成模型 | model={} | prompt={}", properties.getModel(), prompt);
@@ -91,6 +93,9 @@ public class ImageClient {
             log.info("图片生成成功 | imageUrl={}", imageUrl);
             return imageUrl;
 
+        } catch (ImageClientException e) {
+            // API 业务错误码（如 DataInspectionFailed），向上传播供重试
+            throw e;
         } catch (Exception e) {
             log.error("图片生成失败 | error={}", e.getMessage());
             return null;
@@ -152,11 +157,22 @@ public class ImageClient {
      *
      * 异步响应（开启 X-DashScope-Async 时）：
      * { "output": { "task_status": "PENDING", "task_id": "..." } }
+     *
+     * API 错误响应（阿里云百炼风格）：
+     * { "code": "DataInspectionFailed", "message": "Output data may contain..." }
      */
     private String parseResponse(String responseBody) throws Exception {
         JsonNode root = objectMapper.readTree(responseBody);
 
-        // 同步响应：output.choices[0].message.content[0].image
+        // 0. 检测 API 错误码
+        JsonNode codeNode = root.get("code");
+        if (codeNode != null && !codeNode.isNull()) {
+            String errorCode = codeNode.asText();
+            String errorMessage = root.path("message").asText("未知错误");
+            throw new ImageClientException(errorCode, errorMessage);
+        }
+
+        // 1. 同步响应：output.choices[0].message.content[0].image
         JsonNode output = root.get("output");
         if (output != null) {
             JsonNode choices = output.get("choices");
@@ -171,7 +187,7 @@ public class ImageClient {
             }
         }
 
-        // 兼容旧格式：output.results[0].url
+        // 2. 兼容旧格式：output.results[0].url
         if (output != null) {
             JsonNode results = output.get("results");
             if (results != null && results.isArray() && results.size() > 0) {
@@ -182,7 +198,7 @@ public class ImageClient {
             }
         }
 
-        // 异步响应：返回 task_id 供后续查询
+        // 3. 异步响应：返回 task_id 供后续查询
         JsonNode taskIdNode = root.path("output").path("task_id");
         if (!taskIdNode.isMissingNode()) {
             String taskId = taskIdNode.asText();

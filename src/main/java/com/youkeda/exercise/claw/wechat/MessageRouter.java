@@ -86,13 +86,13 @@ public class MessageRouter {
     }
 
     /**
-     * 如果 Handler 返回空，使用兜底回复
+     * 如果 Handler 返回空，直接返回 null（由上游 WechatMessageService 决定是否发文本）
+     * 只有 selectHandler 中 default 分支的 fallbackHandler 才会返回具体的兜底文本。
      */
     private String fallbackIfEmpty(String reply, WechatMessage message) {
         if (reply != null && !reply.isEmpty()) {
             return reply;
         }
-        log.info("路由：Handler 返回空，使用兜底 | from={}", message.getUserId());
-        return fallbackHandler.handle(message);
+        return null;
     }
 }

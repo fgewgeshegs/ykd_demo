@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
 
 /**
@@ -39,6 +40,26 @@ public class HttpClientUtil {
 
         HttpResponse<String> response = httpClient.send(request,
                 HttpResponse.BodyHandlers.ofString());
+
+        return response.body();
+    }
+
+    /**
+     * 发送 GET 请求并返回响应体字节数组
+     *
+     * @param url 请求 URL
+     * @return 响应体字节数组
+     * @throws Exception 网络请求异常
+     */
+    public byte[] doGetBytes(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .GET()
+                .build();
+
+        HttpResponse<byte[]> response = httpClient.send(request,
+                HttpResponse.BodyHandlers.ofByteArray());
 
         return response.body();
     }
