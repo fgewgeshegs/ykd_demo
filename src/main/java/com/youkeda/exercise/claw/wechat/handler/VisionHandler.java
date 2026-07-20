@@ -45,7 +45,8 @@ public class VisionHandler implements MessageHandler {
         }
 
         if (message.getType() == MessageType.TEXT
-                && contextStore.getLastImage(message.getUserId()) != null) {
+                && (contextStore.getLastImage(message.getUserId()) != null
+                    || contextStore.getLastImageUrl(message.getUserId()) != null)) {
             log.info("分析上下文中的最近图片 | user={} | text={}", message.getUserId(), message.getText());
             return analyzeImage(message);
         }
