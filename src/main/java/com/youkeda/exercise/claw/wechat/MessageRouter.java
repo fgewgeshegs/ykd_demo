@@ -7,6 +7,7 @@ import com.youkeda.exercise.claw.wechat.handler.ImageGenerationHandler;
 import com.youkeda.exercise.claw.wechat.handler.MessageHandler;
 import com.youkeda.exercise.claw.wechat.handler.SimpleReplyHandler;
 import com.youkeda.exercise.claw.wechat.handler.VisionHandler;
+import com.youkeda.exercise.claw.wechat.handler.VoiceHandler;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -32,17 +33,20 @@ public class MessageRouter {
     private final VisionHandler visionHandler;
     private final ImageGenerationHandler imageGenerationHandler;
     private final SimpleReplyHandler fallbackHandler;
+    private final VoiceHandler voiceHandler;
 
     public MessageRouter(IntentClassifier intentClassifier,
                          AIChatHandler chatHandler,
                          VisionHandler visionHandler,
                          ImageGenerationHandler imageGenerationHandler,
-                         SimpleReplyHandler fallbackHandler) {
+                         SimpleReplyHandler fallbackHandler,
+                         VoiceHandler voiceHandler) {
         this.intentClassifier = intentClassifier;
         this.chatHandler = chatHandler;
         this.visionHandler = visionHandler;
         this.imageGenerationHandler = imageGenerationHandler;
         this.fallbackHandler = fallbackHandler;
+        this.voiceHandler = voiceHandler;
     }
 
     /**
@@ -59,10 +63,24 @@ public class MessageRouter {
             return fallbackIfEmpty(reply, message);
         }
 
+        // 语音消息：直接走 VoiceHandler
+        if (message.getType() == MessageType.VOICE) {
+            log.info("路由：语音消息 → VoiceHandler | from={}", message.getUserId());
+            WechatReply reply = voiceHandler.handle(message);
+            return fallbackIfEmpty(reply, message);
+        }
+
         // 文本消息：先识别意图，再按意图路由
         if (message.getType() == MessageType.TEXT) {
             Intent intent = intentClassifier.classify(message.getText());
             log.info("路由：文本消息 intent={} | from={}", intent, message.getUserId());
+
+            // VOICE_REPLY 意图：走语音文件回复路径（文字对话 + TTS → MP3 文件）
+            if (intent == Intent.VOICE_REPLY) {
+                log.info("路由：VOICE_REPLY 意图 → VoiceHandler.handleTextWithFileReply | from={}", message.getUserId());
+                WechatReply reply = voiceHandler.handleTextWithFileReply(message);
+                return fallbackIfEmpty(reply, message);
+            }
 
             MessageHandler targetHandler = selectHandler(intent);
             WechatReply reply = targetHandler.handle(message);
