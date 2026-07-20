@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.wechat.handler;
 import com.youkeda.exercise.claw.ai.chat.ChatService;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.wechat.model.WechatReply;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +26,7 @@ public class AIChatHandler implements MessageHandler {
     }
 
     @Override
-    public String handle(WechatMessage message) {
+    public WechatReply handle(WechatMessage message) {
         if (message.getType() != MessageType.TEXT) {
             return null;
         }
@@ -35,9 +36,9 @@ public class AIChatHandler implements MessageHandler {
         String reply = chatService.chat(message.getUserId(), message.getText());
         if (reply == null || reply.isEmpty()) {
             log.warn("AI 回复为空，使用降级回复 | from={}", message.getUserId());
-            return FALLBACK_REPLY;
+            return WechatReply.text(FALLBACK_REPLY);
         }
 
-        return reply;
+        return WechatReply.text(reply);
     }
 }

@@ -4,6 +4,7 @@ import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.wechat.model.WechatReply;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -30,7 +31,7 @@ public class VisionHandler implements MessageHandler {
     }
 
     @Override
-    public String handle(WechatMessage message) {
+    public WechatReply handle(WechatMessage message) {
         if (message.getType() != MessageType.IMAGE) {
             return null;
         }
@@ -46,7 +47,7 @@ public class VisionHandler implements MessageHandler {
 
         if (imageDataUrl == null) {
             log.warn("无法获取图片数据，使用降级回复 | from={}", message.getUserId());
-            return FALLBACK_REPLY;
+            return WechatReply.text(FALLBACK_REPLY);
         }
 
         // 2. 委托 VisionService 分析图片
@@ -54,10 +55,10 @@ public class VisionHandler implements MessageHandler {
 
         if (reply == null || reply.isEmpty()) {
             log.warn("图片分析失败，使用降级回复 | from={}", message.getUserId());
-            return FALLBACK_REPLY;
+            return WechatReply.text(FALLBACK_REPLY);
         }
 
-        return reply;
+        return WechatReply.text(reply);
     }
 
     /**

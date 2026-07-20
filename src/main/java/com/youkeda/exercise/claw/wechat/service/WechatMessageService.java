@@ -6,6 +6,7 @@ import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.wechat.model.WechatReply;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 职责：
  * - 定时轮询微信消息
  * - 将消息交由 MessageRouter 路由分发
- * - 将 Router 返回的回复内容通过客户端发送
+ * - 根据 WechatReply 类型（TEXT/IMAGE）调用对应的发送方法
  */
 @Slf4j
 @Service
@@ -112,11 +113,15 @@ public class WechatMessageService {
                                 return;
                             }
 
-                            // 2. 交由 MessageRouter 路由处理
+                            // 2. 交由 MessageRouter 路由处理，根据 WechatReply 类型分支发送
                             try {
-                                String reply = messageRouter.route(wechatMsg);
-                                if (reply != null && !reply.isEmpty()) {
-                                    wechatClient.sendTextMessage(fromUserId, contextToken, reply);
+                                WechatReply reply = messageRouter.route(wechatMsg);
+                                if (reply != null && reply.hasContent()) {
+                                    if (reply.getType() == MessageType.IMAGE) {
+                                        wechatClient.sendImageMessage(fromUserId, contextToken, reply.getImageBytes());
+                                    } else {
+                                        wechatClient.sendTextMessage(fromUserId, contextToken, reply.getText());
+                                    }
                                 }
                             } catch (Exception e) {
                                 log.error("消息路由处理异常 | error={}", e.getMessage());
