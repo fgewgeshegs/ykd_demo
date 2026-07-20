@@ -32,6 +32,9 @@ public class InMemoryContextStore implements ContextStore {
     /** userId → imageUrl */
     private final ConcurrentHashMap<String, String> lastImageUrlStore = new ConcurrentHashMap<>();
 
+    /** userId → [mp3Path, text] */
+    private final ConcurrentHashMap<String, String[]> lastVoiceStore = new ConcurrentHashMap<>();
+
     @Override
     public List<Message> getHistory(String userId, int maxMessages) {
         Deque<Message> messages = store.get(userId);
@@ -65,6 +68,7 @@ public class InMemoryContextStore implements ContextStore {
         store.remove(userId);
         lastImageStore.remove(userId);
         lastImageUrlStore.remove(userId);
+        lastVoiceStore.remove(userId);
         log.debug("已清除用户上下文 | userId={}", userId);
     }
 
@@ -86,5 +90,15 @@ public class InMemoryContextStore implements ContextStore {
     @Override
     public String getLastImageUrl(String userId) {
         return lastImageUrlStore.get(userId);
+    }
+
+    @Override
+    public void setLastVoice(String userId, String mp3Path, String text) {
+        lastVoiceStore.put(userId, new String[]{mp3Path, text});
+    }
+
+    @Override
+    public String[] getLastVoice(String userId) {
+        return lastVoiceStore.get(userId);
     }
 }

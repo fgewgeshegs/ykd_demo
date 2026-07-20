@@ -49,6 +49,16 @@ public interface ContextStore {
     String getLastImageUrl(String userId);
 
     /**
+     * 保存最近一条语音（MP3 路径 + 转写文字）
+     */
+    void setLastVoice(String userId, String mp3Path, String text);
+
+    /**
+     * 获取最近一条语音 [mp3Path, text]，无数据返回 null
+     */
+    String[] getLastVoice(String userId);
+
+    /**
      * 清除指定用户的全部历史
      *
      * @param userId 用户标识

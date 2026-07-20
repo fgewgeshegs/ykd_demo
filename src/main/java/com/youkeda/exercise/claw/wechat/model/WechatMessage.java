@@ -44,4 +44,19 @@ public class WechatMessage {
      * 回复上下文 token，用于发送消息时关联原始会话
      */
     private String contextToken;
+
+    /**
+     * 语音 CDN 加密参数（VOICE 类型时有效）
+     */
+    private String voiceEncryptQueryParam;
+
+    /**
+     * 语音解密密钥（VOICE 类型时有效）
+     */
+    private String voiceAesKey;
+
+    /**
+     * 语音转写文字（VOICE 类型时有效，微信自带或 ASR 结果）
+     */
+    private String voiceText;
 }

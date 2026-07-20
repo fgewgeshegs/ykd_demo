@@ -97,6 +97,12 @@ public class WechatMessageService {
                                 wechatMsg.setEncryptQueryParam(item.getImage().getEncryptQueryParam());
                                 wechatMsg.setAesKey(item.getImage().getAesKey());
                                 log.info("收到图片消息 | from={}", fromUserId);
+                            } else if (item.isVoice() && item.getVoice() != null) {
+                                wechatMsg.setType(MessageType.VOICE);
+                                wechatMsg.setVoiceEncryptQueryParam(item.getVoice().getEncryptQueryParam());
+                                wechatMsg.setVoiceAesKey(item.getVoice().getAesKey());
+                                wechatMsg.setVoiceText(item.getVoice().getText());
+                                log.info("收到语音消息 | from={} | text={}", fromUserId, item.getVoice().getText());
                             } else {
                                 return;
                             }
