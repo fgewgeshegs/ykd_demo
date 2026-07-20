@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.wechat.client;
 
 import com.github.wechat.ilink.sdk.ILinkClient;
+import com.github.wechat.ilink.sdk.core.config.ILinkConfig;
 import com.github.wechat.ilink.sdk.core.model.CDNMedia;
 import com.github.wechat.ilink.sdk.core.model.MessageItem;
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
@@ -48,7 +49,9 @@ public class WechatILinkClient {
         }
 
         log.info("微信 iLink 客户端初始化开始");
-        client = ILinkClient.builder().build();
+        // 关闭 SDK 内置心跳（和 getUpdates 共用一个锁会冲突），自己轮询
+        ILinkConfig config = ILinkConfig.builder().heartbeatEnabled(false).build();
+        client = ILinkClient.builder().config(config).build();
 
         CompletableFuture.runAsync(() -> {
             try {
