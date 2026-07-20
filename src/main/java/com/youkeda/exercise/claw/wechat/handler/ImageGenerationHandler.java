@@ -58,8 +58,8 @@ public class ImageGenerationHandler implements MessageHandler {
             return "已为您生成图片：" + imageUrl;
         }
 
-        // 3. 上传到微信 CDN（使用真实用户 ID）
-        ILinkClient.MediaInfo mediaInfo = wechatClient.uploadMedia(imageBytes, GENERATED_FILE_NAME, userId);
+        // 3. 上传到微信 CDN
+        ILinkClient.MediaInfo mediaInfo = wechatClient.uploadMedia(imageBytes, GENERATED_FILE_NAME);
         if (mediaInfo == null) {
             log.warn("微信媒体上传失败，降级返回 URL | from={}", userId);
             return "已为您生成图片：" + imageUrl;
