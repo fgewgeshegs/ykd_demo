@@ -19,20 +19,20 @@ wechat.ilink.login-poll-interval-ms=3000
 # ============================================
 # LLM Configuration
 # ============================================
-llm.api-key=sk-
+llm.api-key=
 llm.base-url=https://api.deepseek.com
 llm.model=deepseek-v4-flash
 
 # ============================================
 # Vision Model Configuration
 # ============================================
-vision.api-key=sk-ws-H.EDYELLR.09sz.MEYCIQDzBdm8Ns5GbgJjiU_xzRrbTJesz1HjzUJ_r-WqyXnJWAIhAKy2A4nYOsCbDMnNT8YjTPw-ZmX7zbNKFG8PWNEdhaq7
+vision.api-key=
 vision.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
 vision.model=qwen-vl-max
 
 # ============================================
 # Image Generation Configuration
 # ============================================
-image.api-key=sk-ws-H.EDYELLR.main.MEYCIQDzBdm8Ns5GbgJjiU_xzRrbTJesz1HjzUJ_r-WqyXnJWAIhAKy2A4nYOsCbDMnNT8YjTPw-ZmX7zbNKFG8PWNEdhaq7
+image.api-key=
 image.model=qwen-image-2.0
 image.base-url=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation

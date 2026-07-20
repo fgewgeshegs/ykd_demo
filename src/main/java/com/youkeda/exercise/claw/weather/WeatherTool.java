@@ -24,10 +24,10 @@ public class WeatherTool {
     private final HttpClientUtil httpClient;
     private final ObjectMapper objectMapper;
 
-    public WeatherTool(WeatherConfig config) {
+    public WeatherTool(WeatherConfig config, ObjectMapper objectMapper) {
         this.config = config;
+        this.objectMapper = objectMapper;
         this.httpClient = new HttpClientUtil();
-        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -41,9 +41,9 @@ public class WeatherTool {
         try {
             // 1. 构建请求 URL（替换占位符）
             String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
-            String url = config.getApiUrl()
+            String url = config.getUrl()
                     .replace("{city}", encodedCity)
-                    .replace("{key}", config.getApiKey());
+                    .replace("{key}", config.getKey());
 
             // 2. 发送 HTTP GET 请求
             String responseBody = httpClient.doGet(url);
