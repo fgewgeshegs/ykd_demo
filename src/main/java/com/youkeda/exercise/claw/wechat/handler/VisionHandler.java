@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.wechat.handler;
 
 import com.youkeda.exercise.claw.ai.vision.VisionService;
+import com.youkeda.exercise.claw.context.ContextStore;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
@@ -13,8 +14,8 @@ import java.util.Base64;
 /**
  * 图片消息处理器
  *
- * 职责：接收 IMAGE 类型的消息，委托 VisionService 完成图片分析
- * 不包含模型调用逻辑，仅负责图片下载与结果转交
+ * 职责：接收 IMAGE 类型的消息，委托 VisionService 完成图片分析，
+ * 并将分析结果写入 ContextStore，使后续对话能引用图片内容。
  */
 @Slf4j
 @Component
@@ -24,10 +25,14 @@ public class VisionHandler implements MessageHandler {
 
     private final VisionService visionService;
     private final WechatILinkClient wechatClient;
+    private final ContextStore contextStore;
 
-    public VisionHandler(VisionService visionService, WechatILinkClient wechatClient) {
+    public VisionHandler(VisionService visionService,
+                         WechatILinkClient wechatClient,
+                         ContextStore contextStore) {
         this.visionService = visionService;
         this.wechatClient = wechatClient;
+        this.contextStore = contextStore;
     }
 
     @Override
@@ -57,6 +62,10 @@ public class VisionHandler implements MessageHandler {
             log.warn("图片分析失败，使用降级回复 | from={}", message.getUserId());
             return WechatReply.text(FALLBACK_REPLY);
         }
+
+        // 3. 将图片分析结果写入上下文（后续对话能引用图片内容）
+        contextStore.append(message.getUserId(), "user", "[用户发送了一张图片]");
+        contextStore.append(message.getUserId(), "assistant", reply);
 
         return WechatReply.text(reply);
     }
