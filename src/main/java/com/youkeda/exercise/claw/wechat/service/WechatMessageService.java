@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.wechat.service;
 
-import com.lth.wechat.ilink.dto.message.ReceiveMessagesResult;
+import com.github.wechat.ilink.sdk.core.model.MessageItem;
+import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
 import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
@@ -12,14 +13,20 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 微信消息监听服务
+ * 微信消息监听服务（SDK 2.3.3）
  */
 @Slf4j
 @Service
 public class WechatMessageService {
+
+    // MessageItem type 常量
+    private static final int TYPE_TEXT = 1;
+    private static final int TYPE_IMAGE = 2;
+    private static final int TYPE_VOICE = 3;
 
     private final WechatILinkClient wechatClient;
     private final WechatProperties wechatProperties;
@@ -27,7 +34,6 @@ public class WechatMessageService {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
-    private String cursor = "";
 
     private static final int ERROR_SLEEP_MS = 5000;
 
@@ -48,12 +54,7 @@ public class WechatMessageService {
 
         long deadline = System.currentTimeMillis() + 60_000;
         while (!wechatClient.isLoggedIn() && System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
+            try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
         }
 
         if (!wechatClient.isLoggedIn()) {
@@ -71,60 +72,67 @@ public class WechatMessageService {
     private void pollLoop() {
         while (running.get()) {
             try {
-                ReceiveMessagesResult result = wechatClient.receiveMessages(cursor);
+                List<WeixinMessage> messages = wechatClient.receiveMessages();
 
-                if (result != null && result.getMessages() != null) {
-                    result.getMessages().forEach(msg -> {
-                        String fromUserId = msg.getFromUserId();
-                        String contextToken = msg.getContextToken();
+                if (messages != null) {
+                    for (WeixinMessage msg : messages) {
+                        String fromUserId = msg.getFrom_user_id();
+                        if (fromUserId == null || fromUserId.isEmpty()) continue;
 
-                        if (fromUserId == null || fromUserId.isEmpty()) {
-                            return;
-                        }
+                        List<MessageItem> items = msg.getItem_list();
+                        if (items == null) continue;
 
-                        msg.getItemList().forEach(item -> {
+                        for (MessageItem item : items) {
                             WechatMessage wechatMsg = new WechatMessage();
                             wechatMsg.setUserId(fromUserId);
-                            wechatMsg.setContextToken(contextToken);
+                            wechatMsg.setContextToken(msg.getContext_token());
 
-                            if (item.isText() && item.getText() != null && !item.getText().isEmpty()) {
+                            int type = item.getType();
+
+                            if (type == TYPE_TEXT && item.getText_item() != null
+                                    && item.getText_item().getText() != null) {
                                 wechatMsg.setType(MessageType.TEXT);
-                                wechatMsg.setText(item.getText());
-                                log.info("收到消息 | from={} | text={}", fromUserId, item.getText());
-                            } else if (item.isImage() && item.getImage() != null) {
+                                wechatMsg.setText(item.getText_item().getText());
+                                log.info("收到消息 | from={} | text={}", fromUserId, item.getText_item().getText());
+
+                            } else if (type == TYPE_IMAGE && item.getImage_item() != null) {
+                                var img = item.getImage_item();
                                 wechatMsg.setType(MessageType.IMAGE);
-                                wechatMsg.setImageUrl(item.getImage().getUrl());
-                                wechatMsg.setEncryptQueryParam(item.getImage().getEncryptQueryParam());
-                                wechatMsg.setAesKey(item.getImage().getAesKey());
+                                wechatMsg.setImageUrl(img.getUrl());
+                                if (img.getMedia() != null) {
+                                    wechatMsg.setEncryptQueryParam(img.getMedia().getEncrypt_query_param());
+                                }
+                                wechatMsg.setAesKey(img.getAeskey());
                                 log.info("收到图片消息 | from={}", fromUserId);
-                            } else if (item.isVoice() && item.getVoice() != null) {
+
+                            } else if (type == TYPE_VOICE && item.getVoice_item() != null) {
+                                var voice = item.getVoice_item();
                                 wechatMsg.setType(MessageType.VOICE);
-                                wechatMsg.setVoiceEncryptQueryParam(item.getVoice().getEncryptQueryParam());
-                                wechatMsg.setVoiceAesKey(item.getVoice().getAesKey());
-                                wechatMsg.setVoiceText(item.getVoice().getText());
-                                log.info("收到语音消息 | from={} | text={}", fromUserId, item.getVoice().getText());
+                                if (voice.getMedia() != null) {
+                                    wechatMsg.setVoiceEncryptQueryParam(voice.getMedia().getEncrypt_query_param());
+                                    wechatMsg.setVoiceAesKey(voice.getMedia().getAes_key());
+                                }
+                                wechatMsg.setVoiceText(voice.getText());
+                                log.info("收到语音消息 | from={} | text={}", fromUserId, voice.getText());
+
                             } else {
-                                return;
+                                continue;
                             }
 
                             try {
                                 WechatReply reply = messageRouter.route(wechatMsg);
                                 if (reply != null && reply.hasContent()) {
                                     if (reply.getType() == MessageType.IMAGE) {
-                                        wechatClient.sendImageMessage(fromUserId, contextToken, reply.getImageBytes());
+                                        wechatClient.sendImageMessage(fromUserId, reply.getImageBytes(), "image.jpg");
                                     } else {
-                                        wechatClient.sendTextMessage(fromUserId, contextToken, reply.getText());
+                                        wechatClient.sendTextMessage(fromUserId, reply.getText());
                                     }
                                 }
                             } catch (Exception e) {
                                 log.error("消息路由处理异常 | error={}", e.getMessage());
                             }
-                        });
-                    });
-                }
-
-                if (result != null && result.getNextCursor() != null && !result.getNextCursor().isEmpty()) {
-                    cursor = result.getNextCursor();
+                        }
+                    }
                 }
 
                 Thread.sleep(wechatProperties.getPollIntervalMs());
@@ -134,12 +142,7 @@ public class WechatMessageService {
                 break;
             } catch (Exception e) {
                 log.warn("接收消息异常，{}ms后重试: {}", ERROR_SLEEP_MS, e.getMessage());
-                try {
-                    Thread.sleep(ERROR_SLEEP_MS);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+                try { Thread.sleep(ERROR_SLEEP_MS); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
             }
         }
         log.info("微信消息轮询服务已停止");
@@ -149,8 +152,6 @@ public class WechatMessageService {
     public void stop() {
         log.info("微信消息服务正在关闭...");
         running.set(false);
-        if (pollThread != null) {
-            pollThread.interrupt();
-        }
+        if (pollThread != null) pollThread.interrupt();
     }
 }
