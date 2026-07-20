@@ -25,6 +25,9 @@ import java.util.concurrent.CompletableFuture;
 @Component
 public class WechatILinkClient {
 
+    /** 媒体类型：图片 */
+    private static final int MEDIA_TYPE_IMAGE = 1;
+
     private final WechatProperties wechatProperties;
 
     private ILinkClient client;
@@ -170,8 +173,8 @@ public class WechatILinkClient {
             return;
         }
         try {
-            // 1. 上传媒体文件，mediaType=1 表示图片
-            ILinkClient.MediaInfo mediaInfo = client.uploadMedia(credentials, 1, toUserId, imageBytes);
+            // 1. 上传媒体文件（图片）
+            ILinkClient.MediaInfo mediaInfo = client.uploadMedia(credentials, MEDIA_TYPE_IMAGE, toUserId, imageBytes);
             log.info("图片上传成功 | encryptQueryParam={} | fileSize={}",
                     mediaInfo.getEncryptQueryParam(), mediaInfo.getFileSize());
 

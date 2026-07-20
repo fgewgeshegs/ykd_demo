@@ -13,6 +13,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class ImageGenerationService {
 
+    /** 图片生成 API 业务错误（如内容审核不通过）最大重试次数 */
+    private static final int MAX_RETRIES = 3;
+
     private final ImageClient imageClient;
 
     public ImageGenerationService(ImageClient imageClient) {
@@ -28,17 +31,36 @@ public class ImageGenerationService {
     public String generate(String prompt) {
         log.info("ImageGenerationService 开始生成 | prompt={}", prompt);
 
-        try {
-            String imageUrl = imageClient.generateImage(prompt);
-            if (imageUrl == null) {
-                log.warn("ImageGenerationService 生成失败");
+        int attempt = 0;
+        while (attempt < MAX_RETRIES) {
+            try {
+                String imageUrl = imageClient.generateImage(prompt);
+                if (imageUrl != null) {
+                    log.info("ImageGenerationService 生成完成 | url={}", imageUrl);
+                    return imageUrl;
+                }
+                // ImageClient 返回 null（非 API 业务错误，重试无意义）
+                log.warn("ImageGenerationService 生成失败（返回空）");
+                return null;
+            } catch (ImageClientException e) {
+                attempt++;
+                if (attempt >= MAX_RETRIES) {
+                    log.error("图片生成失败，已达最大重试次数 {} | errorCode={}", MAX_RETRIES, e.getErrorCode());
+                    return null;
+                }
+                log.warn("图片生成失败 (第{}/{}) | errorCode={}，{}ms 后重试",
+                        attempt, MAX_RETRIES, e.getErrorCode(), 2000L * attempt);
+                try {
+                    Thread.sleep(2000L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            } catch (Exception e) {
+                log.error("ImageGenerationService 生成异常", e);
                 return null;
             }
-            log.info("ImageGenerationService 生成完成 | url={}", imageUrl);
-            return imageUrl;
-        } catch (Exception e) {
-            log.error("ImageGenerationService 生成异常 | error={}", e.getMessage());
-            return null;
         }
+        return null;
     }
 }
