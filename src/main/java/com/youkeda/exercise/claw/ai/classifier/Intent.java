@@ -20,5 +20,10 @@ public enum Intent {
     /**
      * 用户要求分析图片
      */
-    IMAGE_ANALYZE
+    IMAGE_ANALYZE,
+
+    /**
+     * 语音消息要求语音回复
+     */
+    VOICE_REPLY
 }

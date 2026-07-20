@@ -31,6 +31,9 @@ public class LLMIntentClassifier implements IntentClassifier {
             "IMAGE_ANALYZE:\n" +
             "分析图片\n" +
             "\n" +
+            "VOICE_REPLY:\n" +
+            "用户明确要求用语音/声音回复,而不是文字气泡回复。例如:用语音回复、说给我听。\n" +
+            "\n" +
             "只返回JSON格式，不要任何其他内容：\n" +
             "{\"intent\":\"CHAT\"}";
 
@@ -87,6 +90,8 @@ public class LLMIntentClassifier implements IntentClassifier {
                 return Intent.IMAGE_GENERATE;
             } else if (json.contains("\"IMAGE_ANALYZE\"")) {
                 return Intent.IMAGE_ANALYZE;
+            } else if (json.contains("\"VOICE_REPLY\"")) {
+                return Intent.VOICE_REPLY;
             } else if (json.contains("\"CHAT\"")) {
                 return Intent.CHAT;
             }
