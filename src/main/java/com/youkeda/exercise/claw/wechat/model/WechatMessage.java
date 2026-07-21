@@ -45,38 +45,35 @@ public class WechatMessage {
      */
     private String contextToken;
 
-    /**
-     * 语音 CDN 加密参数（VOICE 类型时有效）
-     */
-    private String voiceEncryptQueryParam;
+    // ========== 语音相关字段（VOICE 类型时有效）==========
 
     /**
-     * 语音解密密钥（VOICE 类型时有效）
-     */
-    private String voiceAesKey;
-
-    /**
-     * 语音转写文字（VOICE 类型时有效，微信自带或 ASR 结果）
+     * 语音 ASR 文本（微信服务端语音识别结果）
      */
     private String voiceText;
 
     /**
-     * 用户是否要求语音回复（TEXT 类型时，由关键词检测设置）
+     * 语音加密查询参数（下载音频 CDN 用）
      */
-    private boolean voiceReply;
+    private String voiceEncryptQueryParam;
 
     /**
-     * 语音播放时长（VOICE 类型时有效，毫秒）
+     * 语音解密密钥（下载音频 CDN 用）
+     */
+    private String voiceAesKey;
+
+    /**
+     * 语音播放时长（毫秒）
      */
     private Integer playtime;
 
     /**
-     * 语音编码类型（VOICE 类型时有效）
+     * 语音编码类型
      */
     private Integer encodeType;
 
     /**
-     * 语音采样率（VOICE 类型时有效，Hz）
+     * 语音采样率（VOICE 类型时有效，新 SDK 新增字段）
      */
     private Integer voiceSampleRate;
 }

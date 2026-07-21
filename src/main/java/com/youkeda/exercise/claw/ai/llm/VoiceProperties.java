@@ -33,17 +33,17 @@ public class VoiceProperties {
     /**
      * TTS（语音合成）API 基础地址
      */
-    private String ttsBaseUrl = "https://dashscope.aliyuncs.com/api/v1/services/audio/speech/synthesis";
+    private String ttsBaseUrl = "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer";
 
     /**
      * TTS 模型名称
      */
-    private String ttsModel = "cosyvoice-v3-flash";
+    private String ttsModel = "cosyvoice-v2";
 
     /**
-     * TTS 默认音色（cosyvoice-v3-flash 支持：longanyang、longanhuan 等）
+     * TTS 默认音色（cosyvoice-v2 支持：longxiaochun_v2 等）
      */
-    private String ttsVoice = "longanyang";
+    private String ttsVoice = "longxiaochun_v2";
 
     /**
      * 是否启用 TTS 语音回复（关闭时语音消息以文本回复）

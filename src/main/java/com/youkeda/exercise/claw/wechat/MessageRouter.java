@@ -32,28 +32,31 @@ public class MessageRouter {
     private final AIChatHandler chatHandler;
     private final VisionHandler visionHandler;
     private final ImageGenerationHandler imageGenerationHandler;
-    private final VoiceHandler voiceHandler;
     private final SimpleReplyHandler fallbackHandler;
+    private final VoiceHandler voiceHandler;
 
     public MessageRouter(IntentClassifier intentClassifier,
                          AIChatHandler chatHandler,
                          VisionHandler visionHandler,
                          ImageGenerationHandler imageGenerationHandler,
-                         VoiceHandler voiceHandler,
-                         SimpleReplyHandler fallbackHandler) {
+                         SimpleReplyHandler fallbackHandler,
+                         VoiceHandler voiceHandler) {
         this.intentClassifier = intentClassifier;
         this.chatHandler = chatHandler;
         this.visionHandler = visionHandler;
         this.imageGenerationHandler = imageGenerationHandler;
-        this.voiceHandler = voiceHandler;
         this.fallbackHandler = fallbackHandler;
+        this.voiceHandler = voiceHandler;
     }
 
     /**
      * 路由消息到对应的处理器
+     *
+     * @param message 微信消息
+     * @return 回复内容（WechatReply，包含 TEXT 或 IMAGE 类型）
      */
     public WechatReply route(WechatMessage message) {
-        // 图片消息：直接走 VisionHandler
+        // 图片消息：直接走 VisionHandler（保留已有图片处理流程）
         if (message.getType() == MessageType.IMAGE) {
             log.info("路由：图片消息 → VisionHandler | from={}", message.getUserId());
             WechatReply reply = visionHandler.handle(message);
@@ -74,8 +77,7 @@ public class MessageRouter {
 
             // VOICE_REPLY 意图：走语音文件回复路径（文字对话 + TTS → MP3 文件）
             if (intent == Intent.VOICE_REPLY) {
-                log.info("路由：VOICE_REPLY 意图 → VoiceHandler.handleTextWithFileReply | from={}",
-                        message.getUserId());
+                log.info("路由：VOICE_REPLY 意图 → VoiceHandler.handleTextWithFileReply | from={}", message.getUserId());
                 WechatReply reply = voiceHandler.handleTextWithFileReply(message);
                 return fallbackIfEmpty(reply, message);
             }

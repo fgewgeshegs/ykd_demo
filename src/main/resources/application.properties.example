@@ -39,7 +39,6 @@ image.base-url=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-ge
 
 # ============================================
 # Voice (ASR + TTS) Configuration
-# 统一使用 DashScope API，与 vision/image 共用同一把 api-key
 # ============================================
 voice.api-key=
 voice.asr-base-url=https://dashscope.aliyuncs.com/api/v1/services/audio/transcription/transcription

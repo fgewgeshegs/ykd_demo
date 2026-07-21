@@ -72,7 +72,7 @@ public class VoiceHandler implements MessageHandler {
 
         log.info("语音意图分类 | text={} | intent={}", voiceText, result.getIntent());
 
-        // ==================== 4. 按意图路由 ====================
+        // ==================== 3. 按意图路由 ====================
         return routeByIntent(result.getIntent(), voiceText, message);
     }
 
