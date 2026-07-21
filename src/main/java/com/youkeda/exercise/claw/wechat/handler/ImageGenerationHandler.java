@@ -45,7 +45,7 @@ public class ImageGenerationHandler implements MessageHandler {
         }
 
         // 2. 记住 AI 图片 URL（后续描述/编辑可从此下载）
-        contextStore.setLastImageUrl(message.getUserId(), imageUrl);
+        contextStore.updateLastMediaUrl(message.getUserId(), "[图片]", imageUrl);
 
         // 3. 下载图片字节
         byte[] imageBytes = imageClient.downloadImage(imageUrl);

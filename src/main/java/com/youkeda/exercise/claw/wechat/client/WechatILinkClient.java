@@ -122,20 +122,63 @@ public class WechatILinkClient {
         }
     }
 
-    /** 发送语音消息 */
-    public void sendVoiceMessage(String toUserId, byte[] voiceBytes, String fileName,
-                                  int playTimeMs, int sampleRate) {
-        if (!loggedIn || client == null) {
-            log.warn("微信未登录，无法发送语音");
-            return;
-        }
+    /** 发送语音消息（异步，不阻塞轮询线程），失败时自动降级为文字消息 */
+    public void sendVoiceMessage(String toUserId,
+                                  byte[] voiceBytes, int playtime, int sampleRate,
+                                  String textFallback) {
+        if (!checkReady()) return;
+        byte[] bytesCopy = voiceBytes.clone();
+        CompletableFuture.runAsync(() -> {
+            try {
+                log.info("异步发送语音 | to={} | size={} | playtime={}ms | sampleRate={}Hz",
+                        toUserId, bytesCopy.length, playtime, sampleRate);
+                client.sendVoice(toUserId, bytesCopy, "voice.mp3", playtime, sampleRate);
+                log.info("发送语音消息成功 | to={}", toUserId);
+            } catch (Exception e) {
+                log.error("发送语音消息失败 | to={} | error={}", toUserId, e.getMessage(), e);
+                if (textFallback != null && !textFallback.isEmpty()) {
+                    log.warn("语音发送失败，降级为文字消息 | to={}", toUserId);
+                    try { client.sendText(toUserId, textFallback); } catch (Exception ex) {
+                        log.error("降级文字发送也失败 | to={}", toUserId);
+                    }
+                }
+            }
+        });
+    }
+
+    /** 显示「正在输入」指示 */
+    public void startTyping(String toUserId) {
+        if (!checkReady()) return;
         try {
-            client.sendVoice(toUserId, voiceBytes, fileName, playTimeMs, sampleRate);
-            log.info("发送语音 | to={} | size={} bytes | duration={}ms",
-                    toUserId, voiceBytes.length, playTimeMs);
+            client.startTyping(toUserId);
         } catch (Exception e) {
-            log.error("发送语音失败 | to={} | error={}", toUserId, e.getMessage());
+            log.warn("startTyping 失败 | to={} | error={}", toUserId, e.getMessage());
         }
+    }
+
+    /** 发送文件消息（异步），如 MP3 音频文件 */
+    public void sendFileMessage(String toUserId, byte[] fileBytes, String fileName, String fileDescription) {
+        if (!checkReady()) return;
+        byte[] bytesCopy = fileBytes.clone();
+        CompletableFuture.runAsync(() -> {
+            try {
+                log.info("异步发送文件 | to={} | fileName={} | size={} bytes",
+                        toUserId, fileName, bytesCopy.length);
+                client.sendFile(toUserId, bytesCopy, fileName, fileDescription);
+                log.info("发送文件消息成功 | to={} | fileName={}", toUserId, fileName);
+            } catch (Exception e) {
+                log.error("发送文件消息失败 | to={} | fileName={} | error={}",
+                        toUserId, fileName, e.getMessage(), e);
+            }
+        });
+    }
+
+    private boolean checkReady() {
+        if (client == null || !loggedIn) {
+            log.warn("微信未登录或客户端未就绪");
+            return false;
+        }
+        return true;
     }
 
     /** 从 CDN 下载媒体（兼容旧接口） */

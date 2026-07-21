@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.wechat.handler;
 import com.youkeda.exercise.claw.ai.llm.ImageClient;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.context.ContextStore;
+import com.youkeda.exercise.claw.context.Message;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
@@ -45,8 +46,7 @@ public class VisionHandler implements MessageHandler {
         }
 
         if (message.getType() == MessageType.TEXT
-                && (contextStore.getLastImage(message.getUserId()) != null
-                    || contextStore.getLastImageUrl(message.getUserId()) != null)) {
+                && contextStore.findLastByPrefix(message.getUserId(), "[图片]") != null) {
             log.info("分析上下文中的最近图片 | user={} | text={}", message.getUserId(), message.getText());
             return analyzeImage(message);
         }
@@ -69,8 +69,6 @@ public class VisionHandler implements MessageHandler {
             return WechatReply.text(FALLBACK_REPLY);
         }
 
-        saveImageParams(message);
-
         contextStore.append(message.getUserId(), "user", "[用户发送了一张图片]");
         contextStore.append(message.getUserId(), "assistant", reply);
 
@@ -78,17 +76,17 @@ public class VisionHandler implements MessageHandler {
     }
 
     /**
-     * 下载图片：直接 CDN → 上下文 CDN → 上下文 URL → 消息 URL
+     * 下载图片：消息 CDN → 上下文 CDN → 上下文 URL → 消息 URL
      */
     private String downloadImageAsDataUrl(WechatMessage message) {
         String encryptParam = message.getEncryptQueryParam();
         String aesKey = message.getAesKey();
 
         if (isEmpty(encryptParam) || isEmpty(aesKey)) {
-            String[] lastImage = contextStore.getLastImage(message.getUserId());
-            if (lastImage != null && lastImage.length == 2) {
-                encryptParam = lastImage[0];
-                aesKey = lastImage[1];
+            Message lastImage = contextStore.findLastByPrefix(message.getUserId(), "[图片]");
+            if (lastImage != null && lastImage.hasMedia()) {
+                encryptParam = lastImage.mediaEncryptParam();
+                aesKey = lastImage.mediaAesKey();
             }
         }
 
@@ -99,9 +97,9 @@ public class VisionHandler implements MessageHandler {
             }
         }
 
-        String contextUrl = contextStore.getLastImageUrl(message.getUserId());
-        if (contextUrl != null && !contextUrl.isEmpty()) {
-            byte[] urlBytes = imageClient.downloadImage(contextUrl);
+        Message lastImage = contextStore.findLastByPrefix(message.getUserId(), "[图片]");
+        if (lastImage != null && lastImage.mediaUrl() != null && !lastImage.mediaUrl().isEmpty()) {
+            byte[] urlBytes = imageClient.downloadImage(lastImage.mediaUrl());
             if (urlBytes != null && urlBytes.length > 0) {
                 return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(urlBytes);
             }
@@ -112,14 +110,6 @@ public class VisionHandler implements MessageHandler {
         }
 
         return null;
-    }
-
-    private void saveImageParams(WechatMessage message) {
-        String ep = message.getEncryptQueryParam();
-        String ak = message.getAesKey();
-        if (!isEmpty(ep) && !isEmpty(ak)) {
-            contextStore.setLastImage(message.getUserId(), ep, ak);
-        }
     }
 
     private boolean isEmpty(String s) {

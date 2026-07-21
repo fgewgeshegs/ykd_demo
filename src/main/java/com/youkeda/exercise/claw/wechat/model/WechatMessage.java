@@ -59,4 +59,24 @@ public class WechatMessage {
      * 语音转写文字（VOICE 类型时有效，微信自带或 ASR 结果）
      */
     private String voiceText;
+
+    /**
+     * 用户是否要求语音回复（TEXT 类型时，由关键词检测设置）
+     */
+    private boolean voiceReply;
+
+    /**
+     * 语音播放时长（VOICE 类型时有效，毫秒）
+     */
+    private Integer playtime;
+
+    /**
+     * 语音编码类型（VOICE 类型时有效）
+     */
+    private Integer encodeType;
+
+    /**
+     * 语音采样率（VOICE 类型时有效，Hz）
+     */
+    private Integer voiceSampleRate;
 }

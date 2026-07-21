@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.context;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
@@ -12,12 +13,14 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 内存会话上下文存储
  *
- * 数据结构：ConcurrentHashMap<userId, Deque<Message>>
+ * 所有消息（文字/语音/图片）统一存入一个队列，CDN 参数嵌入 Message 记录。
+ * 语音和图片不存二进制数据——CDN 参数可随时重新下载，语音回复文字已在 content 中可随时重新 TTS。
  * - 单用户最多保留 50 条消息，超出自动淘汰最早的消息
  * - 线程安全
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "context.redis.enabled", havingValue = "false", matchIfMissing = true)
 public class InMemoryContextStore implements ContextStore {
 
     /** 单用户最大消息条数 */
@@ -26,14 +29,7 @@ public class InMemoryContextStore implements ContextStore {
     /** userId → 消息队列 */
     private final ConcurrentHashMap<String, Deque<Message>> store = new ConcurrentHashMap<>();
 
-    /** userId → [encryptParam, aesKey] */
-    private final ConcurrentHashMap<String, String[]> lastImageStore = new ConcurrentHashMap<>();
-
-    /** userId → imageUrl */
-    private final ConcurrentHashMap<String, String> lastImageUrlStore = new ConcurrentHashMap<>();
-
-    /** userId → [mp3Path, text] */
-    private final ConcurrentHashMap<String, String[]> lastVoiceStore = new ConcurrentHashMap<>();
+    // ==================== 查询 ====================
 
     @Override
     public List<Message> getHistory(String userId, int maxMessages) {
@@ -50,11 +46,49 @@ public class InMemoryContextStore implements ContextStore {
     }
 
     @Override
+    public Message findLastByPrefix(String userId, String contentPrefix) {
+        Deque<Message> messages = store.get(userId);
+        if (messages == null) return null;
+        synchronized (messages) {
+            var it = messages.descendingIterator();
+            while (it.hasNext()) {
+                Message msg = it.next();
+                if (msg.content() != null && msg.content().startsWith(contentPrefix)) {
+                    return msg;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public List<Message> findAllByPrefix(String userId, String contentPrefix) {
+        Deque<Message> messages = store.get(userId);
+        if (messages == null) return List.of();
+        List<Message> result = new ArrayList<>();
+        synchronized (messages) {
+            for (Message msg : messages) {
+                if (msg.content() != null && msg.content().startsWith(contentPrefix)) {
+                    result.add(msg);
+                }
+            }
+        }
+        return result;
+    }
+
+    // ==================== 写入 ====================
+
+    @Override
     public void append(String userId, String role, String content) {
+        append(userId, role, content, null, null, null);
+    }
+
+    @Override
+    public void append(String userId, String role, String content,
+                        String mediaEncryptParam, String mediaAesKey,
+                        String mediaUrl) {
         Deque<Message> messages = store.computeIfAbsent(userId, k -> new ArrayDeque<>());
-
-        Message message = new Message(role, content);
-
+        Message message = new Message(role, content, mediaEncryptParam, mediaAesKey, mediaUrl);
         synchronized (messages) {
             messages.addLast(message);
             while (messages.size() > MAX_MESSAGES_PER_USER) {
@@ -64,41 +98,28 @@ public class InMemoryContextStore implements ContextStore {
     }
 
     @Override
+    public void updateLastMediaUrl(String userId, String contentPrefix, String url) {
+        Deque<Message> messages = store.get(userId);
+        if (messages == null) return;
+        synchronized (messages) {
+            var it = messages.descendingIterator();
+            while (it.hasNext()) {
+                Message msg = it.next();
+                if (msg.content() != null && msg.content().startsWith(contentPrefix)) {
+                    messages.remove(msg);
+                    messages.add(new Message(msg.role(), msg.content(),
+                            msg.mediaEncryptParam(), msg.mediaAesKey(), url));
+                    return;
+                }
+            }
+        }
+    }
+
+    // ==================== 清除 ====================
+
+    @Override
     public void clear(String userId) {
         store.remove(userId);
-        lastImageStore.remove(userId);
-        lastImageUrlStore.remove(userId);
-        lastVoiceStore.remove(userId);
         log.debug("已清除用户上下文 | userId={}", userId);
-    }
-
-    @Override
-    public void setLastImage(String userId, String encryptParam, String aesKey) {
-        lastImageStore.put(userId, new String[]{encryptParam, aesKey});
-    }
-
-    @Override
-    public String[] getLastImage(String userId) {
-        return lastImageStore.get(userId);
-    }
-
-    @Override
-    public void setLastImageUrl(String userId, String url) {
-        lastImageUrlStore.put(userId, url);
-    }
-
-    @Override
-    public String getLastImageUrl(String userId) {
-        return lastImageUrlStore.get(userId);
-    }
-
-    @Override
-    public void setLastVoice(String userId, String mp3Path, String text) {
-        lastVoiceStore.put(userId, new String[]{mp3Path, text});
-    }
-
-    @Override
-    public String[] getLastVoice(String userId) {
-        return lastVoiceStore.get(userId);
     }
 }

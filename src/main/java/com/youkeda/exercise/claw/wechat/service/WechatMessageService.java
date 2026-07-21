@@ -2,12 +2,14 @@ package com.youkeda.exercise.claw.wechat.service;
 
 import com.github.wechat.ilink.sdk.core.model.MessageItem;
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
+import com.youkeda.exercise.claw.context.ContextStore;
 import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
+
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ public class WechatMessageService {
     private final WechatILinkClient wechatClient;
     private final WechatProperties wechatProperties;
     private final MessageRouter messageRouter;
+    private final ContextStore contextStore;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
@@ -35,10 +38,12 @@ public class WechatMessageService {
 
     public WechatMessageService(WechatILinkClient wechatClient,
                                 WechatProperties wechatProperties,
-                                MessageRouter messageRouter) {
+                                MessageRouter messageRouter,
+                                ContextStore contextStore) {
         this.wechatClient = wechatClient;
         this.wechatProperties = wechatProperties;
         this.messageRouter = messageRouter;
+        this.contextStore = contextStore;
     }
 
     @PostConstruct
@@ -87,14 +92,15 @@ public class WechatMessageService {
                             WechatMessage wechatMsg = buildWechatMessage(fromUserId, msg.getContext_token(), item);
                             if (wechatMsg == null) continue;
 
+                            // 统一上下文：发一条存一条（文字/语音/图片）
+                            saveMessageToContext(wechatMsg);
+
+                            wechatClient.startTyping(fromUserId);
+
                             try {
                                 WechatReply reply = messageRouter.route(wechatMsg);
                                 if (reply != null && reply.hasContent()) {
-                                    if (reply.getType() == MessageType.IMAGE) {
-                                        wechatClient.sendImageMessage(fromUserId, reply.getImageBytes(), "image.jpg");
-                                    } else {
-                                        wechatClient.sendTextMessage(fromUserId, reply.getText());
-                                    }
+                                    sendReply(fromUserId, reply);
                                 }
                             } catch (Exception e) {
                                 log.error("消息路由处理异常 | error={}", e.getMessage());
@@ -144,11 +150,58 @@ public class WechatMessageService {
                 m.setVoiceAesKey(voice.getMedia().getAes_key());
             }
             m.setVoiceText(voice.getText());
-            log.info("收到语音消息 | from={} | text={}", fromUserId, voice.getText());
+            m.setPlaytime(voice.getPlaytime());
+            m.setEncodeType(voice.getEncode_type());
+            m.setVoiceSampleRate(voice.getSample_rate());
+            log.info("收到语音消息 | from={} | voiceText={} | playtime={}ms | sampleRate={}Hz",
+                    fromUserId, voice.getText(), voice.getPlaytime(), voice.getSample_rate());
         } else {
             return null;
         }
         return m;
+    }
+
+    /**
+     * 统一上下文存储：发一条存一条，文字/语音/图片全部进入对话历史
+     * CDN 参数和媒体 URL 嵌入 Message，不再分开存两条
+     */
+    private void saveMessageToContext(WechatMessage msg) {
+        String userId = msg.getUserId();
+        switch (msg.getType()) {
+            case TEXT -> {
+                if (msg.getText() != null && !msg.getText().isEmpty()) {
+                    contextStore.append(userId, "user", msg.getText());
+                }
+            }
+            case VOICE -> {
+                String vEnc = msg.getVoiceEncryptQueryParam();
+                String vKey = msg.getVoiceAesKey();
+                String vText = msg.getVoiceText() != null ? msg.getVoiceText() : "";
+                String content = !vText.isEmpty() ? "[语音]" + vText : "[语音消息]";
+                contextStore.append(userId, "user", content, vEnc, vKey, null);
+            }
+            case IMAGE -> {
+                String iEnc = msg.getEncryptQueryParam();
+                String iKey = msg.getAesKey();
+                String iUrl = msg.getImageUrl() != null ? msg.getImageUrl() : "";
+                contextStore.append(userId, "user", "[图片]", iEnc, iKey, iUrl);
+            }
+        }
+    }
+
+    /**
+     * 根据 WechatReply 类型分发回复
+     */
+    private void sendReply(String toUserId, WechatReply reply) {
+        switch (reply.getType()) {
+            case VOICE -> wechatClient.sendVoiceMessage(toUserId,
+                    reply.getVoiceBytes(), reply.getPlaytime(), reply.getSampleRate(),
+                    reply.getTextFallback());
+            case IMAGE -> wechatClient.sendImageMessage(toUserId, reply.getImageBytes(), "image.jpg");
+            case FILE -> wechatClient.sendFileMessage(toUserId, reply.getFileBytes(),
+                    reply.getFileName(), reply.getFileDescription());
+            default -> wechatClient.sendTextMessage(toUserId, reply.getText());
+        }
     }
 
     @PreDestroy
