@@ -51,8 +51,7 @@ public class ChatService {
                 return null;
             }
 
-            // 3. 保存本轮对话到上下文
-            contextStore.append(userId, "user", message);
+            // 3. 保存回复到上下文（用户消息已由 WechatMessageService 统一存储）
             contextStore.append(userId, "assistant", reply);
 
             log.info("ChatService 处理完成 | user={}", userId);
