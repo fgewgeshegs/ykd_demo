@@ -127,6 +127,7 @@ public class VoiceHandler implements MessageHandler {
         };
     }
 
+    
     /**
      * 处理 IMAGE_GENERATE 意图：调用 ImageGenerationHandler，返回图片或文字兜底
      */
@@ -176,9 +177,8 @@ public class VoiceHandler implements MessageHandler {
             contextStore.append(textMessage.getUserId(), "assistant",
                     "[本条回复以微信语音形式发送]", null, null,
                     ttsResult.getAudioUrl());
-            return WechatReply.voice(ttsResult.getAudioBytes(),
-                    ttsResult.getPlaytimeMs(), ttsResult.getEncodeType(),
-                    ttsResult.getSampleRate(), replyText);
+            return WechatReply.file(ttsResult.getAudioBytes(),
+                    "AI语音回复.mp3", replyText);
         }
 
         // TTS 失败，降级为文本回复
