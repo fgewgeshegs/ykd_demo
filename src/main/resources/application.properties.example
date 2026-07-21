@@ -47,3 +47,11 @@ voice.tts-base-url=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/ser
 voice.tts-model=cosyvoice-v2
 voice.tts-voice=longxiaochun_v2
 voice.tts-enabled=true
+
+# ============================================
+# File Parse Configuration
+# ============================================
+file.parse.max-file-size=10485760
+file.parse.max-text-length=30000
+file.parse.max-embedded-images=5
+file.parse.max-analyzed-embedded-images=3

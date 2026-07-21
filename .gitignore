@@ -52,3 +52,6 @@ src/main/resources/application.properties
 # 忽略编译后的字节码及反编译产物（防止 .class 文件被误提交）
 *.class
 com/lth/
+
+# 忽略Claude的项目文档
+CLAUDE.md

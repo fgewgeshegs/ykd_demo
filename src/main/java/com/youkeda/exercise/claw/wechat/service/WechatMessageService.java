@@ -186,6 +186,22 @@ public class WechatMessageService {
             return wechatMsg;
         }
 
+        // 文件消息
+        if (item.getFile_item() != null) {
+            var fileItem = item.getFile_item();
+            wechatMsg.setType(MessageType.FILE);
+            wechatMsg.setFileName(fileItem.getFile_name());
+            wechatMsg.setFileMd5(fileItem.getMd5());
+            wechatMsg.setFileLen(fileItem.getLen());
+            if (fileItem.getMedia() != null) {
+                wechatMsg.setFileEncryptQueryParam(fileItem.getMedia().getEncrypt_query_param());
+                wechatMsg.setFileAesKey(fileItem.getMedia().getAes_key());
+            }
+            log.info("收到文件消息 | from={} | fileName={} | fileLen={}",
+                    fromUserId, fileItem.getFile_name(), fileItem.getLen());
+            return wechatMsg;
+        }
+
         return null;
     }
 
@@ -212,6 +228,12 @@ public class WechatMessageService {
                 String iKey = msg.getAesKey();
                 String iUrl = msg.getImageUrl() != null ? msg.getImageUrl() : "";
                 contextStore.append(userId, "user", "[图片]", iEnc, iKey, iUrl);
+            }
+            case FILE -> {
+                String fEnc = msg.getFileEncryptQueryParam();
+                String fKey = msg.getFileAesKey();
+                String fName = msg.getFileName() != null ? msg.getFileName() : "";
+                contextStore.append(userId, "user", "[文件: " + fName + "]", fEnc, fKey, null);
             }
         }
     }

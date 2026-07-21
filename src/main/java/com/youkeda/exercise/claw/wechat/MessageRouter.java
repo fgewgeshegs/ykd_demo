@@ -3,6 +3,8 @@ package com.youkeda.exercise.claw.wechat;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.classify.IntentClassifier;
 import com.youkeda.exercise.claw.agent.tool.ChatTool;
+import com.youkeda.exercise.claw.agent.tool.FileGenerationTool;
+import com.youkeda.exercise.claw.agent.tool.FileTool;
 import com.youkeda.exercise.claw.agent.tool.ImageGenerationTool;
 import com.youkeda.exercise.claw.agent.tool.SimpleReplyTool;
 import com.youkeda.exercise.claw.agent.tool.VisionTool;
@@ -34,19 +36,25 @@ public class MessageRouter {
     private final ImageGenerationTool imageGenerationTool;
     private final SimpleReplyTool fallbackTool;
     private final VoiceTool voiceTool;
+    private final FileTool fileTool;
+    private final FileGenerationTool fileGenerationTool;
 
     public MessageRouter(IntentClassifier intentClassifier,
                          ChatTool chatTool,
                          VisionTool visionTool,
                          ImageGenerationTool imageGenerationTool,
                          SimpleReplyTool fallbackTool,
-                         VoiceTool voiceTool) {
+                         VoiceTool voiceTool,
+                         FileTool fileTool,
+                         FileGenerationTool fileGenerationTool) {
         this.intentClassifier = intentClassifier;
         this.chatTool = chatTool;
         this.visionTool = visionTool;
         this.imageGenerationTool = imageGenerationTool;
         this.fallbackTool = fallbackTool;
         this.voiceTool = voiceTool;
+        this.fileTool = fileTool;
+        this.fileGenerationTool = fileGenerationTool;
     }
 
     /**
@@ -67,6 +75,13 @@ public class MessageRouter {
         if (message.getType() == MessageType.VOICE) {
             log.info("路由：语音消息 → VoiceTool | from={}", message.getUserId());
             WechatReply reply = voiceTool.handle(message);
+            return fallbackIfEmpty(reply, message);
+        }
+
+        // 文件消息：直接走 FileTool（根据文件内容类型分发：图片→视觉模型，文档→文本提取+LLM）
+        if (message.getType() == MessageType.FILE) {
+            log.info("路由：文件消息 → FileTool | from={} | fileName={}", message.getUserId(), message.getFileName());
+            WechatReply reply = fileTool.handle(message);
             return fallbackIfEmpty(reply, message);
         }
 
@@ -100,6 +115,7 @@ public class MessageRouter {
             case CHAT -> chatTool;
             case IMAGE_GENERATE -> imageGenerationTool;
             case IMAGE_ANALYZE -> visionTool;
+            case FILE_GENERATE -> fileGenerationTool;
             default -> fallbackTool;
         };
     }
