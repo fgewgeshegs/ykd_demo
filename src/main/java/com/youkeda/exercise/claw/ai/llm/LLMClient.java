@@ -75,7 +75,19 @@ public class LLMClient {
     }
 
     /**
-     * 使用自定义系统提示词调用大模型
+     * 使用自定义系统提示词调用大模型（带历史消息）
+     *
+     * @param systemPrompt 自定义系统提示词
+     * @param text         用户消息
+     * @param history      历史消息列表（按时间正序），为空时等价于无历史调用
+     * @return 模型回复内容，调用失败时返回 null
+     */
+    public String chatWithSystemPrompt(String systemPrompt, String text, List<Message> history) {
+        return callLLM(systemPrompt, text, history != null ? history : List.of());
+    }
+
+    /**
+     * 使用自定义系统提示词调用大模型（无历史消息）
      *
      * @param systemPrompt 自定义系统提示词
      * @param text         用户消息

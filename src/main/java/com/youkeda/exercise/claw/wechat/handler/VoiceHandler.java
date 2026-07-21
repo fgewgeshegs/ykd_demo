@@ -72,7 +72,7 @@ public class VoiceHandler implements MessageHandler {
 
         log.info("语音意图分类 | text={} | intent={}", voiceText, result.getIntent());
 
-        // ==================== 4. 按意图路由 ====================
+        // ==================== 3. 按意图路由 ====================
         return routeByIntent(result.getIntent(), voiceText, message);
     }
 
@@ -171,8 +171,8 @@ public class VoiceHandler implements MessageHandler {
         String replyText = textReply.getText();
         VoiceSynthesisResult ttsResult = voiceService.synthesize(replyText);
         if (ttsResult != null) {
-            log.info("TTS 合成成功，返回语音回复 | playtime={}ms | sampleRate={}Hz",
-                    ttsResult.getPlaytimeMs(), ttsResult.getSampleRate());
+            log.info("TTS 合成成功，返回语音文件回复 | playtime={}ms | size={}bytes",
+                    ttsResult.getPlaytimeMs(), ttsResult.getAudioBytes().length);
             contextStore.append(textMessage.getUserId(), "assistant",
                     "[本条回复以微信语音形式发送]", null, null,
                     ttsResult.getAudioUrl());

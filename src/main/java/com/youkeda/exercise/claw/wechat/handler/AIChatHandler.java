@@ -41,5 +41,4 @@ public class AIChatHandler implements MessageHandler {
 
         return WechatReply.text(reply);
     }
-
 }
