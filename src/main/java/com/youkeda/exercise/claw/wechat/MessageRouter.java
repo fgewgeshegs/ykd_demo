@@ -2,12 +2,12 @@ package com.youkeda.exercise.claw.wechat;
 
 import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.classify.IntentClassifier;
-import com.youkeda.exercise.claw.agent.tool.MessageHandler;
+import com.youkeda.exercise.claw.agent.tool.ChatTool;
+import com.youkeda.exercise.claw.agent.tool.ImageGenerationTool;
 import com.youkeda.exercise.claw.agent.tool.SimpleReplyTool;
+import com.youkeda.exercise.claw.agent.tool.VisionTool;
 import com.youkeda.exercise.claw.agent.tool.VoiceTool;
-import com.youkeda.exercise.claw.agent.ChatTool;
-import com.youkeda.exercise.claw.agent.VisionTool;
-import com.youkeda.exercise.claw.agent.ImageGenerationTool;
+import com.youkeda.exercise.claw.agent.tool.WechatMessageHandler;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -82,7 +82,7 @@ public class MessageRouter {
                 return fallbackIfEmpty(reply, message);
             }
 
-            MessageHandler targetHandler = selectHandler(intent);
+            WechatMessageHandler targetHandler = selectHandler(intent);
             WechatReply reply = targetHandler.handle(message);
             return fallbackIfEmpty(reply, message);
         }
@@ -95,7 +95,7 @@ public class MessageRouter {
     /**
      * 根据意图选择对应的 Handler
      */
-    private MessageHandler selectHandler(Intent intent) {
+    private WechatMessageHandler selectHandler(Intent intent) {
         return switch (intent) {
             case CHAT -> chatTool;
             case IMAGE_GENERATE -> imageGenerationTool;

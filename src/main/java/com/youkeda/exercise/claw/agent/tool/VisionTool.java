@@ -1,9 +1,9 @@
-package com.youkeda.exercise.claw.agent;
+package com.youkeda.exercise.claw.agent.tool;
 
+import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
-import com.youkeda.exercise.claw.agent.tool.MessageHandler;
 import com.youkeda.exercise.claw.ai.llm.ImageClient;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
@@ -20,12 +20,12 @@ import java.util.Base64;
 /**
  * 视觉理解工具
  *
- * 封装 VisionService + 微信图片下载，同时作为 Tool 和 MessageHandler 暴露。
+ * 封装 VisionService + 微信图片下载，同时作为 Tool 和 WechatMessageHandler 暴露。
  * 支持场景：直接发图 / 上下文有最近图片 / Agent 调用。
  * 启动时自动注册到 ToolRegistry。
  */
 @Component
-public class VisionTool implements Tool, MessageHandler {
+public class VisionTool implements Tool, WechatMessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(VisionTool.class);
     private static final String FALLBACK_REPLY = "抱歉，我暂时无法分析图片，请稍后再试。";

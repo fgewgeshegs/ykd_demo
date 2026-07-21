@@ -1,9 +1,9 @@
-package com.youkeda.exercise.claw.agent;
+package com.youkeda.exercise.claw.agent.tool;
 
+import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
-import com.youkeda.exercise.claw.agent.tool.MessageHandler;
 import com.youkeda.exercise.claw.ai.image.ImageGenerationService;
 import com.youkeda.exercise.claw.ai.llm.ImageClient;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
@@ -19,11 +19,11 @@ import java.util.List;
 /**
  * 图片生成工具
  *
- * 封装 ImageGenerationService，结合 LLM 上下文理解，同时作为 Tool 和 MessageHandler 暴露。
+ * 封装 ImageGenerationService，结合 LLM 上下文理解，同时作为 Tool 和 WechatMessageHandler 暴露。
  * 启动时自动注册到 ToolRegistry。
  */
 @Component
-public class ImageGenerationTool implements Tool, MessageHandler {
+public class ImageGenerationTool implements Tool, WechatMessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationTool.class);
     private static final String FALLBACK_REPLY = "抱歉，图片生成失败，请稍后再试。";

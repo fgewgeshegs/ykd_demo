@@ -1,7 +1,7 @@
-package com.youkeda.exercise.claw.agent;
+package com.youkeda.exercise.claw.agent.tool;
 
+import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.classify.Intent;
-import com.youkeda.exercise.claw.agent.tool.MessageHandler;
 import com.youkeda.exercise.claw.ai.chat.ChatService;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
@@ -14,11 +14,11 @@ import org.springframework.stereotype.Component;
 /**
  * 聊天工具
  *
- * 封装 ChatService，同时作为 Tool 和 MessageHandler 暴露。
+ * 封装 ChatService，同时作为 Tool 和 WechatMessageHandler 暴露。
  * 启动时自动注册到 ToolRegistry。
  */
 @Component
-public class ChatTool implements Tool, MessageHandler {
+public class ChatTool implements Tool, WechatMessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ChatTool.class);
     private static final String FALLBACK_REPLY = "抱歉，我现在暂时无法回复，请稍后再试。";

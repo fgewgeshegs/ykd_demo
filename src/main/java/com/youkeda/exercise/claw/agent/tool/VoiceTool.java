@@ -1,7 +1,5 @@
 package com.youkeda.exercise.claw.agent.tool;
 
-import com.youkeda.exercise.claw.agent.ChatTool;
-import com.youkeda.exercise.claw.agent.ImageGenerationTool;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.ai.voice.VoiceService;
@@ -27,7 +25,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class VoiceTool implements MessageHandler {
+public class VoiceTool implements WechatMessageHandler {
 
     private static final String MEANINGLESS_REPLY = "抱歉，我没听清，请再说一遍。";
     private static final String ASR_FAILED_REPLY = "抱歉，语音识别失败，请重试。";

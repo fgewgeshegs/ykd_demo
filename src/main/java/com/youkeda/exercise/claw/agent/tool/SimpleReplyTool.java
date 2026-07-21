@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class SimpleReplyTool implements MessageHandler {
+public class SimpleReplyTool implements WechatMessageHandler {
 
     private static final String FALLBACK_REPLY = "暂时无法理解该消息类型";
 

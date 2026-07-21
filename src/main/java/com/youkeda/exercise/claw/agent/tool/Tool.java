@@ -1,5 +1,6 @@
-package com.youkeda.exercise.claw.agent;
+package com.youkeda.exercise.claw.agent.tool;
 
+import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 
 /**
