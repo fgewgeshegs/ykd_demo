@@ -33,17 +33,17 @@ public class VoiceProperties {
     /**
      * TTS（语音合成）API 基础地址
      */
-    private String ttsBaseUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+    private String ttsBaseUrl = "https://dashscope.aliyuncs.com/api/v1/services/audio/speech/synthesis";
 
     /**
-     * TTS 模型名称（Qwen-TTS，与生图共用 multimodal-generation 端点）
+     * TTS 模型名称
      */
-    private String ttsModel = "qwen3-tts-flash";
+    private String ttsModel = "cosyvoice-v3-flash";
 
     /**
-     * TTS 默认音色（Qwen-TTS 内置音色：Cherry、Pony、Harry 等）
+     * TTS 默认音色（cosyvoice-v3-flash 支持：longanyang、longanhuan 等）
      */
-    private String ttsVoice = "Cherry";
+    private String ttsVoice = "longanyang";
 
     /**
      * 是否启用 TTS 语音回复（关闭时语音消息以文本回复）

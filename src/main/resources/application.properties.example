@@ -36,3 +36,15 @@ vision.model=qwen-vl-max
 image.api-key=
 image.model=qwen-image-2.0
 image.base-url=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+
+# ============================================
+# Voice (ASR + TTS) Configuration
+# 统一使用 DashScope API，与 vision/image 共用同一把 api-key
+# ============================================
+voice.api-key=
+voice.asr-base-url=https://dashscope.aliyuncs.com/api/v1/services/audio/transcription/transcription
+voice.asr-model=paraformer-v2
+voice.tts-base-url=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer
+voice.tts-model=cosyvoice-v3-flash
+voice.tts-voice=longanyang
+voice.tts-enabled=true

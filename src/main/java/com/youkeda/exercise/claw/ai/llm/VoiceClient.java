@@ -388,14 +388,16 @@ public class VoiceClient {
     }
 
     /**
-     * 构建 Qwen-TTS 请求体
+     * 构建 CosyVoice TTS 请求体
      *
-     * 与生图共用 multimodal-generation 端点，格式：
+     * CosyVoice 系列（v1/v2/v3-flash）格式统一：
      * {
-     *   "model": "qwen3-tts-flash",
+     *   "model": "cosyvoice-v1",
      *   "input": {
      *     "text": "...",
-     *     "voice": "Cherry"
+     *     "voice": "longxiaoxia_v2",
+     *     "format": "wav",
+     *     "sample_rate": 24000
      *   }
      * }
      */
@@ -406,6 +408,8 @@ public class VoiceClient {
         ObjectNode input = root.putObject("input");
         input.put("text", text);
         input.put("voice", properties.getTtsVoice());
+        input.put("format", "mp3");
+        input.put("sample_rate", 24000);
 
         return objectMapper.writeValueAsString(root);
     }

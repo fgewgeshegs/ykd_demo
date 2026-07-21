@@ -23,7 +23,7 @@ public enum Intent {
     IMAGE_ANALYZE,
 
     /**
-     * 用户要求语音回复
+     * 语音消息要求语音回复
      */
     VOICE_REPLY
 }
