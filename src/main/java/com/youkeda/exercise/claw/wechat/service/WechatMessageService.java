@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.wechat.service;
 
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
-import com.youkeda.exercise.claw.context.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;

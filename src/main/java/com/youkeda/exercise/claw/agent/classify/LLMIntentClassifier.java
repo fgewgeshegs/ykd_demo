@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.classifier;
+package com.youkeda.exercise.claw.agent.classify;
 
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import lombok.extern.slf4j.Slf4j;

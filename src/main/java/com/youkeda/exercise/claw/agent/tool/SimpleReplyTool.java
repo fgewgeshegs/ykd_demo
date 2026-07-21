@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.wechat.handler;
+package com.youkeda.exercise.claw.agent.tool;
 
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -12,13 +12,13 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class SimpleReplyHandler implements MessageHandler {
+public class SimpleReplyTool implements MessageHandler {
 
     private static final String FALLBACK_REPLY = "暂时无法理解该消息类型";
 
     @Override
     public WechatReply handle(WechatMessage message) {
-        log.debug("SimpleReplyHandler 兜底处理 | from={} | type={}", message.getUserId(), message.getType());
+        log.debug("SimpleReplyTool 兜底处理 | from={} | type={}", message.getUserId(), message.getType());
         return WechatReply.text(FALLBACK_REPLY);
     }
 }

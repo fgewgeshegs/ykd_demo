@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.classifier;
+package com.youkeda.exercise.claw.agent.classify;
 
 /**
  * 用户意图枚举

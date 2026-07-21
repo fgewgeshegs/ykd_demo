@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.classifier;
+package com.youkeda.exercise.claw.agent.classify;
 
 /**
  * 意图分类器接口

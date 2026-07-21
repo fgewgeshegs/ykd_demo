@@ -1,13 +1,13 @@
 package com.youkeda.exercise.claw.wechat;
 
-import com.youkeda.exercise.claw.ai.classifier.Intent;
-import com.youkeda.exercise.claw.ai.classifier.IntentClassifier;
-import com.youkeda.exercise.claw.wechat.handler.AIChatHandler;
-import com.youkeda.exercise.claw.wechat.handler.ImageGenerationHandler;
-import com.youkeda.exercise.claw.wechat.handler.MessageHandler;
-import com.youkeda.exercise.claw.wechat.handler.SimpleReplyHandler;
-import com.youkeda.exercise.claw.wechat.handler.VisionHandler;
-import com.youkeda.exercise.claw.wechat.handler.VoiceHandler;
+import com.youkeda.exercise.claw.agent.classify.Intent;
+import com.youkeda.exercise.claw.agent.classify.IntentClassifier;
+import com.youkeda.exercise.claw.agent.tool.MessageHandler;
+import com.youkeda.exercise.claw.agent.tool.SimpleReplyTool;
+import com.youkeda.exercise.claw.agent.tool.VoiceTool;
+import com.youkeda.exercise.claw.agent.ChatTool;
+import com.youkeda.exercise.claw.agent.VisionTool;
+import com.youkeda.exercise.claw.agent.ImageGenerationTool;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -29,24 +29,24 @@ import org.springframework.stereotype.Component;
 public class MessageRouter {
 
     private final IntentClassifier intentClassifier;
-    private final AIChatHandler chatHandler;
-    private final VisionHandler visionHandler;
-    private final ImageGenerationHandler imageGenerationHandler;
-    private final SimpleReplyHandler fallbackHandler;
-    private final VoiceHandler voiceHandler;
+    private final ChatTool chatTool;
+    private final VisionTool visionTool;
+    private final ImageGenerationTool imageGenerationTool;
+    private final SimpleReplyTool fallbackTool;
+    private final VoiceTool voiceTool;
 
     public MessageRouter(IntentClassifier intentClassifier,
-                         AIChatHandler chatHandler,
-                         VisionHandler visionHandler,
-                         ImageGenerationHandler imageGenerationHandler,
-                         SimpleReplyHandler fallbackHandler,
-                         VoiceHandler voiceHandler) {
+                         ChatTool chatTool,
+                         VisionTool visionTool,
+                         ImageGenerationTool imageGenerationTool,
+                         SimpleReplyTool fallbackTool,
+                         VoiceTool voiceTool) {
         this.intentClassifier = intentClassifier;
-        this.chatHandler = chatHandler;
-        this.visionHandler = visionHandler;
-        this.imageGenerationHandler = imageGenerationHandler;
-        this.fallbackHandler = fallbackHandler;
-        this.voiceHandler = voiceHandler;
+        this.chatTool = chatTool;
+        this.visionTool = visionTool;
+        this.imageGenerationTool = imageGenerationTool;
+        this.fallbackTool = fallbackTool;
+        this.voiceTool = voiceTool;
     }
 
     /**
@@ -58,15 +58,15 @@ public class MessageRouter {
     public WechatReply route(WechatMessage message) {
         // 图片消息：直接走 VisionHandler（保留已有图片处理流程）
         if (message.getType() == MessageType.IMAGE) {
-            log.info("路由：图片消息 → VisionHandler | from={}", message.getUserId());
-            WechatReply reply = visionHandler.handle(message);
+            log.info("路由：图片消息 → VisionTool | from={}", message.getUserId());
+            WechatReply reply = visionTool.handle(message);
             return fallbackIfEmpty(reply, message);
         }
 
-        // 语音消息：直接走 VoiceHandler
+        // 语音消息：直接走 VoiceTool
         if (message.getType() == MessageType.VOICE) {
-            log.info("路由：语音消息 → VoiceHandler | from={}", message.getUserId());
-            WechatReply reply = voiceHandler.handle(message);
+            log.info("路由：语音消息 → VoiceTool | from={}", message.getUserId());
+            WechatReply reply = voiceTool.handle(message);
             return fallbackIfEmpty(reply, message);
         }
 
@@ -77,8 +77,8 @@ public class MessageRouter {
 
             // VOICE_REPLY 意图：走语音文件回复路径（文字对话 + TTS → MP3 文件）
             if (intent == Intent.VOICE_REPLY) {
-                log.info("路由：VOICE_REPLY 意图 → VoiceHandler.handleTextWithFileReply | from={}", message.getUserId());
-                WechatReply reply = voiceHandler.handleTextWithFileReply(message);
+                log.info("路由：VOICE_REPLY 意图 → VoiceTool.handleTextWithFileReply | from={}", message.getUserId());
+                WechatReply reply = voiceTool.handleTextWithFileReply(message);
                 return fallbackIfEmpty(reply, message);
             }
 
@@ -89,7 +89,7 @@ public class MessageRouter {
 
         // 其他类型：兜底
         log.info("路由：未知消息类型 type={} | from={}", message.getType(), message.getUserId());
-        return fallbackHandler.handle(message);
+        return fallbackTool.handle(message);
     }
 
     /**
@@ -97,10 +97,10 @@ public class MessageRouter {
      */
     private MessageHandler selectHandler(Intent intent) {
         return switch (intent) {
-            case CHAT -> chatHandler;
-            case IMAGE_GENERATE -> imageGenerationHandler;
-            case IMAGE_ANALYZE -> visionHandler;
-            default -> fallbackHandler;
+            case CHAT -> chatTool;
+            case IMAGE_GENERATE -> imageGenerationTool;
+            case IMAGE_ANALYZE -> visionTool;
+            default -> fallbackTool;
         };
     }
 
@@ -112,6 +112,6 @@ public class MessageRouter {
             return reply;
         }
         log.info("路由：Handler 返回空，使用兜底 | from={}", message.getUserId());
-        return fallbackHandler.handle(message);
+        return fallbackTool.handle(message);
     }
 }

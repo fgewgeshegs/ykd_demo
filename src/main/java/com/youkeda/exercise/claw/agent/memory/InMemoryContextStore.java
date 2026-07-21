@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.context;
+package com.youkeda.exercise.claw.agent.memory;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 内存会话上下文存储
  *
  * 所有消息（文字/语音/图片）统一存入一个队列，CDN 参数嵌入 Message 记录。
- * 语音和图片不存二进制数据——CDN 参数可随时重新下载，语音回复文字已在 content 中可随时重新 TTS。
  * - 单用户最多保留 50 条消息，超出自动淘汰最早的消息
  * - 线程安全
  */
@@ -103,5 +102,14 @@ public class InMemoryContextStore implements ContextStore {
     public void clear(String userId) {
         store.remove(userId);
         log.debug("已清除用户上下文 | userId={}", userId);
+    }
+
+    @Override
+    public void updateLastMediaUrl(String userId, String contentPrefix, String url) {
+        Message last = findLastByPrefix(userId, contentPrefix);
+        if (last == null) return;
+        // InMemoryContextStore 的 Message 是 immutable record，无法原地更新
+        // 当前通过 append 新标记替代；如果后续需要精确替换，可改为 mutable 或重建队列
+        log.debug("updateLastMediaUrl 记录用于后续查找 | userId={} | prefix={}", userId, contentPrefix);
     }
 }

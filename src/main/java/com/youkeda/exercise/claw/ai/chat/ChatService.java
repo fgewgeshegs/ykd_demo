@@ -1,8 +1,8 @@
 package com.youkeda.exercise.claw.ai.chat;
 
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
-import com.youkeda.exercise.claw.context.ContextStore;
-import com.youkeda.exercise.claw.context.Message;
+import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.Message;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

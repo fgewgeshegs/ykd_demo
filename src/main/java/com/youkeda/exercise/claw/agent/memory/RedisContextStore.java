@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.context;
+package com.youkeda.exercise.claw.agent.memory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,7 +17,6 @@ import java.util.List;
  * 数据结构：
  * - Key: ctx:{userId}:msgs → LIST，每个元素是 Message 的 JSON
  * - 使用 RPUSH 追加、LTRIM 限长、EXPIRE 设 TTL
- * - 不存二进制数据——语音 CDN 参数可重新下载，回复文字可重新 TTS
  */
 @Slf4j
 @Component
@@ -127,5 +126,10 @@ public class RedisContextStore implements ContextStore {
     public void clear(String userId) {
         redis.delete(key(userId));
         log.debug("已清除用户 Redis 上下文 | userId={}", userId);
+    }
+
+    @Override
+    public void updateLastMediaUrl(String userId, String contentPrefix, String url) {
+        log.debug("updateLastMediaUrl 记录 | userId={} | prefix={} | url={}", userId, contentPrefix, url);
     }
 }

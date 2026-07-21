@@ -5,7 +5,7 @@ import com.github.wechat.ilink.sdk.core.config.ILinkConfig;
 import com.github.wechat.ilink.sdk.core.model.CDNMedia;
 import com.github.wechat.ilink.sdk.core.model.MessageItem;
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
-import com.youkeda.exercise.claw.context.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;

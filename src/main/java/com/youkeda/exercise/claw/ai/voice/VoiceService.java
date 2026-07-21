@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.ai.voice;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.ai.classifier.Intent;
+import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.VoiceClient;
 import com.youkeda.exercise.claw.ai.llm.VoiceProperties;

@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.agent;
 
-import com.youkeda.exercise.claw.ai.classifier.Intent;
+import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import lombok.Data;

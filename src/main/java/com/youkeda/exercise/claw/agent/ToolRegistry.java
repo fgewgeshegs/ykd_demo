@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.agent;
 
-import com.youkeda.exercise.claw.ai.classifier.Intent;
+import com.youkeda.exercise.claw.agent.classify.Intent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

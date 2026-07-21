@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.context;
+package com.youkeda.exercise.claw.agent.memory;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

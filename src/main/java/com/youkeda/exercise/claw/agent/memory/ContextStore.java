@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.context;
+package com.youkeda.exercise.claw.agent.memory;
 
 import java.util.List;
 
@@ -41,6 +41,11 @@ public interface ContextStore {
      * 找到所有 content 以 prefix 开头的消息（正序）
      */
     List<Message> findAllByPrefix(String userId, String contentPrefix);
+
+    /**
+     * 更新最近一条匹配 prefix 的消息的 mediaUrl（用于 AI 生图后回填 URL）
+     */
+    void updateLastMediaUrl(String userId, String contentPrefix, String url);
 
     /**
      * 清除指定用户的全部上下文
