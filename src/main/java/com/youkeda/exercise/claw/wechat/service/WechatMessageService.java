@@ -221,13 +221,9 @@ public class WechatMessageService {
      */
     private void sendReply(String toUserId, WechatReply reply) {
         switch (reply.getType()) {
-            case VOICE -> {
-                wechatClient.sendVoiceMessage(toUserId,
-                        reply.getVoiceBytes(), reply.getPlaytime(), reply.getSampleRate(),
-                        reply.getTextFallback());
-            }
             case IMAGE -> {
-                wechatClient.sendImageMessage(toUserId, reply.getImageBytes());
+                wechatClient.sendImageMessage(toUserId, reply.getImageBytes(),
+                        "抱歉，图片发送失败，请稍后再试。");
             }
             case FILE -> {
                 wechatClient.sendFileMessage(toUserId, reply.getFileBytes(),

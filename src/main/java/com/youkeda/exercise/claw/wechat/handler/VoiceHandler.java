@@ -171,13 +171,11 @@ public class VoiceHandler implements MessageHandler {
         String replyText = textReply.getText();
         VoiceSynthesisResult ttsResult = voiceService.synthesize(replyText);
         if (ttsResult != null) {
-            log.info("TTS 合成成功，返回语音回复 | playtime={}ms | sampleRate={}Hz",
-                    ttsResult.getPlaytimeMs(), ttsResult.getSampleRate());
+            log.info("TTS 合成成功，返回语音文件回复 | playtime={}ms | size={}bytes",
+                    ttsResult.getPlaytimeMs(), ttsResult.getAudioBytes().length);
             contextStore.append(textMessage.getUserId(), "assistant",
-                    "[本条回复以微信语音形式发送]");
-            return WechatReply.voice(ttsResult.getAudioBytes(),
-                    ttsResult.getPlaytimeMs(), ttsResult.getEncodeType(),
-                    ttsResult.getSampleRate(), replyText);
+                    "[本条回复以MP3文件形式发送]");
+            return WechatReply.file(ttsResult.getAudioBytes(), "AI语音回复.mp3", replyText);
         }
 
         // TTS 失败，降级为文本回复

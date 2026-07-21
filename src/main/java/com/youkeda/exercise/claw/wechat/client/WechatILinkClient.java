@@ -133,90 +133,43 @@ public class WechatILinkClient {
 
     /**
      * 发送图片消息（异步，不阻塞轮询线程），发送前显示"正在输入"
+     * CDN 上传可能偶发 500，自动重试最多 2 次，重试耗尽后发送兜底文字
+     *
+     * @param textFallback 图片发送失败的兜底文字，为 null 则不降级
      */
-    public void sendImageMessage(String toUserId, byte[] imageBytes) {
+    public void sendImageMessage(String toUserId, byte[] imageBytes, String textFallback) {
         if (!checkReady()) return;
         try {
             client.startTyping(toUserId);
         } catch (Exception e) {
             log.warn("startTyping 失败 | to={}", toUserId);
         }
+        byte[] bytesCopy = imageBytes.clone();
         CompletableFuture.runAsync(() -> {
-            try {
-                client.sendImage(toUserId, imageBytes, "image.jpg", "");
-                log.info("发送图片消息成功 | to={} | size={} bytes", toUserId, imageBytes.length);
-            } catch (Exception e) {
-                log.error("发送图片消息失败 | to={} | error={}", toUserId, e.getMessage());
-            }
-        });
-    }
-
-    /**
-     * 发送语音消息（异步，不阻塞轮询线程），失败时自动降级为文字消息
-     *
-     * 发送前先显示"正在输入"。
-     *
-     * @param toUserId     接收方 userId
-     * @param voiceBytes   音频字节数据
-     * @param playtime     音频时长（毫秒）
-     * @param sampleRate   音频采样率（Hz）
-     * @param textFallback 语音发送失败的兜底文字，为 null 则不降级
-     */
-    public void sendVoiceMessage(String toUserId,
-                                  byte[] voiceBytes, int playtime, int sampleRate,
-                                  String textFallback) {
-        if (!checkReady()) return;
-
-        try { client.startTyping(toUserId); } catch (Exception e) {
-            log.warn("startTyping 失败 | to={}", toUserId);
-        }
-
-        byte[] bytesCopy = voiceBytes.clone();
-        CompletableFuture.runAsync(() -> {
-            try {
-                log.info("异步发送语音 | to={} | size={} | playtime={}ms | sampleRate={}Hz",
-                        toUserId, bytesCopy.length, playtime, sampleRate);
-                client.sendVoice(toUserId, bytesCopy, "voice.mp3", playtime, sampleRate);
-                log.info("发送语音消息成功 | to={}", toUserId);
-            } catch (Exception e) {
-                log.error("发送语音消息失败 | to={} | error={}", toUserId, e.getMessage(), e);
-                if (textFallback != null && !textFallback.isEmpty()) {
-                    log.warn("语音发送失败，降级为文字消息 | to={}", toUserId);
-                    try { client.sendText(toUserId, textFallback); } catch (Exception ex) {
-                        log.error("降级文字发送也失败 | to={}", toUserId);
-                    }
-                }
-            }
-        });
-    }
-
-    /**
-     * 发送语音消息（完整参数，自定义编码），异步执行
-     */
-    public void sendVoiceMessage(String toUserId,
-                                  byte[] voiceBytes, int playtime, int sampleRate,
-                                  int encodeType, int bitsPerSample,
-                                  String textFallback) {
-        if (!checkReady()) return;
-
-        try { client.startTyping(toUserId); } catch (Exception e) {
-            log.warn("startTyping 失败 | to={}", toUserId);
-        }
-
-        byte[] bytesCopy = voiceBytes.clone();
-        CompletableFuture.runAsync(() -> {
-            try {
-                log.info("异步发送语音（完整参数）| to={} | size={} | playtime={}ms | encodeType={}",
-                        toUserId, bytesCopy.length, playtime, encodeType);
-                client.sendVoice(toUserId, bytesCopy, "voice.mp3", playtime, sampleRate,
-                        null, encodeType, bitsPerSample, null);
-                log.info("发送语音消息成功（完整参数）| to={}", toUserId);
-            } catch (Exception e) {
-                log.error("发送语音消息失败 | to={} | error={}", toUserId, e.getMessage(), e);
-                if (textFallback != null && !textFallback.isEmpty()) {
-                    log.warn("语音发送失败，降级为文字消息 | to={}", toUserId);
-                    try { client.sendText(toUserId, textFallback); } catch (Exception ex) {
-                        log.error("降级文字发送也失败 | to={}", toUserId);
+            int maxRetries = 2;
+            for (int attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    client.sendImage(toUserId, bytesCopy, "image.jpg", "");
+                    log.info("发送图片消息成功 | to={} | size={} bytes", toUserId, bytesCopy.length);
+                    return;
+                } catch (Exception e) {
+                    if (attempt < maxRetries) {
+                        long delay = 1000L * (attempt + 1);
+                        log.warn("发送图片消息失败 (第{}/{})，{}ms后重试 | error={}",
+                                attempt + 1, maxRetries + 1, delay, e.getMessage());
+                        try { Thread.sleep(delay); } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    } else {
+                        log.error("发送图片消息失败，已达最大重试次数 | to={} | size={} | error={}",
+                                toUserId, bytesCopy.length, e.getMessage(), e);
+                        if (textFallback != null && !textFallback.isEmpty()) {
+                            log.warn("图片发送失败，降级为文字消息 | to={}", toUserId);
+                            try { client.sendText(toUserId, textFallback); } catch (Exception ex) {
+                                log.error("降级文字发送也失败 | to={}", toUserId);
+                            }
+                        }
                     }
                 }
             }
