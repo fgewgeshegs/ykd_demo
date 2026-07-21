@@ -174,7 +174,8 @@ public class VoiceHandler implements MessageHandler {
             log.info("TTS 合成成功，返回语音回复 | playtime={}ms | sampleRate={}Hz",
                     ttsResult.getPlaytimeMs(), ttsResult.getSampleRate());
             contextStore.append(textMessage.getUserId(), "assistant",
-                    "[本条回复以微信语音形式发送]");
+                    "[本条回复以微信语音形式发送]", null, null,
+                    ttsResult.getAudioUrl());
             return WechatReply.voice(ttsResult.getAudioBytes(),
                     ttsResult.getPlaytimeMs(), ttsResult.getEncodeType(),
                     ttsResult.getSampleRate(), replyText);
@@ -228,7 +229,8 @@ public class VoiceHandler implements MessageHandler {
                 log.info("TTS 合成成功，返回语音文件回复 | playtime={}ms | size={}bytes",
                         result.getPlaytimeMs(), result.getAudioBytes().length);
                 contextStore.append(message.getUserId(), "assistant",
-                        "[本条回复以MP3文件形式发送]");
+                        "[本条回复以MP3文件形式发送]", null, null,
+                        result.getAudioUrl());
                 return WechatReply.file(result.getAudioBytes(), "AI语音回复.mp3", null);
             }
         } catch (Exception e) {

@@ -46,7 +46,8 @@ public class VisionHandler implements MessageHandler {
         }
 
         if (message.getType() == MessageType.TEXT
-                && contextStore.findLastByPrefix(message.getUserId(), "[图片]") != null) {
+                && (contextStore.findLastByPrefix(message.getUserId(), "[图片]") != null
+                    || contextStore.findLastByPrefix(message.getUserId(), "[AI生成图片]") != null)) {
             log.info("分析上下文中的最近图片 | user={} | text={}", message.getUserId(), message.getText());
             return analyzeImage(message);
         }
@@ -97,9 +98,13 @@ public class VisionHandler implements MessageHandler {
             }
         }
 
-        Message lastImage = contextStore.findLastByPrefix(message.getUserId(), "[图片]");
-        if (lastImage != null && lastImage.mediaUrl() != null && !lastImage.mediaUrl().isEmpty()) {
-            byte[] urlBytes = imageClient.downloadImage(lastImage.mediaUrl());
+        // 先查用户图片 URL，再查 AI 生成图片 URL
+        Message imgWithUrl = contextStore.findLastByPrefix(message.getUserId(), "[图片]");
+        if (imgWithUrl == null || imgWithUrl.mediaUrl() == null || imgWithUrl.mediaUrl().isEmpty()) {
+            imgWithUrl = contextStore.findLastByPrefix(message.getUserId(), "[AI生成图片]");
+        }
+        if (imgWithUrl != null && imgWithUrl.mediaUrl() != null && !imgWithUrl.mediaUrl().isEmpty()) {
+            byte[] urlBytes = imageClient.downloadImage(imgWithUrl.mediaUrl());
             if (urlBytes != null && urlBytes.length > 0) {
                 return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(urlBytes);
             }

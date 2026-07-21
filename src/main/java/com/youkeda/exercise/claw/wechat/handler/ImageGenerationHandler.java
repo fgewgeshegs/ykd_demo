@@ -44,8 +44,8 @@ public class ImageGenerationHandler implements MessageHandler {
             return WechatReply.text(FALLBACK_REPLY);
         }
 
-        // 2. 记住 AI 图片 URL（后续描述/编辑可从此下载）
-        contextStore.updateLastMediaUrl(message.getUserId(), "[图片]", imageUrl);
+        // 2. 记住 AI 图片 URL（存入上下文，后续可下载分析）
+        contextStore.append(message.getUserId(), "assistant", "[AI生成图片]", null, null, imageUrl);
 
         // 3. 下载图片字节
         byte[] imageBytes = imageClient.downloadImage(imageUrl);

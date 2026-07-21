@@ -97,24 +97,6 @@ public class InMemoryContextStore implements ContextStore {
         }
     }
 
-    @Override
-    public void updateLastMediaUrl(String userId, String contentPrefix, String url) {
-        Deque<Message> messages = store.get(userId);
-        if (messages == null) return;
-        synchronized (messages) {
-            var it = messages.descendingIterator();
-            while (it.hasNext()) {
-                Message msg = it.next();
-                if (msg.content() != null && msg.content().startsWith(contentPrefix)) {
-                    messages.remove(msg);
-                    messages.add(new Message(msg.role(), msg.content(),
-                            msg.mediaEncryptParam(), msg.mediaAesKey(), url));
-                    return;
-                }
-            }
-        }
-    }
-
     // ==================== 清除 ====================
 
     @Override

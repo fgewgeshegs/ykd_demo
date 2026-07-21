@@ -54,8 +54,11 @@ public class RedisContextStore implements ContextStore {
         List<Message> result = new ArrayList<>();
         for (String json : jsons) {
             try {
-                result.add(mapper.readValue(json, Message.class));
-            } catch (JsonProcessingException e) {
+                Message msg = mapper.readValue(json, Message.class);
+                if (msg.role() != null && msg.content() != null) {
+                    result.add(msg);
+                }
+            } catch (Exception e) {
                 log.warn("反序列化消息失败 | json={}", json);
             }
         }
@@ -115,24 +118,6 @@ public class RedisContextStore implements ContextStore {
             redis.expire(k, Duration.ofDays(props.getTtlDays()));
         } catch (JsonProcessingException e) {
             log.error("序列化消息失败 | userId={}", userId, e);
-        }
-    }
-
-    @Override
-    public void updateLastMediaUrl(String userId, String contentPrefix, String url) {
-        String k = key(userId);
-        List<String> jsons = redis.opsForList().range(k, 0, -1);
-        if (jsons == null) return;
-        for (int i = jsons.size() - 1; i >= 0; i--) {
-            try {
-                Message msg = mapper.readValue(jsons.get(i), Message.class);
-                if (msg.content() != null && msg.content().startsWith(contentPrefix)) {
-                    Message updated = new Message(msg.role(), msg.content(),
-                            msg.mediaEncryptParam(), msg.mediaAesKey(), url);
-                    redis.opsForList().set(k, i, mapper.writeValueAsString(updated));
-                    return;
-                }
-            } catch (JsonProcessingException ignored) {}
         }
     }
 

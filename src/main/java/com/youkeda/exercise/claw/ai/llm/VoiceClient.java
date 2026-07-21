@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.voice.VoiceClientException;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -43,6 +44,8 @@ public class VoiceClient {
     private final VoiceProperties properties;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    @Getter
+    private volatile String lastTtsUrl;
 
     public VoiceClient(VoiceProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
@@ -148,6 +151,7 @@ public class VoiceClient {
             }
 
             String audioUrl = audioUrlNode.asText();
+            this.lastTtsUrl = audioUrl;
             log.info("TTS 合成成功，获取音频 URL | url={}", audioUrl);
 
             // 下载音频字节
