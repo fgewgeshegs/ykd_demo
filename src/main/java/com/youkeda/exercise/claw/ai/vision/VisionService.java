@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.ai.vision;
 
 import com.youkeda.exercise.claw.ai.llm.VisionClient;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -9,9 +10,10 @@ import org.springframework.stereotype.Service;
  *
  * 职责：封装图片分析的业务逻辑，调用 VisionClient 完成多模态模型交互
  */
-@Slf4j
 @Service
 public class VisionService {
+
+    private static final Logger log = LoggerFactory.getLogger(VisionService.class);
 
     private final VisionClient visionClient;
 

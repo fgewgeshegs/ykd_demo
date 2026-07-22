@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.ai.image;
 
 import com.youkeda.exercise.claw.ai.llm.ImageClient;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -9,9 +10,10 @@ import org.springframework.stereotype.Service;
  *
  * 职责：封装图片生成的业务逻辑，调用 ImageClient 完成模型交互
  */
-@Slf4j
 @Service
 public class ImageGenerationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class);
 
     /** 图片生成 API 业务错误（如内容审核不通过）最大重试次数 */
     private static final int MAX_RETRIES = 3;

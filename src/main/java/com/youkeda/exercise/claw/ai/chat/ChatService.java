@@ -3,7 +3,8 @@ package com.youkeda.exercise.claw.ai.chat;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -14,9 +15,10 @@ import java.util.List;
  * 职责：封装多轮对话的业务逻辑，通过 ContextStore 维护上下文，
  * 调用 LLMClient 完成模型交互
  */
-@Slf4j
 @Service
 public class ChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
     /** 每次请求携带的最大历史消息条数 */
     private static final int MAX_HISTORY = 20;

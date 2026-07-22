@@ -7,7 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.image.ImageClientException;
 import com.youkeda.exercise.claw.common.PromptLoader;
 import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -22,9 +23,10 @@ import java.time.Duration;
  * 负责调用图片生成模型（如阿里云 qwen-image-2.0）生成图片
  * 请求格式兼容阿里云百炼 multimodal-generation API
  */
-@Slf4j
 @Component
 public class ImageClient {
+
+    private static final Logger log = LoggerFactory.getLogger(ImageClient.class);
 
     private static final int TIMEOUT_SECONDS = 120;
     /** 默认生成图片尺寸（宽*高） */

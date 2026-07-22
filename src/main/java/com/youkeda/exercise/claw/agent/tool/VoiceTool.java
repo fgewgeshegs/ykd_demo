@@ -10,7 +10,8 @@ import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
 import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,9 +27,10 @@ import org.springframework.stereotype.Component;
  * <p>注意：{@link LLMFunction#execute(String)} 只能返回文本，但 TTS 产生的音频数据通过
  * {@link #consumePendingAudio()} 传递回调用方（{@code ChatTool}），确保语音文件能被正确发送。</p>
  */
-@Slf4j
 @Component
 public class VoiceTool implements LLMFunction {
+
+    private static final Logger log = LoggerFactory.getLogger(VoiceTool.class);
 
     private static final String ASR_FAILED_REPLY = "抱歉，语音识别失败，请重试。";
 

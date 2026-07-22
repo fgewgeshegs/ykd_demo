@@ -8,9 +8,8 @@ import com.youkeda.exercise.claw.ai.llm.VoiceClient;
 import com.youkeda.exercise.claw.ai.llm.VoiceProperties;
 import com.youkeda.exercise.claw.common.PromptLoader;
 import jakarta.annotation.PostConstruct;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -21,9 +20,10 @@ import org.springframework.stereotype.Service;
  * - TTS（语音合成）：调用 VoiceClient 将文字转为语音，含重试
  * - 语音意图分类：调用 LLM 一次完成"有意义判断 + 意图分类"
  */
-@Slf4j
 @Service
 public class VoiceService {
+
+    private static final Logger log = LoggerFactory.getLogger(VoiceService.class);
 
     private static final int MAX_RETRIES = 3;
     private static final String VOICE_PROMPT_PATH = "prompts/voice-system-prompt.txt";
@@ -215,20 +215,37 @@ public class VoiceService {
     /**
      * 语音意图分类结果
      */
-    @Data
-    @AllArgsConstructor
     public static class VoiceIntentResult {
         /** 是否有实际含义 */
         private boolean meaningful;
         /** 意图（仅在 meaningful 为 true 时有意义） */
         private Intent intent;
+
+        public VoiceIntentResult(boolean meaningful, Intent intent) {
+            this.meaningful = meaningful;
+            this.intent = intent;
+        }
+
+        public boolean isMeaningful() {
+            return meaningful;
+        }
+
+        public void setMeaningful(boolean meaningful) {
+            this.meaningful = meaningful;
+        }
+
+        public Intent getIntent() {
+            return intent;
+        }
+
+        public void setIntent(Intent intent) {
+            this.intent = intent;
+        }
     }
 
     /**
      * 语音合成结果
      */
-    @Data
-    @AllArgsConstructor
     public static class VoiceSynthesisResult {
         /** 合成音频字节数据 */
         private byte[] audioBytes;
@@ -240,5 +257,53 @@ public class VoiceService {
         private int sampleRate;
         /** 音频 URL（OSS 下载地址，可存上下文复用） */
         private String audioUrl;
+
+        public VoiceSynthesisResult(byte[] audioBytes, int playtimeMs, int encodeType, int sampleRate, String audioUrl) {
+            this.audioBytes = audioBytes;
+            this.playtimeMs = playtimeMs;
+            this.encodeType = encodeType;
+            this.sampleRate = sampleRate;
+            this.audioUrl = audioUrl;
+        }
+
+        public byte[] getAudioBytes() {
+            return audioBytes;
+        }
+
+        public void setAudioBytes(byte[] audioBytes) {
+            this.audioBytes = audioBytes;
+        }
+
+        public int getPlaytimeMs() {
+            return playtimeMs;
+        }
+
+        public void setPlaytimeMs(int playtimeMs) {
+            this.playtimeMs = playtimeMs;
+        }
+
+        public int getEncodeType() {
+            return encodeType;
+        }
+
+        public void setEncodeType(int encodeType) {
+            this.encodeType = encodeType;
+        }
+
+        public int getSampleRate() {
+            return sampleRate;
+        }
+
+        public void setSampleRate(int sampleRate) {
+            this.sampleRate = sampleRate;
+        }
+
+        public String getAudioUrl() {
+            return audioUrl;
+        }
+
+        public void setAudioUrl(String audioUrl) {
+            this.audioUrl = audioUrl;
+        }
     }
 }

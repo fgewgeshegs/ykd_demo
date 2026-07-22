@@ -69,3 +69,9 @@ file.parse.max-file-size=10485760
 file.parse.max-text-length=30000
 file.parse.max-embedded-images=5
 file.parse.max-analyzed-embedded-images=3
+
+# ============================================
+# Tencent Map Configuration
+# ============================================
+# 腾讯位置服务（lbs.qq.com）API 密钥
+tencent.key=
