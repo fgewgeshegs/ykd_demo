@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.common.PromptLoader;
 import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.ai.llm.LLMResponse;
+import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -15,6 +17,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -178,5 +181,165 @@ public class LLMClient {
 
         log.warn("LLM 响应格式异常: {}", responseBody);
         return null;
+    }
+
+    // ==================== Tool Calling 支持 ====================
+
+    /**
+     * 带工具定义的 LLM 调用
+     *
+     * @param messages 完整消息列表（已包含 system prompt 之外的所有 user/assistant/tool 消息）
+     * @param tools    工具定义列表（为空时等价于普通 chat）
+     * @return 结构化响应（可能包含 {@link LLMResponse.ToolCall}），失败返回 null
+     */
+    public LLMResponse chatWithTools(List<Message> messages, List<ToolDefinition> tools) {
+        try {
+            String requestBody = buildRequestBodyWithTools(messages, tools);
+            log.debug("LLM 请求（含 {} 个工具定义）", tools != null ? tools.size() : 0);
+
+            String url = properties.getBaseUrl() + "/chat/completions";
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                    .header("Authorization", "Bearer " + properties.getApiKey())
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+
+            return parseStructuredResponse(response.body());
+
+        } catch (Exception e) {
+            log.error("LLM 调用失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 构建含 tools 参数的请求 JSON 体
+     */
+    private String buildRequestBodyWithTools(List<Message> messages,
+                                              List<ToolDefinition> tools) throws Exception {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", properties.getModel());
+
+        ArrayNode msgArray = root.putArray("messages");
+
+        // system prompt
+        ObjectNode sysNode = msgArray.addObject();
+        sysNode.put("role", "system");
+        sysNode.put("content", systemPrompt);
+
+        // 消息列表（按 role 分三种序列化）
+        for (Message msg : messages) {
+            msgArray.add(serializeMessage(msg));
+        }
+
+        // tools 定义
+        if (tools != null && !tools.isEmpty()) {
+            ArrayNode toolsArray = root.putArray("tools");
+            for (ToolDefinition def : tools) {
+                ObjectNode toolNode = toolsArray.addObject();
+                toolNode.put("type", "function");
+                ObjectNode func = toolNode.putObject("function");
+                func.put("name", def.name());
+                func.put("description", def.description());
+                func.set("parameters", def.parameters());
+            }
+        }
+
+        return objectMapper.writeValueAsString(root);
+    }
+
+    /**
+     * 将单条 Message 序列化为 LLM 协议的 JSON 节点
+     * <p>按 role 分三种序列化策略：
+     * <ul>
+     *   <li>{@code "user"} — 常规内容</li>
+     *   <li>{@code "assistant"} — 可能携带 {@code tool_calls}</li>
+     *   <li>{@code "tool"} — 工具调用结果，带 {@code tool_call_id}</li>
+     * </ul>
+     */
+    private ObjectNode serializeMessage(Message msg) {
+        ObjectNode node = objectMapper.createObjectNode();
+
+        switch (msg.role()) {
+            case "user" -> {
+                node.put("role", "user");
+                node.put("content", msg.content() != null ? msg.content() : "");
+            }
+            case "assistant" -> {
+                node.put("role", "assistant");
+                if (msg.isToolCall()) {
+                    // tool_call 消息：content=null, tool_calls=[{...}]
+                    node.putNull("content");
+                    ArrayNode tcs = node.putArray("tool_calls");
+                    ObjectNode tc = tcs.addObject();
+                    tc.put("id", msg.toolCallId());
+                    tc.put("type", "function");
+                    ObjectNode func = tc.putObject("function");
+                    func.put("name", msg.toolName());
+                    func.put("arguments", msg.content());
+                } else {
+                    node.put("content", msg.content() != null ? msg.content() : "");
+                }
+            }
+            case "tool" -> {
+                node.put("role", "tool");
+                node.put("content", msg.content() != null ? msg.content() : "");
+                node.put("tool_call_id", msg.toolCallId());
+            }
+            default -> {
+                // 旧格式兼容（如 media 等自定义角色）
+                node.put("role", msg.role());
+                node.put("content", msg.content() != null ? msg.content() : "");
+            }
+        }
+        return node;
+    }
+
+    /**
+     * 解析 LLM 响应，支持 tool_calls
+     */
+    private LLMResponse parseStructuredResponse(String responseBody) throws Exception {
+        JsonNode root = objectMapper.readTree(responseBody);
+        JsonNode choices = root.get("choices");
+        if (choices == null || !choices.isArray() || choices.size() == 0) {
+            log.warn("LLM 响应无 choices: {}", responseBody);
+            return null;
+        }
+
+        JsonNode message = choices.get(0).get("message");
+        if (message == null) {
+            log.warn("LLM 响应无 message: {}", responseBody);
+            return null;
+        }
+
+        String finishReason = choices.get(0).has("finish_reason")
+                ? choices.get(0).get("finish_reason").asText() : "stop";
+
+        // content（tool_calls 时可能为 null）
+        String content = message.has("content") && !message.get("content").isNull()
+                ? message.get("content").asText() : null;
+
+        // tool_calls
+        List<LLMResponse.ToolCall> toolCalls = new ArrayList<>();
+        JsonNode tcs = message.get("tool_calls");
+        if (tcs != null && tcs.isArray()) {
+            for (JsonNode tc : tcs) {
+                JsonNode func = tc.get("function");
+                if (func != null) {
+                    toolCalls.add(new LLMResponse.ToolCall(
+                            tc.get("id").asText(),
+                            tc.has("type") ? tc.get("type").asText() : "function",
+                            func.get("name").asText(),
+                            func.get("arguments").asText()));
+                }
+            }
+        }
+
+        return new LLMResponse(content, toolCalls, finishReason);
     }
 }

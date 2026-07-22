@@ -1,5 +1,8 @@
 package com.youkeda.exercise.claw.agent.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
@@ -20,10 +23,10 @@ import java.util.List;
  * 图片生成工具
  *
  * 封装 ImageGenerationService，结合 LLM 上下文理解，同时作为 Tool 和 WechatMessageHandler 暴露。
- * 启动时自动注册到 ToolRegistry。
+ * 启动时自动注册到 ToolRegistry 和 LLMFunctionRegistry。
  */
 @Component
-public class ImageGenerationTool implements Tool, WechatMessageHandler {
+public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunction {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationTool.class);
     private static final String FALLBACK_REPLY = "抱歉，图片生成失败，请稍后再试。";
@@ -41,22 +44,29 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler {
     private final ContextStore contextStore;
     private final LLMClient llmClient;
     private final ToolRegistry toolRegistry;
+    private final LLMFunctionRegistry llmFunctionRegistry;
+    private final ObjectMapper objectMapper;
 
     public ImageGenerationTool(ImageGenerationService imageGenerationService,
                                 ImageClient imageClient,
                                 ContextStore contextStore,
                                 LLMClient llmClient,
-                                ToolRegistry toolRegistry) {
+                                ToolRegistry toolRegistry,
+                                LLMFunctionRegistry llmFunctionRegistry,
+                                ObjectMapper objectMapper) {
         this.imageGenerationService = imageGenerationService;
         this.imageClient = imageClient;
         this.contextStore = contextStore;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
+        this.llmFunctionRegistry = llmFunctionRegistry;
+        this.objectMapper = objectMapper;
     }
 
     @PostConstruct
     public void init() {
         toolRegistry.register(this);
+        llmFunctionRegistry.register(this);
     }
 
     @Override
@@ -87,6 +97,65 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler {
 
         contextStore.append(context.getUserId(), "assistant", "[图片]", null, null, imageUrl);
         return "已为您生成图片：" + imageUrl;
+    }
+
+    // ==================== LLMFunction ====================
+
+    @Override
+    public String getName() {
+        return "image_generate";
+    }
+
+    @Override
+    public String getDescription() {
+        return "根据文字描述生成图片，支持各种风格，如写实、卡通、水墨画等。用户要求画图、生成图片时调用此工具";
+    }
+
+    @Override
+    public JsonNode getParameters() {
+        ObjectNode params = objectMapper.createObjectNode();
+        params.put("type", "object");
+
+        ObjectNode properties = params.putObject("properties");
+        ObjectNode prompt = properties.putObject("prompt");
+        prompt.put("type", "string");
+        prompt.put("description", "图片内容描述，越详细越好，包含主体、场景、风格、色彩等");
+
+        ObjectNode style = properties.putObject("style");
+        style.put("type", "string");
+        style.put("description", "图片风格，可选：写实、卡通、水墨、油画、素描等");
+        style.put("enum", objectMapper.createArrayNode()
+                .add("写实").add("卡通").add("水墨").add("油画").add("素描"));
+
+        params.putArray("required").add("prompt");
+
+        return params;
+    }
+
+    @Override
+    public String execute(String argumentsJson) {
+        try {
+            JsonNode args = objectMapper.readTree(argumentsJson);
+            JsonNode promptNode = args.get("prompt");
+            if (promptNode == null) {
+                return "{\"error\": \"缺少必填参数: prompt\"}";
+            }
+
+            String prompt = promptNode.asText();
+            log.info("ImageGenerationTool LLM调用 | prompt={}", prompt);
+
+            String imageUrl = imageGenerationService.generate(prompt);
+            if (imageUrl == null) {
+                return "{\"error\": \"图片生成失败\"}";
+            }
+
+            log.info("图片生成成功 | url={}", imageUrl);
+            return "{\"imageUrl\": \"" + imageUrl + "\", \"description\": \"已为您生成图片: " + prompt + "\"}";
+
+        } catch (Exception e) {
+            log.error("ImageGenerationTool LLM执行失败 | args={} | error={}", argumentsJson, e.getMessage());
+            return "{\"error\": \"" + e.getMessage().replace("\"", "'") + "\"}";
+        }
     }
 
     @Override

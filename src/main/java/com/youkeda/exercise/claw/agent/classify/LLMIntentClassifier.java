@@ -7,8 +7,12 @@ import org.springframework.stereotype.Component;
 /**
  * 基于 LLM 的意图分类器实现
  *
- * 调用已有 LLMClient，通过特定分类 Prompt 判断用户意图
+ * <p><b>已弃用</b>：自纯工具调用模式后不再使用。所有 TEXT 消息由
+ * {@link com.youkeda.exercise.claw.agent.ReActAgentExecutor} 通过 LLM Function Calling 自主路由。
+ *
+ * <p>保留仅作日志/降级参考，不再被 {@code MessageRouter} 调用。
  */
+@Deprecated
 @Slf4j
 @Component
 public class LLMIntentClassifier implements IntentClassifier {
