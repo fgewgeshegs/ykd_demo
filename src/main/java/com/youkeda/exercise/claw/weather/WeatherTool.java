@@ -6,7 +6,8 @@ import com.youkeda.exercise.claw.ClawException;
 import com.youkeda.exercise.claw.common.HttpClientUtil;
 import com.youkeda.exercise.claw.weather.WeatherConfig;
 import com.youkeda.exercise.claw.weather.WeatherResponse;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
@@ -16,9 +17,10 @@ import java.nio.charset.StandardCharsets;
  * 天气查询工具
  * 调用外部天气 API 获取天气信息
  */
-@Slf4j
 @Component
 public class WeatherTool {
+
+    private static final Logger log = LoggerFactory.getLogger(WeatherTool.class);
 
     private final WeatherConfig config;
     private final HttpClientUtil httpClient;

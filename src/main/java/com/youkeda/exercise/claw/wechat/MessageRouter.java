@@ -8,7 +8,8 @@ import com.youkeda.exercise.claw.agent.tool.VoiceTool;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,9 +22,10 @@ import org.springframework.stereotype.Component;
  *
  * 不包含业务逻辑，仅负责路由分发
  */
-@Slf4j
 @Component
 public class MessageRouter {
+
+    private static final Logger log = LoggerFactory.getLogger(MessageRouter.class);
 
     private final ChatTool chatTool;
     private final VisionTool visionTool;

@@ -3,7 +3,8 @@ package com.youkeda.exercise.claw.ai.file;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -34,9 +35,10 @@ import org.apache.fontbox.ttf.TrueTypeFont;
  * PDF 依赖 PDFBox 2.0.31，DOCX 依赖 Apache POI 5.2.5
  * （均由 tika-parsers-standard-package 间接引入）
  */
-@Slf4j
 @Service
 public class FileGenerationService {
+
+    private static final Logger log = LoggerFactory.getLogger(FileGenerationService.class);
 
     private static final int MAX_HISTORY = 20;
 

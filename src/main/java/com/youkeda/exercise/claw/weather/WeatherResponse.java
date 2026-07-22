@@ -1,12 +1,9 @@
 package com.youkeda.exercise.claw.weather;
 
-import lombok.Data;
-
 /**
  * 天气响应数据模型
  * 封装从天气 API 获取的天气信息
  */
-@Data
 public class WeatherResponse {
 
     private String city;
@@ -30,5 +27,37 @@ public class WeatherResponse {
                "天气：" + weather + "\n" +
                "温度：" + Math.round(temperature) + "℃\n" +
                "湿度：" + humidity + "%";
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getWeather() {
+        return weather;
+    }
+
+    public void setWeather(String weather) {
+        this.weather = weather;
+    }
+
+    public double getTemperature() {
+        return temperature;
+    }
+
+    public void setTemperature(double temperature) {
+        this.temperature = temperature;
+    }
+
+    public int getHumidity() {
+        return humidity;
+    }
+
+    public void setHumidity(int humidity) {
+        this.humidity = humidity;
     }
 }

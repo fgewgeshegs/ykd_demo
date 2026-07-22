@@ -8,7 +8,8 @@ import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Base64;
@@ -24,9 +25,10 @@ import java.util.List;
  *
  * 实现 WechatMessageHandler 而非 Tool，因 FILE 是消息类型而非意图。
  */
-@Slf4j
 @Component
 public class FileTool implements WechatMessageHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(FileTool.class);
 
     private static final String FALLBACK_REPLY = "抱歉，我暂时无法处理这个文件，请稍后再试。";
     private static final String UNSUPPORTED_FORMAT_REPLY =

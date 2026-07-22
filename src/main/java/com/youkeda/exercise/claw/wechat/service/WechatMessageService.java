@@ -10,7 +10,8 @@ import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,9 +25,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * - 将消息交由 MessageRouter 路由分发
  * - 根据 WechatReply 类型（TEXT/IMAGE/VOICE/FILE）调用对应的发送方法
  */
-@Slf4j
 @Service
 public class WechatMessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(WechatMessageService.class);
 
     private final WechatILinkClient wechatClient;
     private final WechatProperties wechatProperties;

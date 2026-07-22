@@ -1,6 +1,5 @@
 package com.youkeda.exercise.claw.ai.file;
 
-import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -9,7 +8,6 @@ import org.springframework.stereotype.Component;
  *
  * 从 application.properties 读取 file.parse.* 前缀的配置
  */
-@Data
 @Component
 @ConfigurationProperties(prefix = "file.parse")
 public class FileParseProperties {
@@ -33,4 +31,36 @@ public class FileParseProperties {
      * 送给 VisionService 分析的内嵌图片最大数量
      */
     private int maxAnalyzedEmbeddedImages = 3;
+
+    public long getMaxFileSize() {
+        return maxFileSize;
+    }
+
+    public void setMaxFileSize(long maxFileSize) {
+        this.maxFileSize = maxFileSize;
+    }
+
+    public int getMaxTextLength() {
+        return maxTextLength;
+    }
+
+    public void setMaxTextLength(int maxTextLength) {
+        this.maxTextLength = maxTextLength;
+    }
+
+    public int getMaxEmbeddedImages() {
+        return maxEmbeddedImages;
+    }
+
+    public void setMaxEmbeddedImages(int maxEmbeddedImages) {
+        this.maxEmbeddedImages = maxEmbeddedImages;
+    }
+
+    public int getMaxAnalyzedEmbeddedImages() {
+        return maxAnalyzedEmbeddedImages;
+    }
+
+    public void setMaxAnalyzedEmbeddedImages(int maxAnalyzedEmbeddedImages) {
+        this.maxAnalyzedEmbeddedImages = maxAnalyzedEmbeddedImages;
+    }
 }

@@ -21,32 +21,22 @@ package com.youkeda.exercise.claw.agent.memory;
  * @param mediaUrl          媒体 URL（图片时有值）
  * @param toolCallId        工具调用 ID（assistant 带 tool_calls 时 / tool 角色时使用）
  * @param toolName          函数名（assistant 带 tool_calls 时使用）
- * @param reasoningContent  DeepSeek 深度思考模式推理过程（assistant 消息时使用，需原样回传）
  */
 public record Message(String role, String content,
                        String mediaEncryptParam, String mediaAesKey,
                        String mediaUrl,
-                       String toolCallId, String toolName,
-                       String reasoningContent) {
+                       String toolCallId, String toolName) {
 
     /** 纯文本消息 */
     public Message(String role, String content) {
-        this(role, content, null, null, null, null, null, null);
+        this(role, content, null, null, null, null, null);
     }
 
-    /** 带媒体附件的消息（向后兼容构造器） */
+    /** 带媒体附件的消息 */
     public Message(String role, String content,
                     String mediaEncryptParam, String mediaAesKey,
                     String mediaUrl) {
-        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, null, null, null);
-    }
-
-    /** 带工具调用信息的消息（tool_call / tool 角色，无 reasoningContent） */
-    public Message(String role, String content,
-                    String mediaEncryptParam, String mediaAesKey,
-                    String mediaUrl,
-                    String toolCallId, String toolName) {
-        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, toolCallId, toolName, null);
+        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, null, null);
     }
 
     /** 是否有媒体 CDN 参数 */

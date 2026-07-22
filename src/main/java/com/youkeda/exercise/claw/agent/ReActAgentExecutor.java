@@ -1,5 +1,8 @@
 package com.youkeda.exercise.claw.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
@@ -48,13 +51,16 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final LLMClient llmClient;
     private final LLMFunctionRegistry functionRegistry;
     private final ContextStore contextStore;
+    private final ObjectMapper objectMapper;
 
     public ReActAgentExecutor(LLMClient llmClient,
                                LLMFunctionRegistry functionRegistry,
-                               ContextStore contextStore) {
+                               ContextStore contextStore,
+                               ObjectMapper objectMapper) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -91,19 +97,15 @@ public class ReActAgentExecutor implements AgentExecutor {
                 return reply;
             }
 
-            // 处理本轮所有 tool_calls
-            String roundReasoningContent = response.getReasoningContent();
-            for (LLMResponse.ToolCall tc : response.getToolCalls()) {
+            // Step 1: 先执行本轮所有工具，收集结果
+            List<LLMResponse.ToolCall> toolCalls = response.getToolCalls();
+            List<String> toolResults = new ArrayList<>();
+            for (LLMResponse.ToolCall tc : toolCalls) {
                 log.info("工具调用 | name={} | args={} | id={}",
                         tc.name(), tc.arguments(), tc.id());
 
-                // 2a. 追加 assistant 的 tool_call 消息（带 reasoning_content 以便 DeepSeek 深度思考回传）
-                messages.add(new Message("assistant", tc.arguments(),
-                        null, null, null, tc.id(), tc.name(), roundReasoningContent));
-
-                // 2b. 查找并执行函数
-                String result;
                 LLMFunction fn = functionRegistry.find(tc.name());
+                String result;
                 if (fn == null) {
                     log.warn("未找到函数: {}", tc.name());
                     result = "{\"error\":\"未知工具: " + tc.name() + "\"}";
@@ -111,10 +113,49 @@ public class ReActAgentExecutor implements AgentExecutor {
                     result = fn.execute(tc.arguments());
                     log.info("工具执行完成 | name={} | result={}", tc.name(), truncate(result, 200));
                 }
+                toolResults.add(result);
+            }
 
-                // 2c. 追加 tool 结果消息
-                messages.add(new Message("tool", result,
-                        null, null, null, tc.id(), null));
+            // Step 2: 添加 ONE 条 assistant 消息（含本轮所有 tool_calls）
+            if (toolCalls.size() == 1) {
+                // 单 tool_call — 原有格式
+                LLMResponse.ToolCall tc = toolCalls.get(0);
+                messages.add(new Message("assistant", tc.arguments(),
+                        null, null, null, tc.id(), tc.name()));
+            } else {
+                // 多 tool_call — 合并为一条 assistant 消息，符合 OpenAI 并行调用规范
+                StringBuilder ids = new StringBuilder();
+                StringBuilder names = new StringBuilder();
+                ArrayNode argsArray = objectMapper.createArrayNode();
+                for (LLMResponse.ToolCall tc : toolCalls) {
+                    if (ids.length() > 0) ids.append(",");
+                    ids.append(tc.id());
+                    if (names.length() > 0) names.append(",");
+                    names.append(tc.name());
+                    try {
+                        argsArray.add(objectMapper.readTree(tc.arguments()));
+                    } catch (Exception e) {
+                        argsArray.add(tc.arguments());
+                    }
+                }
+                String combinedArgs;
+                try {
+                    combinedArgs = objectMapper.writeValueAsString(argsArray);
+                } catch (Exception e) {
+                    // 序列化失败时用法 fallback
+                    combinedArgs = "[]";
+                    log.warn("多 tool_call 参数序列化失败", e);
+                }
+                messages.add(new Message("assistant", combinedArgs,
+                        null, null, null, ids.toString(), names.toString()));
+                log.info("合并 {} 个并行工具调用 | ids={} | names={}",
+                        toolCalls.size(), ids, names);
+            }
+
+            // Step 3: 添加所有 tool 结果消息
+            for (int i = 0; i < toolCalls.size(); i++) {
+                messages.add(new Message("tool", toolResults.get(i),
+                        null, null, null, toolCalls.get(i).id(), null));
             }
             // 继续下一轮，让 LLM 基于工具结果生成最终回复
         }

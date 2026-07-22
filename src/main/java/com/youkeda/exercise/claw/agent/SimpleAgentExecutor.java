@@ -4,7 +4,8 @@ import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,9 +19,10 @@ import org.springframework.stereotype.Component;
  *   → IntentAgentExecutor（加入 Planner 替换 IntentClassifier）
  *     → ReActAgentExecutor（Planner → ToolRegistry → Tool 调用循环）
  */
-@Slf4j
 @Component
 public class SimpleAgentExecutor implements AgentExecutor {
+
+    private static final Logger log = LoggerFactory.getLogger(SimpleAgentExecutor.class);
 
     private final MessageRouter messageRouter;
 

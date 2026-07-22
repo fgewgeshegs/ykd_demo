@@ -1,13 +1,11 @@
 package com.youkeda.exercise.claw.agent.memory;
 
-import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
  * Redis 上下文配置
  */
-@Data
 @Component
 @ConfigurationProperties(prefix = "context.redis")
 public class RedisContextProperties {
@@ -20,4 +18,28 @@ public class RedisContextProperties {
 
     /** 单用户最大消息条数 */
     private int maxMessages = 50;
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public int getTtlDays() {
+        return ttlDays;
+    }
+
+    public void setTtlDays(int ttlDays) {
+        this.ttlDays = ttlDays;
+    }
+
+    public int getMaxMessages() {
+        return maxMessages;
+    }
+
+    public void setMaxMessages(int maxMessages) {
+        this.maxMessages = maxMessages;
+    }
 }

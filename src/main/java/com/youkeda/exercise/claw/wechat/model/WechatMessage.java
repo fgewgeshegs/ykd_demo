@@ -1,13 +1,10 @@
 package com.youkeda.exercise.claw.wechat.model;
 
-import lombok.Data;
-
 /**
  * 微信消息模型
  *
  * 统一封装从微信接收到的各类消息，供 MessageHandler 处理
  */
-@Data
 public class WechatMessage {
 
     /**
@@ -103,4 +100,148 @@ public class WechatMessage {
      * 文件大小（字符串形式，如 "1024"）
      */
     private String fileLen;
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+
+    public MessageType getType() {
+        return type;
+    }
+
+    public void setType(MessageType type) {
+        this.type = type;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public String getEncryptQueryParam() {
+        return encryptQueryParam;
+    }
+
+    public void setEncryptQueryParam(String encryptQueryParam) {
+        this.encryptQueryParam = encryptQueryParam;
+    }
+
+    public String getAesKey() {
+        return aesKey;
+    }
+
+    public void setAesKey(String aesKey) {
+        this.aesKey = aesKey;
+    }
+
+    public String getContextToken() {
+        return contextToken;
+    }
+
+    public void setContextToken(String contextToken) {
+        this.contextToken = contextToken;
+    }
+
+    public String getVoiceText() {
+        return voiceText;
+    }
+
+    public void setVoiceText(String voiceText) {
+        this.voiceText = voiceText;
+    }
+
+    public String getVoiceEncryptQueryParam() {
+        return voiceEncryptQueryParam;
+    }
+
+    public void setVoiceEncryptQueryParam(String voiceEncryptQueryParam) {
+        this.voiceEncryptQueryParam = voiceEncryptQueryParam;
+    }
+
+    public String getVoiceAesKey() {
+        return voiceAesKey;
+    }
+
+    public void setVoiceAesKey(String voiceAesKey) {
+        this.voiceAesKey = voiceAesKey;
+    }
+
+    public Integer getPlaytime() {
+        return playtime;
+    }
+
+    public void setPlaytime(Integer playtime) {
+        this.playtime = playtime;
+    }
+
+    public Integer getEncodeType() {
+        return encodeType;
+    }
+
+    public void setEncodeType(Integer encodeType) {
+        this.encodeType = encodeType;
+    }
+
+    public Integer getVoiceSampleRate() {
+        return voiceSampleRate;
+    }
+
+    public void setVoiceSampleRate(Integer voiceSampleRate) {
+        this.voiceSampleRate = voiceSampleRate;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+
+    public String getFileEncryptQueryParam() {
+        return fileEncryptQueryParam;
+    }
+
+    public void setFileEncryptQueryParam(String fileEncryptQueryParam) {
+        this.fileEncryptQueryParam = fileEncryptQueryParam;
+    }
+
+    public String getFileAesKey() {
+        return fileAesKey;
+    }
+
+    public void setFileAesKey(String fileAesKey) {
+        this.fileAesKey = fileAesKey;
+    }
+
+    public String getFileMd5() {
+        return fileMd5;
+    }
+
+    public void setFileMd5(String fileMd5) {
+        this.fileMd5 = fileMd5;
+    }
+
+    public String getFileLen() {
+        return fileLen;
+    }
+
+    public void setFileLen(String fileLen) {
+        this.fileLen = fileLen;
+    }
 }

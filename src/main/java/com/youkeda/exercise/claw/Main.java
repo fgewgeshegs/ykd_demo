@@ -3,7 +3,8 @@ package com.youkeda.exercise.claw;
 import com.youkeda.exercise.claw.command.CommandHandler;
 import com.youkeda.exercise.claw.ClawException;
 import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -16,9 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * 负责：控制台输入接收、命令分发、异常统一处理
  */
-@Slf4j
 @Component
 public class Main {
+
+    private static final Logger log = LoggerFactory.getLogger(Main.class);
 
     private final Map<String, CommandHandler> commandHandlers = new ConcurrentHashMap<>();
     private final List<CommandHandler> handlerList;

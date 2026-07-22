@@ -1,6 +1,5 @@
 package com.youkeda.exercise.claw.ai.llm;
 
-import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -10,7 +9,6 @@ import org.springframework.stereotype.Component;
  * 从 application.properties 读取 voice.* 前缀的配置
  * ASR 使用 DashScope Paraformer，TTS 使用 DashScope CosyVoice
  */
-@Data
 @Component
 @ConfigurationProperties(prefix = "voice")
 public class VoiceProperties {
@@ -49,4 +47,60 @@ public class VoiceProperties {
      * 是否启用 TTS 语音回复（关闭时语音消息以文本回复）
      */
     private boolean ttsEnabled = true;
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    public String getAsrBaseUrl() {
+        return asrBaseUrl;
+    }
+
+    public void setAsrBaseUrl(String asrBaseUrl) {
+        this.asrBaseUrl = asrBaseUrl;
+    }
+
+    public String getAsrModel() {
+        return asrModel;
+    }
+
+    public void setAsrModel(String asrModel) {
+        this.asrModel = asrModel;
+    }
+
+    public String getTtsBaseUrl() {
+        return ttsBaseUrl;
+    }
+
+    public void setTtsBaseUrl(String ttsBaseUrl) {
+        this.ttsBaseUrl = ttsBaseUrl;
+    }
+
+    public String getTtsModel() {
+        return ttsModel;
+    }
+
+    public void setTtsModel(String ttsModel) {
+        this.ttsModel = ttsModel;
+    }
+
+    public String getTtsVoice() {
+        return ttsVoice;
+    }
+
+    public void setTtsVoice(String ttsVoice) {
+        this.ttsVoice = ttsVoice;
+    }
+
+    public boolean isTtsEnabled() {
+        return ttsEnabled;
+    }
+
+    public void setTtsEnabled(boolean ttsEnabled) {
+        this.ttsEnabled = ttsEnabled;
+    }
 }

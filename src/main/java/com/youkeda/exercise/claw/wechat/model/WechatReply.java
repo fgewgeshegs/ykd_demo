@@ -1,16 +1,11 @@
 package com.youkeda.exercise.claw.wechat.model;
 
-import lombok.Data;
-import lombok.experimental.Accessors;
-
 /**
  * 微信回复模型
  *
  * 封装对微信消息的回复内容，支持 TEXT、IMAGE 和 FILE 三种回复类型。
  * 取代之前所有 Handler 直接返回 String 的方式，使回复内容可以携带图片或文件字节。
  */
-@Data
-@Accessors(chain = true)
 public class WechatReply {
 
     /**
@@ -74,5 +69,59 @@ public class WechatReply {
         return (type == MessageType.TEXT && text != null && !text.isEmpty())
                 || (type == MessageType.IMAGE && imageBytes != null && imageBytes.length > 0)
                 || (type == MessageType.FILE && fileBytes != null && fileBytes.length > 0);
+    }
+
+    public MessageType getType() {
+        return type;
+    }
+
+    public WechatReply setType(MessageType type) {
+        this.type = type;
+        return this;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public WechatReply setText(String text) {
+        this.text = text;
+        return this;
+    }
+
+    public byte[] getImageBytes() {
+        return imageBytes;
+    }
+
+    public WechatReply setImageBytes(byte[] imageBytes) {
+        this.imageBytes = imageBytes;
+        return this;
+    }
+
+    public byte[] getFileBytes() {
+        return fileBytes;
+    }
+
+    public WechatReply setFileBytes(byte[] fileBytes) {
+        this.fileBytes = fileBytes;
+        return this;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public WechatReply setFileName(String fileName) {
+        this.fileName = fileName;
+        return this;
+    }
+
+    public String getFileDescription() {
+        return fileDescription;
+    }
+
+    public WechatReply setFileDescription(String fileDescription) {
+        this.fileDescription = fileDescription;
+        return this;
     }
 }

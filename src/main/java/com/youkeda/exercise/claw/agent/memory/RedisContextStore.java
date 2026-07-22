@@ -2,7 +2,8 @@ package com.youkeda.exercise.claw.agent.memory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -18,10 +19,11 @@ import java.util.List;
  * - Key: ctx:{userId}:msgs → LIST，每个元素是 Message 的 JSON
  * - 使用 RPUSH 追加、LTRIM 限长、EXPIRE 设 TTL
  */
-@Slf4j
 @Component
 @ConditionalOnProperty(name = "context.redis.enabled", havingValue = "true")
 public class RedisContextStore implements ContextStore {
+
+    private static final Logger log = LoggerFactory.getLogger(RedisContextStore.class);
 
     private static final String KEY_PREFIX = "ctx:";
     private static final String KEY_SUFFIX = ":msgs";
