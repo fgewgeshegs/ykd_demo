@@ -76,7 +76,11 @@ public class VisionClient {
                     HttpResponse.BodyHandlers.ofString());
 
             String reply = parseResponse(response.body());
-            log.info("图片分析成功");
+            if (reply != null && !reply.isEmpty()) {
+                log.info("图片分析成功");
+            } else {
+                log.warn("视觉模型返回内容为空");
+            }
             return reply;
 
         } catch (Exception e) {
@@ -147,7 +151,8 @@ public class VisionClient {
             if (message != null) {
                 JsonNode content = message.get("content");
                 if (content != null) {
-                    return content.asText();
+                    String text = content.asText();
+                    return text.isEmpty() ? null : text;
                 }
             }
         }

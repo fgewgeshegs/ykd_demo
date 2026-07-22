@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.common.PromptLoader;
+import com.youkeda.exercise.claw.agent.memory.Message;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 
 /**
  * LLM 客户端
@@ -50,35 +52,59 @@ public class LLMClient {
     }
 
     /**
-     * 调用大模型生成回复
+     * 调用大模型生成回复（无历史消息，单轮对话）
      *
      * @param userId 用户标识（用于日志）
      * @param text   用户消息
      * @return 模型回复内容，调用失败时返回 null
      */
     public String chat(String userId, String text) {
-        return callLLM(systemPrompt, text);
+        return chat(userId, text, List.of());
     }
 
     /**
-     * 使用自定义系统提示词调用大模型
+     * 调用大模型生成回复（带历史消息，多轮对话）
+     *
+     * @param userId  用户标识（用于日志）
+     * @param text    用户消息
+     * @param history 历史消息列表（按时间正序）
+     * @return 模型回复内容，调用失败时返回 null
+     */
+    public String chat(String userId, String text, List<Message> history) {
+        return callLLM(systemPrompt, text, history);
+    }
+
+    /**
+     * 使用自定义系统提示词调用大模型（带历史消息）
+     *
+     * @param systemPrompt 自定义系统提示词
+     * @param text         用户消息
+     * @param history      历史消息列表（按时间正序），为空时等价于无历史调用
+     * @return 模型回复内容，调用失败时返回 null
+     */
+    public String chatWithSystemPrompt(String systemPrompt, String text, List<Message> history) {
+        return callLLM(systemPrompt, text, history != null ? history : List.of());
+    }
+
+    /**
+     * 使用自定义系统提示词调用大模型（无历史消息）
      *
      * @param systemPrompt 自定义系统提示词
      * @param text         用户消息
      * @return 模型回复内容，调用失败时返回 null
      */
     public String chatWithSystemPrompt(String systemPrompt, String text) {
-        return callLLM(systemPrompt, text);
+        return callLLM(systemPrompt, text, List.of());
     }
 
     /**
      * 调用大模型（内部方法）
      */
-    private String callLLM(String systemPrompt, String text) {
+    private String callLLM(String systemPrompt, String text, List<Message> history) {
         try {
             // 1. 构建请求体
-            String requestBody = buildRequestBody(systemPrompt, text);
-            log.info("调用LLM，message={}", text);
+            String requestBody = buildRequestBody(systemPrompt, text, history);
+            log.info("调用LLM，message={}，historySize={}", text, history.size());
 
             // 2. 发送 HTTP 请求
             String url = properties.getBaseUrl() + "/chat/completions";
@@ -107,7 +133,7 @@ public class LLMClient {
     /**
      * 构建请求 JSON 体
      */
-    private String buildRequestBody(String systemPrompt, String text) throws Exception {
+    private String buildRequestBody(String systemPrompt, String text, List<Message> history) throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", properties.getModel());
 
@@ -118,7 +144,14 @@ public class LLMClient {
         systemMsg.put("role", "system");
         systemMsg.put("content", systemPrompt);
 
-        // user message
+        // history messages
+        for (Message msg : history) {
+            ObjectNode historyMsg = messages.addObject();
+            historyMsg.put("role", msg.role());
+            historyMsg.put("content", msg.content());
+        }
+
+        // current user message
         ObjectNode userMsg = messages.addObject();
         userMsg.put("role", "user");
         userMsg.put("content", text);

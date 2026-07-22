@@ -2,10 +2,10 @@ package com.youkeda.exercise.claw.wechat.client;
 
 import com.github.wechat.ilink.sdk.ILinkClient;
 import com.github.wechat.ilink.sdk.core.config.ILinkConfig;
-import com.github.wechat.ilink.sdk.core.listener.OnLoginListener;
-import com.github.wechat.ilink.sdk.core.login.LoginContext;
 import com.github.wechat.ilink.sdk.core.model.CDNMedia;
+import com.github.wechat.ilink.sdk.core.model.MessageItem;
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
+import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -13,6 +13,10 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -22,18 +26,21 @@ import java.util.concurrent.CompletableFuture;
  *
  * 职责：
  * - SDK 初始化和登录（Builder 模式）
- * - 消息收发（getUpdates / sendText / sendImage / sendVoice）
- * - 媒体下载（通过 CDNMedia 对象）
+ * - 消息收发（getUpdates / sendText / sendImage / sendVoice / sendFile）
+ * - 媒体下载（通过 CDNMedia 对象或 MessageItem）
+ * - 上下文保存（通过 ContextStore 保存用户消息）
  *
  * 设计原则：
- * - 媒体发送（语音/图片）异步执行，避免阻塞轮询线程
+ * - 媒体发送（语音/图片/文件）异步执行，避免阻塞轮询线程
  * - 发送前先 startTyping 显示"正在输入"
+ * - SDK 内置心跳关闭（和 getUpdates 共用一个锁，会抢锁丢消息）
  */
 @Slf4j
 @Component
 public class WechatILinkClient {
 
     private final WechatProperties wechatProperties;
+    private final ContextStore contextStore;
 
     private ILinkClient client;
 
@@ -42,8 +49,9 @@ public class WechatILinkClient {
 
     private static final long LOGIN_TIMEOUT_MS = 120_000;
 
-    public WechatILinkClient(WechatProperties wechatProperties) {
+    public WechatILinkClient(WechatProperties wechatProperties, ContextStore contextStore) {
         this.wechatProperties = wechatProperties;
+        this.contextStore = contextStore;
     }
 
     @PostConstruct
@@ -55,54 +63,45 @@ public class WechatILinkClient {
 
         log.info("微信 iLink 客户端初始化开始 (SDK v2.3.3)");
 
-        // 1. 构建 SDK 配置
+        // 关闭 SDK 内置心跳（和 getUpdates 共用一个锁会冲突），自己轮询
         ILinkConfig config = ILinkConfig.builder()
-                .loginTimeoutMs(LOGIN_TIMEOUT_MS)
-                .heartbeatEnabled(true)
+                .heartbeatEnabled(false)
                 .autoReconnectEnabled(true)
                 .reconnectMaxAttempts(5)
                 .build();
 
-        // 2. 构建客户端
         client = ILinkClient.builder()
                 .config(config)
-                .onLogin(new OnLoginListener() {
-                    @Override
-                    public void onLoginSuccess(LoginContext context) {
-                        loggedIn = true;
-                        log.info("微信登录成功 | botId={} | userId={}",
-                                context.getBotId(), context.getUserId());
-                    }
-
-                    @Override
-                    public void onLoginFailure(Throwable throwable) {
-                        log.error("微信登录失败 | error={}", throwable.getMessage());
-                    }
-                })
                 .build();
 
-        // 3. 异步执行登录
-        CompletableFuture.runAsync(this::login);
-    }
-
-    /**
-     * 扫码登录流程
-     */
-    private void login() {
-        try {
-            // executeLogin() 返回二维码内容（base64 图片）
-            String qrCode = client.executeLogin();
-            log.info("请扫码登录 | qrcode={}", qrCode);
-
-            // 等待登录完成
-            CompletableFuture<LoginContext> future = client.getLoginFuture();
-            LoginContext context = future.get();
-            loggedIn = true;
-            log.info("微信登录成功，开始监听消息 | botId={}", context.getBotId());
-
-        } catch (Exception e) {
-            log.error("微信登录过程中发生异常", e);
-        }
+        CompletableFuture.runAsync(() -> {
+            try {
+                String qrResult = client.executeLogin();
+                // executeLogin 返回二维码链接或 base64 图片
+                if (qrResult.startsWith("http")) {
+                    log.info("请扫码登录 → {}", qrResult);
+                } else {
+                    String qrBase64 = qrResult.contains(",") ? qrResult.substring(qrResult.indexOf(",") + 1) : qrResult;
+                    byte[] qrBytes = Base64.getDecoder().decode(qrBase64);
+                    Path qrFile = Path.of("qrcode.png");
+                    Files.write(qrFile, qrBytes);
+                    log.info("请扫码登录 → {}", qrFile.toAbsolutePath());
+                }
+                // 等待登录完成
+                long deadline = System.currentTimeMillis() + LOGIN_TIMEOUT_MS;
+                while (!client.isLoggedIn() && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(1000);
+                }
+                if (client.isLoggedIn()) {
+                    loggedIn = true;
+                    log.info("微信登录成功");
+                } else {
+                    log.error("微信登录超时");
+                }
+            } catch (Exception e) {
+                log.error("微信登录异常", e);
+            }
+        });
     }
 
     // ==================== 消息发送 ====================
@@ -137,93 +136,43 @@ public class WechatILinkClient {
 
     /**
      * 发送图片消息（异步，不阻塞轮询线程），发送前显示"正在输入"
+     * CDN 上传可能偶发 500，自动重试最多 2 次，重试耗尽后发送兜底文字
+     *
+     * @param textFallback 图片发送失败的兜底文字，为 null 则不降级
      */
-    public void sendImageMessage(String toUserId, byte[] imageBytes) {
+    public void sendImageMessage(String toUserId, byte[] imageBytes, String textFallback) {
         if (!checkReady()) return;
         try {
             client.startTyping(toUserId);
         } catch (Exception e) {
             log.warn("startTyping 失败 | to={}", toUserId);
         }
+        byte[] bytesCopy = imageBytes.clone();
         CompletableFuture.runAsync(() -> {
-            try {
-                client.sendImage(toUserId, imageBytes, "image.jpg", "");
-                log.info("发送图片消息成功 | to={} | size={} bytes", toUserId, imageBytes.length);
-            } catch (Exception e) {
-                log.error("发送图片消息失败 | to={} | error={}", toUserId, e.getMessage());
-            }
-        });
-    }
-
-    /**
-     * 发送语音消息（异步，不阻塞轮询线程），失败时自动降级为文字消息
-     *
-     * 发送前先显示"正在输入"。
-     * 使用 SDK 默认编码参数（AMR），实际音频格式由上传的字节决定。
-     *
-     * @param toUserId     接收方 userId
-     * @param voiceBytes   音频字节数据
-     * @param playtime     音频时长（毫秒）
-     * @param sampleRate   音频采样率（Hz）
-     * @param textFallback 语音发送失败的兜底文字，为 null 则不降级
-     */
-    public void sendVoiceMessage(String toUserId,
-                                  byte[] voiceBytes, int playtime, int sampleRate,
-                                  String textFallback) {
-        if (!checkReady()) return;
-
-        // 同步显示"正在输入"
-        try { client.startTyping(toUserId); } catch (Exception e) {
-            log.warn("startTyping 失败 | to={}", toUserId);
-        }
-
-        byte[] bytesCopy = voiceBytes.clone();
-        CompletableFuture.runAsync(() -> {
-            try {
-                log.info("异步发送语音 | to={} | size={} | playtime={}ms | sampleRate={}Hz",
-                        toUserId, bytesCopy.length, playtime, sampleRate);
-                client.sendVoice(toUserId, bytesCopy, "voice.mp3", playtime, sampleRate);
-                log.info("发送语音消息成功 | to={}", toUserId);
-            } catch (Exception e) {
-                log.error("发送语音消息失败 | to={} | error={}", toUserId, e.getMessage(), e);
-                if (textFallback != null && !textFallback.isEmpty()) {
-                    log.warn("语音发送失败，降级为文字消息 | to={}", toUserId);
-                    try { client.sendText(toUserId, textFallback); } catch (Exception ex) {
-                        log.error("降级文字发送也失败 | to={}", toUserId);
-                    }
-                }
-            }
-        });
-    }
-
-    /**
-     * 发送语音消息（完整参数，自定义编码），异步执行
-     */
-    public void sendVoiceMessage(String toUserId,
-                                  byte[] voiceBytes, int playtime, int sampleRate,
-                                  int encodeType, int bitsPerSample,
-                                  String textFallback) {
-        if (!checkReady()) return;
-
-        try { client.startTyping(toUserId); } catch (Exception e) {
-            log.warn("startTyping 失败 | to={}", toUserId);
-        }
-
-        byte[] bytesCopy = voiceBytes.clone();
-        CompletableFuture.runAsync(() -> {
-            try {
-                log.info("异步发送语音（完整参数）| to={} | size={} | playtime={}ms | encodeType={}",
-                        toUserId, bytesCopy.length, playtime, encodeType);
-                // 用 MP3 扩展名，encodeType 由调用方指定
-                client.sendVoice(toUserId, bytesCopy, "voice.mp3", playtime, sampleRate,
-                        null, encodeType, bitsPerSample, null);
-                log.info("发送语音消息成功（完整参数）| to={}", toUserId);
-            } catch (Exception e) {
-                log.error("发送语音消息失败 | to={} | error={}", toUserId, e.getMessage(), e);
-                if (textFallback != null && !textFallback.isEmpty()) {
-                    log.warn("语音发送失败，降级为文字消息 | to={}", toUserId);
-                    try { client.sendText(toUserId, textFallback); } catch (Exception ex) {
-                        log.error("降级文字发送也失败 | to={}", toUserId);
+            int maxRetries = 2;
+            for (int attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    client.sendImage(toUserId, bytesCopy, "image.jpg", "");
+                    log.info("发送图片消息成功 | to={} | size={} bytes", toUserId, bytesCopy.length);
+                    return;
+                } catch (Exception e) {
+                    if (attempt < maxRetries) {
+                        long delay = 1000L * (attempt + 1);
+                        log.warn("发送图片消息失败 (第{}/{})，{}ms后重试 | error={}",
+                                attempt + 1, maxRetries + 1, delay, e.getMessage());
+                        try { Thread.sleep(delay); } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    } else {
+                        log.error("发送图片消息失败，已达最大重试次数 | to={} | size={} | error={}",
+                                toUserId, bytesCopy.length, e.getMessage(), e);
+                        if (textFallback != null && !textFallback.isEmpty()) {
+                            log.warn("图片发送失败，降级为文字消息 | to={}", toUserId);
+                            try { client.sendText(toUserId, textFallback); } catch (Exception ex) {
+                                log.error("降级文字发送也失败 | to={}", toUserId);
+                            }
+                        }
                     }
                 }
             }
@@ -234,7 +183,6 @@ public class WechatILinkClient {
      * 发送文件消息（异步，不阻塞轮询线程），发送前显示"正在输入"
      *
      * SDK v2.3.3 支持直接发送文件（如 MP3、PDF 等）。
-     * 使用异步执行避免阻塞轮询线程。
      *
      * @param toUserId       接收方 userId
      * @param fileBytes      文件字节数据
@@ -303,6 +251,19 @@ public class WechatILinkClient {
         }
     }
 
+    /**
+     * 从 MessageItem 下载媒体（图片/语音/文件通用）
+     */
+    public byte[] downloadMediaFromMessageItem(MessageItem item) {
+        if (!checkReady()) return null;
+        try {
+            return client.downloadMediaFromMessageItem(item);
+        } catch (Exception e) {
+            log.error("媒体下载失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
     // ==================== 生命周期 ====================
 
     @PreDestroy
@@ -327,5 +288,4 @@ public class WechatILinkClient {
         }
         return true;
     }
-
 }

@@ -1,6 +1,7 @@
-package com.youkeda.exercise.claw.agent;
+package com.youkeda.exercise.claw.agent.tool;
 
-import com.youkeda.exercise.claw.ai.classifier.Intent;
+import com.youkeda.exercise.claw.agent.AgentContext;
+import com.youkeda.exercise.claw.agent.classify.Intent;
 
 /**
  * 工具接口
@@ -8,7 +9,7 @@ import com.youkeda.exercise.claw.ai.classifier.Intent;
  * Agent 体系中每个可调用的能力都是一个 Tool。
  * 未来 Planner 将通过 ToolRegistry 查找合适的 Tool 并调用。
  *
- * 当前实现示例：
+ * 当前实现：
  * - ChatTool（封装 ChatService）
  * - VisionTool（封装 VisionService）
  * - ImageGenerationTool（封装 ImageGenerationService）

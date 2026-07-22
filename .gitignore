@@ -42,9 +42,16 @@ build/
 ### Mac OS ###
 .DS_Store
 
+# 忽略项目参考文档（仅供 AI 参考，不应提交）
+CLAUDE-PROJECT-REFERENCE.md
+项目包结构整理方案.md
+
 # 忽略核心配置文件
 src/main/resources/application.properties
 
 # 忽略编译后的字节码及反编译产物（防止 .class 文件被误提交）
 *.class
 com/lth/
+
+# 忽略Claude的项目文档
+CLAUDE.md

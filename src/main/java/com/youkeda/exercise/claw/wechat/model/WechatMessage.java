@@ -76,4 +76,31 @@ public class WechatMessage {
      * 语音采样率（VOICE 类型时有效，新 SDK 新增字段）
      */
     private Integer voiceSampleRate;
+
+    // ========== 文件相关字段（FILE 类型时有效）==========
+
+    /**
+     * 文件名
+     */
+    private String fileName;
+
+    /**
+     * 文件 CDN 加密查询参数（下载文件用）
+     */
+    private String fileEncryptQueryParam;
+
+    /**
+     * 文件 CDN 解密密钥（下载文件用）
+     */
+    private String fileAesKey;
+
+    /**
+     * 文件 MD5
+     */
+    private String fileMd5;
+
+    /**
+     * 文件大小（字符串形式，如 "1024"）
+     */
+    private String fileLen;
 }

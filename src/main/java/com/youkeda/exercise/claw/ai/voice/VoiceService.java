@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.ai.voice;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.ai.classifier.Intent;
+import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.VoiceClient;
 import com.youkeda.exercise.claw.ai.llm.VoiceProperties;
@@ -110,9 +110,10 @@ public class VoiceService {
                 if (audioBytes != null && audioBytes.length > 0) {
                     int playtimeMs = voiceClient.parsePlaytime(audioBytes, text);
                     int sampleRate = voiceClient.parseSampleRate(audioBytes);
-                    log.info("TTS 成功 | text={} | size={} | playtime={}ms | sampleRate={}Hz",
-                            text, audioBytes.length, playtimeMs, sampleRate);
-                    return new VoiceSynthesisResult(audioBytes, playtimeMs, 4, sampleRate);
+                    String audioUrl = voiceClient.getLastTtsUrl();
+                    log.info("TTS 成功 | text={} | size={} | playtime={}ms | sampleRate={}Hz | url={}",
+                            text, audioBytes.length, playtimeMs, sampleRate, audioUrl);
+                    return new VoiceSynthesisResult(audioBytes, playtimeMs, 4, sampleRate, audioUrl);
                 }
                 log.warn("TTS 返回空音频");
                 return null;
@@ -237,5 +238,7 @@ public class VoiceService {
         private int encodeType;
         /** 音频采样率（Hz） */
         private int sampleRate;
+        /** 音频 URL（OSS 下载地址，可存上下文复用） */
+        private String audioUrl;
     }
 }

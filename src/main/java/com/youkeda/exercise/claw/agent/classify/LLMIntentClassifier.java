@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.classifier;
+package com.youkeda.exercise.claw.agent.classify;
 
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import lombok.extern.slf4j.Slf4j;
@@ -20,16 +20,24 @@ public class LLMIntentClassifier implements IntentClassifier {
      */
     private static final String CLASSIFICATION_PROMPT =
             "你是一个意图分类器。\n" +
-            "判断用户输入属于：\n" +
+            "判断用户输入属于以下哪一类：\n" +
             "\n" +
             "CHAT:\n" +
-            "普通聊天\n" +
+            "普通聊天、问答、问候、闲聊，不需要生成或分析图片。\n" +
             "\n" +
             "IMAGE_GENERATE:\n" +
-            "生成图片\n" +
+            "用户想要获取一张图片，包括：要求画图/生成图片/创作图片，或者要求看/展示/发某物的图片/照片/图。\n" +
+            "例如：画一只猫、生成一张风景图、我要看海豚的照片、发一张夕阳图、来张表情包。\n" +
             "\n" +
             "IMAGE_ANALYZE:\n" +
-            "分析图片\n" +
+            "用户要求分析/识别/描述一张已有的图片（通常是刚发过或对话中已有的图片）。\n" +
+            "\n" +
+            "VOICE_REPLY:\n" +
+            "用户明确要求用语音/声音回复，而不是文字气泡回复。例如：用语音回复、说给我听、读出来。\n" +
+            "\n" +
+            "FILE_GENERATE:\n" +
+            "用户要求生成文件（PDF/Word文档），包括：生成PDF、导出为Word/文档、保存为文件、生成报告/总结/文档等。\n" +
+            "例如：帮我把今天的对话总结成PDF、把聊天记录导出为Word文档、生成一份报告文件。\n" +
             "\n" +
             "VOICE_REPLY:\n" +
             "用户明确要求用语音/声音回复,而不是文字气泡回复。例如:用语音回复、说给我听。\n" +
@@ -92,6 +100,8 @@ public class LLMIntentClassifier implements IntentClassifier {
                 return Intent.IMAGE_ANALYZE;
             } else if (json.contains("\"VOICE_REPLY\"")) {
                 return Intent.VOICE_REPLY;
+            } else if (json.contains("\"FILE_GENERATE\"")) {
+                return Intent.FILE_GENERATE;
             } else if (json.contains("\"CHAT\"")) {
                 return Intent.CHAT;
             }

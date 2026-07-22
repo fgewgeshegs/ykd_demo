@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.classifier;
+package com.youkeda.exercise.claw.agent.classify;
 
 /**
  * 用户意图枚举
@@ -25,5 +25,10 @@ public enum Intent {
     /**
      * 语音消息要求语音回复
      */
-    VOICE_REPLY
+    VOICE_REPLY,
+
+    /**
+     * 用户要求生成 PDF 或 Word 文档文件
+     */
+    FILE_GENERATE
 }
