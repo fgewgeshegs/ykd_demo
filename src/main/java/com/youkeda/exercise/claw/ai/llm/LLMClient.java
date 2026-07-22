@@ -29,7 +29,7 @@ import java.util.List;
 @Component
 public class LLMClient {
 
-    private static final int TIMEOUT_SECONDS = 30;
+    private static final int TIMEOUT_SECONDS = 60;
     private static final String SYSTEM_PROMPT_PATH = "prompts/system-prompt.txt";
     private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手，一个智能AI助手。";
 
@@ -272,13 +272,13 @@ public class LLMClient {
             }
             case "assistant" -> {
                 node.put("role", "assistant");
-                // reasoning_content（DeepSeek 深度思考模式，必须原样回传）
-                if (msg.reasoningContent() != null) {
-                    node.put("reasoning_content", msg.reasoningContent());
-                }
                 if (msg.isToolCall()) {
                     // tool_call 消息：content=null, tool_calls=[{...}]
                     node.putNull("content");
+                    // DeepSeek 思考模式要求传回 reasoning_content
+                    if (msg.reasoningContent() != null) {
+                        node.put("reasoning_content", msg.reasoningContent());
+                    }
                     ArrayNode tcs = node.putArray("tool_calls");
                     ObjectNode tc = tcs.addObject();
                     tc.put("id", msg.toolCallId());

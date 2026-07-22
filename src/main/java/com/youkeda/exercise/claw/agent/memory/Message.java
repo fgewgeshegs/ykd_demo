@@ -41,7 +41,7 @@ public record Message(String role, String content,
         this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, null, null, null);
     }
 
-    /** 带工具调用信息的消息（tool_call / tool 角色，无 reasoningContent） */
+    /** 带 tool_calls 的 assistant 消息（含 reasoning_content） */
     public Message(String role, String content,
                     String mediaEncryptParam, String mediaAesKey,
                     String mediaUrl,

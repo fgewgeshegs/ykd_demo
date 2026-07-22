@@ -10,6 +10,20 @@ weather.api.url=https://api.weatherapi.com/v1/current.json?key={key}&q={city}&la
 weather.api.key=
 
 # ============================================
+# Web Search API Configuration — Tavily (https://tavily.com)
+# ============================================
+# Tavily 专为 AI Agent 设计：返回结构化结果 + AI 摘要 + 来源引用
+# 注册获取 API Key: https://app.tavily.com
+websearch.api.key=
+websearch.api.url=https://api.tavily.com/search
+# 搜索深度: basic(快速) / advanced(深入)
+websearch.api.search-depth=basic
+# AI 摘要: basic(简短) / advanced(详细)
+websearch.api.include-answer=basic
+websearch.api.max-results=5
+websearch.api.timeout=15
+
+# ============================================
 # WeChat iLink Configuration
 # ============================================
 wechat.ilink.enabled=true
