@@ -25,18 +25,27 @@ package com.youkeda.exercise.claw.agent.memory;
 public record Message(String role, String content,
                        String mediaEncryptParam, String mediaAesKey,
                        String mediaUrl,
-                       String toolCallId, String toolName) {
+                       String toolCallId, String toolName,
+                       String reasoningContent) {
 
     /** 纯文本消息 */
     public Message(String role, String content) {
-        this(role, content, null, null, null, null, null);
+        this(role, content, null, null, null, null, null, null);
     }
 
     /** 带媒体附件的消息（向后兼容构造器） */
     public Message(String role, String content,
                     String mediaEncryptParam, String mediaAesKey,
                     String mediaUrl) {
-        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, null, null);
+        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, null, null, null);
+    }
+
+    /** 带 tool_calls 的 assistant 消息（含 reasoning_content） */
+    public Message(String role, String content,
+                    String mediaEncryptParam, String mediaAesKey,
+                    String mediaUrl,
+                    String toolCallId, String toolName) {
+        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, toolCallId, toolName, null);
     }
 
     /** 是否有媒体 CDN 参数 */

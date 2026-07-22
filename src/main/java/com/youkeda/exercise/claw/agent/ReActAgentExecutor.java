@@ -41,7 +41,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private static final int MAX_HISTORY = 20;
 
     /** 工具调用循环最大轮次 */
-    private static final int MAX_ROUNDS = 5;
+    private static final int MAX_ROUNDS = 3;
 
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
 
@@ -96,9 +96,9 @@ public class ReActAgentExecutor implements AgentExecutor {
                 log.info("工具调用 | name={} | args={} | id={}",
                         tc.name(), tc.arguments(), tc.id());
 
-                // 2a. 追加 assistant 的 tool_call 消息
+                // 2a. 追加 assistant 的 tool_call 消息（含 reasoning_content）
                 messages.add(new Message("assistant", tc.arguments(),
-                        null, null, null, tc.id(), tc.name()));
+                        null, null, null, tc.id(), tc.name(), response.getReasoningContent()));
 
                 // 2b. 查找并执行函数
                 String result;
