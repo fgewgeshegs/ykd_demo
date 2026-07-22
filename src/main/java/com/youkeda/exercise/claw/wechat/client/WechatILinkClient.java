@@ -9,8 +9,8 @@ import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -35,19 +35,23 @@ import java.util.concurrent.CompletableFuture;
  * - 发送前先 startTyping 显示"正在输入"
  * - SDK 内置心跳关闭（和 getUpdates 共用一个锁，会抢锁丢消息）
  */
-@Slf4j
 @Component
 public class WechatILinkClient {
+
+    private static final Logger log = LoggerFactory.getLogger(WechatILinkClient.class);
 
     private final WechatProperties wechatProperties;
     private final ContextStore contextStore;
 
     private ILinkClient client;
 
-    @Getter
     private volatile boolean loggedIn = false;
 
     private static final long LOGIN_TIMEOUT_MS = 120_000;
+
+    public boolean isLoggedIn() {
+        return loggedIn;
+    }
 
     public WechatILinkClient(WechatProperties wechatProperties, ContextStore contextStore) {
         this.wechatProperties = wechatProperties;

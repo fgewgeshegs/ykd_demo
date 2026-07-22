@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.voice.VoiceClientException;
-import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -25,9 +25,10 @@ import java.util.UUID;
  * - ASR（语音识别）：Paraformer，文件转录模式
  * - TTS（语音合成）：CosyVoice，非流式合成
  */
-@Slf4j
 @Component
 public class VoiceClient {
+
+    private static final Logger log = LoggerFactory.getLogger(VoiceClient.class);
 
     private static final int ASR_TIMEOUT_SECONDS = 120;
     private static final int TTS_TIMEOUT_SECONDS = 60;
@@ -44,7 +45,6 @@ public class VoiceClient {
     private final VoiceProperties properties;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    @Getter
     private volatile String lastTtsUrl;
 
     public VoiceClient(VoiceProperties properties, ObjectMapper objectMapper) {
@@ -53,6 +53,10 @@ public class VoiceClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(ASR_TIMEOUT_SECONDS))
                 .build();
+    }
+
+    public String getLastTtsUrl() {
+        return lastTtsUrl;
     }
 
     /**

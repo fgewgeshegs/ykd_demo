@@ -7,7 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.common.PromptLoader;
 import com.youkeda.exercise.claw.ai.llm.VisionProperties;
 import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -22,9 +23,10 @@ import java.time.Duration;
  * 负责调用多模态大模型（如 Qwen3-VL）进行图片理解
  * 请求格式兼容 OpenAI 多模态协议
  */
-@Slf4j
 @Component
 public class VisionClient {
+
+    private static final Logger log = LoggerFactory.getLogger(VisionClient.class);
 
     private static final int TIMEOUT_SECONDS = 60;
     private static final String SYSTEM_PROMPT_PATH = "prompts/vision-system-prompt.txt";

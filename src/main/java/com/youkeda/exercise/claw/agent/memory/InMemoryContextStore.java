@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.agent.memory;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -17,13 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 单用户最多保留 50 条消息，超出自动淘汰最早的消息
  * - 线程安全
  */
-@Slf4j
 @Component
 @ConditionalOnProperty(name = "context.redis.enabled", havingValue = "false", matchIfMissing = true)
 public class InMemoryContextStore implements ContextStore {
 
     /** 单用户最大消息条数 */
     private static final int MAX_MESSAGES_PER_USER = 50;
+
+    private static final Logger log = LoggerFactory.getLogger(InMemoryContextStore.class);
 
     /** userId → 消息队列 */
     private final ConcurrentHashMap<String, Deque<Message>> store = new ConcurrentHashMap<>();

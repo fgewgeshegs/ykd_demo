@@ -3,8 +3,6 @@ package com.youkeda.exercise.claw.agent;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
-import lombok.Data;
-import lombok.experimental.Accessors;
 
 /**
  * Agent 执行上下文
@@ -12,8 +10,6 @@ import lombok.experimental.Accessors;
  * 封装一次 Agent 调用的所有输入信息，贯穿整个执行链路。
  * 未来可扩展：会话历史、用户画像、多轮对话状态等。
  */
-@Data
-@Accessors(chain = true)
 public class AgentContext {
 
     /**
@@ -52,4 +48,67 @@ public class AgentContext {
      * 历史消息（预留：上下文记忆）
      */
     private java.util.List<String> history;
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public AgentContext setUserId(String userId) {
+        this.userId = userId;
+        return this;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public AgentContext setMessage(String message) {
+        this.message = message;
+        return this;
+    }
+
+    public MessageType getMessageType() {
+        return messageType;
+    }
+
+    public AgentContext setMessageType(MessageType messageType) {
+        this.messageType = messageType;
+        return this;
+    }
+
+    public Intent getIntent() {
+        return intent;
+    }
+
+    public AgentContext setIntent(Intent intent) {
+        this.intent = intent;
+        return this;
+    }
+
+    public WechatMessage getRawMessage() {
+        return rawMessage;
+    }
+
+    public AgentContext setRawMessage(WechatMessage rawMessage) {
+        this.rawMessage = rawMessage;
+        return this;
+    }
+
+    public String getConversationId() {
+        return conversationId;
+    }
+
+    public AgentContext setConversationId(String conversationId) {
+        this.conversationId = conversationId;
+        return this;
+    }
+
+    public java.util.List<String> getHistory() {
+        return history;
+    }
+
+    public AgentContext setHistory(java.util.List<String> history) {
+        this.history = history;
+        return this;
+    }
 }

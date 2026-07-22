@@ -2,7 +2,8 @@ package com.youkeda.exercise.claw.agent.tool;
 
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -10,9 +11,10 @@ import org.springframework.stereotype.Component;
  *
  * 作为最后一级处理器，对前面所有 Handler 未处理的消息类型给出兜底回复
  */
-@Slf4j
 @Component
 public class SimpleReplyTool implements WechatMessageHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(SimpleReplyTool.class);
 
     private static final String FALLBACK_REPLY = "暂时无法理解该消息类型";
 

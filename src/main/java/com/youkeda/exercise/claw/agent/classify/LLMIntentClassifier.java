@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.agent.classify;
 
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,7 +14,6 @@ import org.springframework.stereotype.Component;
  * <p>保留仅作日志/降级参考，不再被 {@code MessageRouter} 调用。
  */
 @Deprecated
-@Slf4j
 @Component
 public class LLMIntentClassifier implements IntentClassifier {
 
@@ -45,6 +45,8 @@ public class LLMIntentClassifier implements IntentClassifier {
             "\n" +
             "只返回JSON格式，不要任何其他内容：\n" +
             "{\"intent\":\"CHAT\"}";
+
+    private static final Logger log = LoggerFactory.getLogger(LLMIntentClassifier.class);
 
     private final LLMClient llmClient;
 

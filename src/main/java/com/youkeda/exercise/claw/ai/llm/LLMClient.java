@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.youkeda.exercise.claw.common.PromptLoader;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
 import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -25,13 +27,14 @@ import java.util.List;
  *
  * 封装大模型 HTTP 调用，兼容 OpenAI 协议格式
  */
-@Slf4j
 @Component
 public class LLMClient {
 
     private static final int TIMEOUT_SECONDS = 30;
     private static final String SYSTEM_PROMPT_PATH = "prompts/system-prompt.txt";
     private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手，一个智能AI助手。";
+
+    private static final Logger log = LoggerFactory.getLogger(LLMClient.class);
 
     private final LLMProperties properties;
     private final HttpClient httpClient;
@@ -209,7 +212,13 @@ public class LLMClient {
             HttpResponse<String> response = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofString());
 
-            return parseStructuredResponse(response.body());
+            String responseBody = response.body();
+            LLMResponse result = parseStructuredResponse(responseBody);
+            if (result == null) {
+                log.warn("LLM 响应解析失败 | status={} | body={}",
+                        response.statusCode(), truncate(responseBody, 500));
+            }
+            return result;
 
         } catch (Exception e) {
             log.error("LLM 调用失败: {}", e.getMessage());
@@ -273,15 +282,51 @@ public class LLMClient {
             case "assistant" -> {
                 node.put("role", "assistant");
                 if (msg.isToolCall()) {
-                    // tool_call 消息：content=null, tool_calls=[{...}]
                     node.putNull("content");
                     ArrayNode tcs = node.putArray("tool_calls");
-                    ObjectNode tc = tcs.addObject();
-                    tc.put("id", msg.toolCallId());
-                    tc.put("type", "function");
-                    ObjectNode func = tc.putObject("function");
-                    func.put("name", msg.toolName());
-                    func.put("arguments", msg.content());
+
+                    String tcId = msg.toolCallId();
+                    if (tcId != null && tcId.contains(",")) {
+                        // 多 tool_call：解析逗号分隔的 ID 列表和 JSON 数组参数
+                        String[] ids = tcId.split(",", -1);
+                        String[] names = msg.toolName() != null
+                                ? msg.toolName().split(",", -1)
+                                : new String[ids.length];
+                        JsonNode argsArray;
+                        try {
+                            argsArray = objectMapper.readTree(msg.content());
+                        } catch (Exception e) {
+                            log.warn("多 tool_call 参数解析失败: {}", e.getMessage());
+                            // 降级：回退到单 tool_call 逻辑
+                            ObjectNode tc = tcs.addObject();
+                            tc.put("id", ids[0].trim());
+                            tc.put("type", "function");
+                            ObjectNode func = tc.putObject("function");
+                            func.put("name", msg.toolName());
+                            func.put("arguments", msg.content());
+                            break;
+                        }
+
+                        for (int i = 0; i < ids.length; i++) {
+                            ObjectNode tc = tcs.addObject();
+                            tc.put("id", ids[i].trim());
+                            tc.put("type", "function");
+                            ObjectNode func = tc.putObject("function");
+                            func.put("name", i < names.length ? names[i].trim() : "unknown");
+                            JsonNode argNode = i < argsArray.size() ? argsArray.get(i) : null;
+                            func.put("arguments", argNode != null
+                                    ? (argNode instanceof TextNode ? ((TextNode) argNode).asText() : argNode.toString())
+                                    : "{}");
+                        }
+                    } else {
+                        // 单 tool_call（原有逻辑）
+                        ObjectNode tc = tcs.addObject();
+                        tc.put("id", tcId);
+                        tc.put("type", "function");
+                        ObjectNode func = tc.putObject("function");
+                        func.put("name", msg.toolName());
+                        func.put("arguments", msg.content());
+                    }
                 } else {
                     node.put("content", msg.content() != null ? msg.content() : "");
                 }
@@ -341,5 +386,13 @@ public class LLMClient {
         }
 
         return new LLMResponse(content, toolCalls, finishReason);
+    }
+
+    /**
+     * 截断字符串（日志用）
+     */
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
     }
 }

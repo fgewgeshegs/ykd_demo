@@ -1,6 +1,5 @@
 package com.youkeda.exercise.claw.ai.llm;
 
-import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -9,7 +8,6 @@ import org.springframework.stereotype.Component;
  *
  * 从 application.properties 读取 llm.* 前缀的配置
  */
-@Data
 @Component
 @ConfigurationProperties(prefix = "llm")
 public class LLMProperties {
@@ -28,4 +26,28 @@ public class LLMProperties {
      * 模型名称
      */
     private String model = "deepseek-chat";
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    public String getBaseUrl() {
+        return baseUrl;
+    }
+
+    public void setBaseUrl(String baseUrl) {
+        this.baseUrl = baseUrl;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
 }
