@@ -22,6 +22,9 @@ import org.springframework.stereotype.Component;
  *   <li>TTS 语音合成（将文本合成为音频文件）</li>
  *   <li>作为 {@link LLMFunction} 提供 {@code text_to_speech} 工具供 LLM 调用</li>
  * </ul>
+ *
+ * <p>注意：{@link LLMFunction#execute(String)} 只能返回文本，但 TTS 产生的音频数据通过
+ * {@link #consumePendingAudio()} 传递回调用方（{@code ChatTool}），确保语音文件能被正确发送。</p>
  */
 @Slf4j
 @Component
@@ -34,6 +37,9 @@ public class VoiceTool implements LLMFunction {
     private final LLMFunctionRegistry functionRegistry;
     private final ObjectMapper objectMapper;
 
+    /** 待发送的音频数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
+    private volatile PendingAudio pendingAudio;
+
     public VoiceTool(VoiceService voiceService,
                       WechatILinkClient wechatClient,
                       LLMFunctionRegistry functionRegistry,
@@ -43,6 +49,21 @@ public class VoiceTool implements LLMFunction {
         this.functionRegistry = functionRegistry;
         this.objectMapper = objectMapper;
     }
+
+    /**
+     * 消费待发送的音频数据
+     * <p>被 {@code ChatTool} 在工具调用循环结束后调用，如果存在则发送语音文件而非纯文本。</p>
+     *
+     * @return 待发送的音频数据，没有则返回 null
+     */
+    public PendingAudio consumePendingAudio() {
+        PendingAudio audio = pendingAudio;
+        pendingAudio = null;
+        return audio;
+    }
+
+    /** TTS 结果暂存：音频文件 + 原始文本 */
+    public record PendingAudio(byte[] audioBytes, String text) {}
 
     @PostConstruct
     public void init() {
@@ -96,6 +117,9 @@ public class VoiceTool implements LLMFunction {
 
             log.info("语音合成成功 | size={}bytes | playtime={}ms",
                     result.getAudioBytes().length, result.getPlaytimeMs());
+
+            // 暂存音频供 ChatTool 取走发送（execute() 只能返回文本，音频通过此通道传递）
+            pendingAudio = new PendingAudio(result.getAudioBytes(), text);
 
             return "{\"success\": true, \"playtimeMs\": " + result.getPlaytimeMs()
                     + ", \"size\": " + result.getAudioBytes().length + "}";
