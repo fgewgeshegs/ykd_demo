@@ -12,17 +12,27 @@ import java.util.List;
  *   <li>{@code "stop"} — 文本回复，读取 {@link #getContent()}</li>
  *   <li>{@code "tool_calls"} — LLM 要求调用工具，读取 {@link #getToolCalls()}</li>
  * </ul>
+ *
+ * <p>{@link #getReasoningContent()} 携带 DeepSeek 深度思考模式的中间推理过程，
+ * 需要在后续请求中原样回传（见 {@code serializeMessage()}）。</p>
  */
 public class LLMResponse {
 
     private final String content;
     private final List<ToolCall> toolCalls;
     private final String finishReason;
+    private final String reasoningContent;
 
     public LLMResponse(String content, List<ToolCall> toolCalls, String finishReason) {
+        this(content, toolCalls, finishReason, null);
+    }
+
+    public LLMResponse(String content, List<ToolCall> toolCalls, String finishReason,
+                        String reasoningContent) {
         this.content = content;
         this.toolCalls = toolCalls != null ? toolCalls : List.of();
         this.finishReason = finishReason;
+        this.reasoningContent = reasoningContent;
     }
 
     /**
@@ -44,6 +54,14 @@ public class LLMResponse {
 
     public String getFinishReason() {
         return finishReason;
+    }
+
+    /**
+     * DeepSeek 深度思考模式的中间推理过程
+     * <p>此字段需要原样保存并在后续请求中回传给 API，否则 DeepSeek 会拒绝请求。</p>
+     */
+    public String getReasoningContent() {
+        return reasoningContent;
     }
 
     // ==================== ToolCall ====================

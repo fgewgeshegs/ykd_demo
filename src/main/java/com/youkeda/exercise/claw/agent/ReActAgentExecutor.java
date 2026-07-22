@@ -92,13 +92,14 @@ public class ReActAgentExecutor implements AgentExecutor {
             }
 
             // 处理本轮所有 tool_calls
+            String roundReasoningContent = response.getReasoningContent();
             for (LLMResponse.ToolCall tc : response.getToolCalls()) {
                 log.info("工具调用 | name={} | args={} | id={}",
                         tc.name(), tc.arguments(), tc.id());
 
-                // 2a. 追加 assistant 的 tool_call 消息
+                // 2a. 追加 assistant 的 tool_call 消息（带 reasoning_content 以便 DeepSeek 深度思考回传）
                 messages.add(new Message("assistant", tc.arguments(),
-                        null, null, null, tc.id(), tc.name()));
+                        null, null, null, tc.id(), tc.name(), roundReasoningContent));
 
                 // 2b. 查找并执行函数
                 String result;

@@ -272,6 +272,10 @@ public class LLMClient {
             }
             case "assistant" -> {
                 node.put("role", "assistant");
+                // reasoning_content（DeepSeek 深度思考模式，必须原样回传）
+                if (msg.reasoningContent() != null) {
+                    node.put("reasoning_content", msg.reasoningContent());
+                }
                 if (msg.isToolCall()) {
                     // tool_call 消息：content=null, tool_calls=[{...}]
                     node.putNull("content");
@@ -324,6 +328,10 @@ public class LLMClient {
         String content = message.has("content") && !message.get("content").isNull()
                 ? message.get("content").asText() : null;
 
+        // reasoning_content（DeepSeek 深度思考模式，后续需回传）
+        String reasoningContent = message.has("reasoning_content") && !message.get("reasoning_content").isNull()
+                ? message.get("reasoning_content").asText() : null;
+
         // tool_calls
         List<LLMResponse.ToolCall> toolCalls = new ArrayList<>();
         JsonNode tcs = message.get("tool_calls");
@@ -340,6 +348,6 @@ public class LLMClient {
             }
         }
 
-        return new LLMResponse(content, toolCalls, finishReason);
+        return new LLMResponse(content, toolCalls, finishReason, reasoningContent);
     }
 }
