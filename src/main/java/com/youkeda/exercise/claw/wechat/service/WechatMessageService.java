@@ -124,7 +124,7 @@ public class WechatMessageService {
                 log.info("微信消息轮询服务被中断");
                 break;
             } catch (Exception e) {
-                log.warn("接收消息异常，将在{}ms后重试: {}", ERROR_SLEEP_MS, e.getMessage());
+                log.warn("接收消息异常，将在{}ms后重试", ERROR_SLEEP_MS, e);
                 try {
                     Thread.sleep(ERROR_SLEEP_MS);
                 } catch (InterruptedException ie) {

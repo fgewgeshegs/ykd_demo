@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 工具注册中心
@@ -34,6 +35,11 @@ public class ToolRegistry {
     private final List<Tool> tools = new ArrayList<>();
 
     /**
+     * 所有已注册的 FunctionTool 列表
+     */
+    private final List<FunctionTool> functionTools = new ArrayList<>();
+
+    /**
      * 注册工具
      *
      * @param tool 工具实例
@@ -45,6 +51,11 @@ public class ToolRegistry {
             if (existing != null) {
                 log.warn("意图 {} 的原工具 {} 被新工具 {} 覆盖", intent, existing.name(), tool.name());
             }
+        }
+        // 自动收集 FunctionTool
+        if (tool instanceof FunctionTool ft) {
+            functionTools.add(ft);
+            log.info("FunctionTool 已注册: name={}", ft.name());
         }
         log.info("工具已注册: name={}, intents={}", tool.name(), tool.supportedIntents());
     }
@@ -66,5 +77,31 @@ public class ToolRegistry {
      */
     public synchronized List<Tool> getTools() {
         return List.copyOf(tools);
+    }
+
+    /**
+     * 获取所有 FunctionTool 的工具定义列表（OpenAI tools 格式）
+     *
+     * @return 工具定义 JSON 字符串列表，供 LLMClient 构建请求体时使用
+     */
+    public synchronized List<String> getFunctionToolDefinitions() {
+        return functionTools.stream()
+                .map(FunctionTool::getToolDefinition)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 根据工具名查找 FunctionTool
+     *
+     * @param functionName 工具名称，如 "get_weather"
+     * @return 匹配的 FunctionTool，未找到返回 null
+     */
+    public synchronized FunctionTool findFunctionTool(String functionName) {
+        for (FunctionTool ft : functionTools) {
+            if (ft.name().equals(functionName)) {
+                return ft;
+            }
+        }
+        return null;
     }
 }

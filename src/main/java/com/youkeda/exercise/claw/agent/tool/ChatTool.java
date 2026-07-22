@@ -54,7 +54,7 @@ public class ChatTool implements Tool, WechatMessageHandler {
     @Override
     public String execute(AgentContext context) {
         log.info("ChatTool 执行 | user={} | text={}", context.getUserId(), context.getMessage());
-        return chatService.chat(context.getUserId(), context.getMessage());
+        return chatService.chatWithTools(context.getUserId(), context.getMessage());
     }
 
     @Override
@@ -65,7 +65,7 @@ public class ChatTool implements Tool, WechatMessageHandler {
 
         log.debug("ChatTool.handle 处理消息 | from={} | text={}", message.getUserId(), message.getText());
 
-        String reply = chatService.chat(message.getUserId(), message.getText());
+        String reply = chatService.chatWithTools(message.getUserId(), message.getText());
         if (reply == null || reply.isEmpty()) {
             log.warn("AI 回复为空，使用降级回复 | from={}", message.getUserId());
             return WechatReply.text(FALLBACK_REPLY);
