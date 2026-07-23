@@ -22,8 +22,11 @@ import java.util.List;
 /**
  * 图片生成工具
  *
- * 封装 ImageGenerationService，结合 LLM 上下文理解，同时作为 Tool 和 WechatMessageHandler 暴露。
+ * <p>封装 ImageGenerationService，结合 LLM 上下文理解，同时作为 Tool 和 WechatMessageHandler 暴露。
  * 启动时自动注册到 ToolRegistry 和 LLMFunctionRegistry。
+ *
+ * <p>注意：{@link LLMFunction#execute(String)} 只能返回文本，但图片数据通过
+ * {@link #consumePendingImage()} 传递回调用方（{@code ChatTool}），确保图片能被正确发送。</p>
  */
 @Component
 public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunction {
@@ -47,6 +50,9 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunct
     private final LLMFunctionRegistry llmFunctionRegistry;
     private final ObjectMapper objectMapper;
 
+    /** 待发送的图片数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
+    private volatile PendingImage pendingImage;
+
     public ImageGenerationTool(ImageGenerationService imageGenerationService,
                                 ImageClient imageClient,
                                 ContextStore contextStore,
@@ -68,6 +74,21 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunct
         toolRegistry.register(this);
         llmFunctionRegistry.register(this);
     }
+
+    /**
+     * 消费待发送的图片数据
+     * <p>被 {@code ChatTool} 在工具调用循环结束后调用，如果存在则发送图片而非纯文本。</p>
+     *
+     * @return 待发送的图片数据，没有则返回 null
+     */
+    public PendingImage consumePendingImage() {
+        PendingImage image = pendingImage;
+        pendingImage = null;
+        return image;
+    }
+
+    /** 图片生成结果暂存：图片字节 + 描述文本 */
+    public record PendingImage(byte[] imageBytes, String description) {}
 
     @Override
     public String name() {
@@ -149,8 +170,21 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunct
                 return "{\"error\": \"图片生成失败\"}";
             }
 
-            log.info("图片生成成功 | url={}", imageUrl);
-            return "{\"imageUrl\": \"" + imageUrl + "\", \"description\": \"已为您生成图片: " + prompt + "\"}";
+            // 下载图片字节
+            byte[] imageBytes = imageClient.downloadImage(imageUrl);
+            if (imageBytes == null || imageBytes.length == 0) {
+                log.warn("图片下载失败 | url={}", imageUrl);
+                return "{\"error\": \"图片下载失败\"}";
+            }
+
+            log.info("图片生成并下载成功 | size={} bytes", imageBytes.length);
+
+            // 暂存图片供 ChatTool 取走发送（execute() 只能返回文本，图片通过此通道传递）
+            pendingImage = new PendingImage(imageBytes, prompt);
+
+            return "{\"imageUrl\": \"" + imageUrl
+                    + "\", \"size\": " + imageBytes.length
+                    + ", \"description\": \"已为您生成图片\"}";
 
         } catch (Exception e) {
             log.error("ImageGenerationTool LLM执行失败 | args={} | error={}", argumentsJson, e.getMessage());

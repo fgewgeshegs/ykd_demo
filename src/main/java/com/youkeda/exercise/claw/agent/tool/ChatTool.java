@@ -30,12 +30,17 @@ public class ChatTool implements Tool, WechatMessageHandler {
     private final ReActAgentExecutor agentExecutor;
     private final ToolRegistry toolRegistry;
     private final VoiceTool voiceTool;
+    private final FileGenerationTool fileGenerationTool;
+    private final ImageGenerationTool imageGenerationTool;
 
     public ChatTool(ReActAgentExecutor agentExecutor, ToolRegistry toolRegistry,
-                    VoiceTool voiceTool) {
+                    VoiceTool voiceTool, FileGenerationTool fileGenerationTool,
+                    ImageGenerationTool imageGenerationTool) {
         this.agentExecutor = agentExecutor;
         this.toolRegistry = toolRegistry;
         this.voiceTool = voiceTool;
+        this.fileGenerationTool = fileGenerationTool;
+        this.imageGenerationTool = imageGenerationTool;
     }
 
     @PostConstruct
@@ -87,6 +92,21 @@ public class ChatTool implements Tool, WechatMessageHandler {
         if (audio != null && audio.audioBytes() != null && audio.audioBytes().length > 0) {
             log.info("TTS 音频待发送 | size={}bytes | from={}", audio.audioBytes().length, message.getUserId());
             return WechatReply.file(audio.audioBytes(), "AI语音回复.mp3", audio.text());
+        }
+
+        // 检查文件生成工具是否产生了待发送的文件（file_generate 工具调用的结果）
+        FileGenerationTool.PendingFile file = fileGenerationTool.consumePendingFile();
+        if (file != null && file.fileBytes() != null && file.fileBytes().length > 0) {
+            log.info("待发送文件 | fileName={} | size={}bytes | from={}",
+                    file.fileName(), file.fileBytes().length, message.getUserId());
+            return WechatReply.file(file.fileBytes(), file.fileName(), file.description());
+        }
+
+        // 检查图片生成工具是否产生了待发送的图片（image_generate 工具调用的结果）
+        ImageGenerationTool.PendingImage image = imageGenerationTool.consumePendingImage();
+        if (image != null && image.imageBytes() != null && image.imageBytes().length > 0) {
+            log.info("待发送图片 | size={}bytes | from={}", image.imageBytes().length, message.getUserId());
+            return WechatReply.image(image.imageBytes());
         }
 
         return WechatReply.text(reply);
