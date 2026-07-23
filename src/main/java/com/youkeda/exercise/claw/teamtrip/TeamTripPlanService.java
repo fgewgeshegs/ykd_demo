@@ -56,7 +56,13 @@ public class TeamTripPlanService {
             }
         }
         boolean materialChange = merge(draft, args);
-        if (materialChange && !draft.getOptions().isEmpty()) invalidateAllOptions(draft);
+        if (materialChange) {
+            draft.setHolidayStatus("NOT_CALLED");
+            draft.setLastHolidayResult(null);
+            draft.setTransportStatus("NOT_CALLED");
+            draft.setLastTransportResult(null);
+            if (!draft.getOptions().isEmpty()) invalidateAllOptions(draft);
+        }
 
         return switch (action) {
             case "save_options" -> saveOptions(userId, draft, args);
@@ -157,30 +163,59 @@ public class TeamTripPlanService {
         return snapshot.toString();
     }
 
-    /** 由执行器在地图、天气、搜索和成本工具执行后回写流程状态。 */
+    /** 由执行器在节假日、地图、天气、交通、搜索和成本工具执行后回写流程状态。 */
     public void recordToolResult(String userId, String toolName, String resultJson) {
         TeamTripPlanDraft draft = stateStore.get(userId);
         if (draft == null) return;
 
         JsonNode result = parse(resultJson);
-        String status = result.path("status").asText("SUCCESS").toUpperCase();
-        if (toolName.startsWith("map_")) {
+        String status = result.has("error")
+                ? "ERROR"
+                : result.path("status").asText("SUCCESS").toUpperCase();
+        String previousStage = draft.getStage();
+        if ("holiday_check".equals(toolName)) {
+            draft.setHolidayStatus(status);
+            draft.setLastHolidayResult(result.deepCopy());
+            if (!isWaitingForUser(draft)) {
+                advanceInitialResearch(draft);
+            }
+        } else if (toolName.startsWith("map_")) {
             if ("map_route_planning".equals(toolName) || "map_distance_calculate".equals(toolName)) {
                 draft.setRouteStatus(status);
             } else {
                 draft.setMapStatus(status);
             }
             if (!isWaitingForUser(draft)) {
-                draft.setStage(isInsufficient(status) ? "MAP_INSUFFICIENT" : "MAP_READY");
+                if ("READY_FOR_DATE".equals(previousStage)
+                        || "READY_FOR_DATE_CONTEXT".equals(previousStage)) {
+                    // 地图可与相对日期换算并行，但必须等明确日期写回后才能执行节假日检查。
+                    draft.setStage("READY_FOR_DATE_CONTEXT");
+                } else {
+                    advanceInitialResearch(draft);
+                }
             }
         } else if ("weather_query".equals(toolName)) {
             draft.setWeatherStatus(status);
             if (!isWaitingForUser(draft)) {
-                draft.setStage(isInsufficient(status) ? "WEATHER_INSUFFICIENT" : "WEATHER_READY");
+                draft.setStage(isInsufficient(status) ? "WEATHER_INSUFFICIENT" : "READY_FOR_TRANSPORT");
             }
+        } else if ("transport_recommend".equals(toolName)) {
+            draft.setTransportStatus(status);
+            draft.setLastTransportResult(result.deepCopy());
+            if (!isWaitingForUser(draft)) draft.setStage("TRANSPORT_READY");
         } else if ("web_search".equals(toolName)) {
             draft.setWebSearchStatus(status);
-            if (!isWaitingForUser(draft)) draft.setStage("EVIDENCE_READY");
+            if (!isWaitingForUser(draft)) {
+                if ("MAP_INSUFFICIENT".equals(previousStage)) {
+                    // 网页搜索作为地图降级结果，之后仍需完成天气和交通评估。
+                    draft.setStage("MAP_READY");
+                } else if ("WEATHER_INSUFFICIENT".equals(previousStage)) {
+                    // 天气已做过专业查询并完成降级补证，继续交通评估。
+                    draft.setStage("READY_FOR_TRANSPORT");
+                } else {
+                    draft.setStage("EVIDENCE_READY");
+                }
+            }
         } else if ("budget_calculator".equals(toolName)) {
             recordCostResult(draft, result);
         }
@@ -201,16 +236,24 @@ public class TeamTripPlanService {
                 questions.add(question);
             });
         } else if (needsDateNormalization(draft.getTravelDate())) {
-            draft.setStage("READY_FOR_DATE");
-            result.put("status", "READY_FOR_DATE");
-            result.put("next_tool", "time_query");
-            result.put("instruction", "先把相对日期换算为明确日期，再次调用 team_trip_plan 写回日期。");
+            draft.setStage("READY_FOR_DATE_CONTEXT");
+            result.put("status", "READY_FOR_DATE_CONTEXT");
+            ArrayNode nextTools = result.putArray("next_tools");
+            nextTools.add("time_query");
+            if ("NOT_CALLED".equals(draft.getMapStatus())) nextTools.add("map_search_place");
+            result.put("instruction", "相对日期需要先用 time_query 换算并再次调用 team_trip_plan 写回明确日期；"
+                    + "地图查询与日期换算互不依赖，可在同一轮并行执行并复用结果。");
         } else {
-            draft.setStage("READY_FOR_MAP");
-            result.put("status", "READY_FOR_MAP");
-            result.put("next_tool", "map_search_place");
-            result.put("instruction", "需求和数值预算已齐全。先用地图确认地点与路线，再查询天气和方案项目价格；"
-                    + "专业工具缺少团队价格时才用 web_search，最后保存候选方案并调用 budget_calculator。");
+            draft.setStage("READY_FOR_CONTEXT");
+            result.put("status", "READY_FOR_CONTEXT");
+            ArrayNode nextTools = result.putArray("next_tools");
+            nextTools.add("holiday_check");
+            if ("NOT_CALLED".equals(draft.getMapStatus())) nextTools.add("map_search_place");
+            result.put("instruction", "日期已明确。调用 holiday_check 检查调休与团建适宜度；"
+                    + ("NOT_CALLED".equals(draft.getMapStatus())
+                    ? "同时并行调用地图工具确认地点和路线；"
+                    : "此前完成的地图结果继续复用，无需重复查询；")
+                    + "两者完成后再依次查询天气和交通方案，最后补齐价格、保存候选方案并核算预算。");
             addOutputContract(result);
         }
         refreshState(result, draft);
@@ -785,7 +828,8 @@ public class TeamTripPlanService {
     private void addOutputContract(ObjectNode result) {
         result.putArray("output_contract")
                 .add("保持加入预算功能前的自然旅游方案展示结构，不使用大型候选预算对比表或十段式固定报告")
-                .add("先自然介绍方案，再按天展示行程、活动、交通、住宿、餐饮和注意事项")
+                .add("先自然介绍方案并明确列出方案亮点，再按天展示行程、活动、交通、住宿、餐饮、美食推荐和注意事项")
+                .add("美食推荐应包含当地特色菜、适合团队的餐厅类型或特色用餐体验，不能只写泛化的早午晚餐安排")
                 .add("预算只作为对应方案末尾的补充，引用 budget_calculator 的总费用、人均、预算差额和待确认价格")
                 .add("全部方案展示后再询问用户选择，不得替用户自动决定");
     }
@@ -853,6 +897,20 @@ public class TeamTripPlanService {
     private static boolean isInsufficient(String status) {
         return "EMPTY".equals(status) || "PARTIAL".equals(status)
                 || "ERROR".equals(status) || "UNAVAILABLE".equals(status);
+    }
+
+    /**
+     * 节假日与地图查询互不依赖，可在同一轮并行执行。
+     * 无论结果到达顺序如何，都要等两类结果均返回后才进入天气阶段。
+     */
+    private static void advanceInitialResearch(TeamTripPlanDraft draft) {
+        boolean holidayDone = !"NOT_CALLED".equals(draft.getHolidayStatus());
+        boolean mapDone = !"NOT_CALLED".equals(draft.getMapStatus());
+        if (!holidayDone || !mapDone) {
+            draft.setStage("READY_FOR_CONTEXT");
+            return;
+        }
+        draft.setStage(isInsufficient(draft.getMapStatus()) ? "MAP_INSUFFICIENT" : "MAP_READY");
     }
 
     private static boolean isWaitingForUser(TeamTripPlanDraft draft) {

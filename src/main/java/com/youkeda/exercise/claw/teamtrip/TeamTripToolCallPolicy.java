@@ -35,19 +35,33 @@ public class TeamTripToolCallPolicy {
         if (shouldReplyWithoutTools(userId)) {
             return "当前流程正在等待用户补充、选择或确认，暂不允许调用外部工具。";
         }
-        if ("READY_FOR_DATE".equals(stage) && !"time_query".equals(toolName)) {
-            return "必须先使用 time_query 把相对日期换算为明确日期。";
+        if (("READY_FOR_DATE".equals(stage) || "READY_FOR_DATE_CONTEXT".equals(stage))
+                && !"time_query".equals(toolName) && !toolName.startsWith("map_")) {
+            return "必须先使用 time_query 把相对日期换算为明确日期；地图查询可与日期换算并行。";
+        }
+        if (("READY_FOR_CONTEXT".equals(stage) || "READY_FOR_HOLIDAY".equals(stage))
+                && !"holiday_check".equals(toolName) && !toolName.startsWith("map_")) {
+            return "日期已明确，必须先并行完成 holiday_check 和地图查询，再进入天气与交通阶段。";
         }
         if ("READY_FOR_MAP".equals(stage) && !toolName.startsWith("map_")) {
             return "完整方案必须先调用地图工具确认地点；读取地图结果后才能调用其他外部工具。";
         }
-        if ("MAP_INSUFFICIENT".equals(stage) && toolName.startsWith("map_")) {
+        if ("MAP_INSUFFICIENT".equals(stage) && !"web_search".equals(toolName)) {
             return "地图服务本轮已返回信息不足或不可用，请停止重复地图查询并改用一次聚焦的 web_search。";
+        }
+        if ("WEATHER_INSUFFICIENT".equals(stage) && !"web_search".equals(toolName)) {
+            return "天气工具信息不足或不可用，请用一次聚焦的 web_search 补充后再继续。";
+        }
+        if (("WEATHER_READY".equals(stage) || "READY_FOR_TRANSPORT".equals(stage))
+                && !"transport_recommend".equals(toolName)) {
+            return "天气评估已完成，必须先使用 transport_recommend 比较团建交通方式和费用。";
         }
         if ("web_search".equals(toolName)) {
             boolean sameBatchHasSpecializedTool = currentBatchTools.stream()
                     .anyMatch(name -> name.startsWith("map_") || "weather_query".equals(name)
-                            || "time_query".equals(name) || "budget_calculator".equals(name));
+                            || "time_query".equals(name) || "holiday_check".equals(name)
+                            || "transport_recommend".equals(name)
+                            || "budget_calculator".equals(name));
             if (sameBatchHasSpecializedTool) {
                 return "web_search 不能与专业查询或成本核算工具在同一轮调用。请先读取前一工具结果。";
             }
@@ -55,7 +69,7 @@ public class TeamTripToolCallPolicy {
         if ("budget_calculator".equals(toolName)) {
             boolean sameBatchHasEvidenceTool = currentBatchTools.stream()
                     .anyMatch(name -> name.startsWith("map_") || "weather_query".equals(name)
-                            || "web_search".equals(name));
+                            || "transport_recommend".equals(name) || "web_search".equals(name));
             if (sameBatchHasEvidenceTool) {
                 return "成本核算必须在读取地点、天气和价格查询结果后单独调用，不能与这些工具同轮执行。";
             }
