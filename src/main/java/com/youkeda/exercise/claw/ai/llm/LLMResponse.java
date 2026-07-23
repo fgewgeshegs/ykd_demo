@@ -18,11 +18,18 @@ public class LLMResponse {
     private final String content;
     private final List<ToolCall> toolCalls;
     private final String finishReason;
+    private final String reasoningContent;
 
     public LLMResponse(String content, List<ToolCall> toolCalls, String finishReason) {
+        this(content, toolCalls, finishReason, null);
+    }
+
+    public LLMResponse(String content, List<ToolCall> toolCalls,
+                       String finishReason, String reasoningContent) {
         this.content = content;
         this.toolCalls = toolCalls != null ? toolCalls : List.of();
         this.finishReason = finishReason;
+        this.reasoningContent = reasoningContent;
     }
 
     /**
@@ -44,6 +51,10 @@ public class LLMResponse {
 
     public String getFinishReason() {
         return finishReason;
+    }
+
+    public String getReasoningContent() {
+        return reasoningContent;
     }
 
     // ==================== ToolCall ====================

@@ -281,6 +281,9 @@ public class LLMClient {
             }
             case "assistant" -> {
                 node.put("role", "assistant");
+                if (msg.reasoningContent() != null && !msg.reasoningContent().isBlank()) {
+                    node.put("reasoning_content", msg.reasoningContent());
+                }
                 if (msg.isToolCall()) {
                     node.putNull("content");
                     ArrayNode tcs = node.putArray("tool_calls");
@@ -368,6 +371,9 @@ public class LLMClient {
         // content（tool_calls 时可能为 null）
         String content = message.has("content") && !message.get("content").isNull()
                 ? message.get("content").asText() : null;
+        String reasoningContent = message.has("reasoning_content")
+                && !message.get("reasoning_content").isNull()
+                ? message.get("reasoning_content").asText() : null;
 
         // tool_calls
         List<LLMResponse.ToolCall> toolCalls = new ArrayList<>();
@@ -385,7 +391,21 @@ public class LLMClient {
             }
         }
 
-        return new LLMResponse(content, toolCalls, finishReason);
+        // 部分兼容服务不会返回标准 tool_calls，而是把 DSML 工具标记写进 content。
+        // 将它恢复成结构化调用，避免内部参数被当作助手正文展示给用户。
+        if (toolCalls.isEmpty() && DsmlToolCallParser.containsMarkup(content)) {
+            toolCalls = DsmlToolCallParser.parse(content, objectMapper);
+            if (!toolCalls.isEmpty()) {
+                log.info("已将 content 中的 DSML 转换为 {} 个结构化工具调用", toolCalls.size());
+                content = null;
+                finishReason = "tool_calls";
+            } else {
+                log.warn("检测到 DSML 工具标记，但未能解析出有效调用");
+                return null;
+            }
+        }
+
+        return new LLMResponse(content, toolCalls, finishReason, reasoningContent);
     }
 
     /**

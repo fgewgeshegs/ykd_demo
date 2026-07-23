@@ -41,6 +41,13 @@ public interface LLMFunction {
     String execute(String argumentsJson);
 
     /**
+     * 带用户上下文执行函数。旧工具默认沿用单参数实现，需要会话状态的新工具可覆盖此方法。
+     */
+    default String execute(String argumentsJson, FunctionExecutionContext context) {
+        return execute(argumentsJson);
+    }
+
+    /**
      * 快捷方法：生成发给 LLM 的 {@link ToolDefinition}
      */
     default ToolDefinition toDefinition() {
