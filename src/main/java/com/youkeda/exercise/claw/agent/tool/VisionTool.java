@@ -1,7 +1,5 @@
 package com.youkeda.exercise.claw.agent.tool;
 
-import com.youkeda.exercise.claw.agent.AgentContext;
-import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.ai.llm.ImageClient;
@@ -10,7 +8,6 @@ import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -20,12 +17,11 @@ import java.util.Base64;
 /**
  * 视觉理解工具
  *
- * 封装 VisionService + 微信图片下载，同时作为 Tool 和 WechatMessageHandler 暴露。
- * 支持场景：直接发图 / 上下文有最近图片 / Agent 调用。
- * 启动时自动注册到 ToolRegistry。
+ * 封装 VisionService + 微信图片下载，作为 WechatMessageHandler 暴露。
+ * 支持场景：直接发图 / 上下文有最近图片。
  */
 @Component
-public class VisionTool implements Tool, WechatMessageHandler {
+public class VisionTool implements WechatMessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(VisionTool.class);
     private static final String FALLBACK_REPLY = "抱歉，我暂时无法分析图片，请稍后再试。";
@@ -34,51 +30,15 @@ public class VisionTool implements Tool, WechatMessageHandler {
     private final WechatILinkClient wechatClient;
     private final ContextStore contextStore;
     private final ImageClient imageClient;
-    private final ToolRegistry toolRegistry;
 
     public VisionTool(VisionService visionService,
                       WechatILinkClient wechatClient,
                       ContextStore contextStore,
-                      ImageClient imageClient,
-                      ToolRegistry toolRegistry) {
+                      ImageClient imageClient) {
         this.visionService = visionService;
         this.wechatClient = wechatClient;
         this.contextStore = contextStore;
         this.imageClient = imageClient;
-        this.toolRegistry = toolRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        toolRegistry.register(this);
-    }
-
-    @Override
-    public String name() {
-        return "vision";
-    }
-
-    @Override
-    public String description() {
-        return "图片理解与分析，支持多模态视觉模型";
-    }
-
-    @Override
-    public Intent[] supportedIntents() {
-        return new Intent[]{Intent.IMAGE_ANALYZE};
-    }
-
-    @Override
-    public String execute(AgentContext context) {
-        log.info("VisionTool 执行 | user={}", context.getUserId());
-
-        String imageDataUrl = resolveImage(context);
-        if (imageDataUrl == null) {
-            return "抱歉，无法获取图片数据。";
-        }
-
-        String question = context.getMessage();
-        return visionService.analyze(imageDataUrl, question);
     }
 
     @Override
@@ -152,17 +112,6 @@ public class VisionTool implements Tool, WechatMessageHandler {
         }
 
         return null;
-    }
-
-    /**
-     * 从 AgentContext 中获取图片数据（供 Agent 调用）
-     */
-    private String resolveImage(AgentContext context) {
-        WechatMessage raw = context.getRawMessage();
-        if (raw == null || raw.getType() != MessageType.IMAGE) {
-            return null;
-        }
-        return downloadImageAsDataUrl(raw);
     }
 
     private boolean isEmpty(String s) {

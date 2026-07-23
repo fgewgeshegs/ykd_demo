@@ -1,6 +1,5 @@
 package com.youkeda.exercise.claw.agent;
 
-import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 
@@ -26,13 +25,6 @@ public class AgentContext {
      * 消息类型（TEXT / IMAGE）
      */
     private MessageType messageType;
-
-    /**
-     * 意图分类结果（旧 IntentClassifier 产物，已不再用于 TEXT 消息路由。
-     * TEXT 消息走 ReActAgentExecutor 的 LLM tool-calling 自主判断；
-     * 此字段在非 TEXT 消息的旧路由路径中保留使用。）
-     */
-    private Intent intent;
 
     /**
      * 原始微信消息（IMAGE 类型时有效，携带 CDN 下载参数）
@@ -75,15 +67,6 @@ public class AgentContext {
 
     public AgentContext setMessageType(MessageType messageType) {
         this.messageType = messageType;
-        return this;
-    }
-
-    public Intent getIntent() {
-        return intent;
-    }
-
-    public AgentContext setIntent(Intent intent) {
-        this.intent = intent;
         return this;
     }
 

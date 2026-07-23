@@ -1,8 +1,6 @@
 package com.youkeda.exercise.claw.agent.tool;
 
-import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
-import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -15,58 +13,30 @@ import org.springframework.stereotype.Component;
  * 聊天工具
  *
  * <p>所有 TEXT 消息的入口，委托 {@link ReActAgentExecutor} 执行 tool-calling 循环。
- * 同时作为 Tool 和 WechatMessageHandler 暴露。启动时自动注册到 ToolRegistry。
+ * 作为 WechatMessageHandler 暴露。
  *
  * <p>TTS 语音合成特殊处理：当工具调用循环中触发了 {@code text_to_speech}，
  * {@link VoiceTool} 会暂存音频数据，{@link #handle(WechatMessage)} 在 executor
  * 返回后优先发送语音文件而非纯文本回复。</p>
  */
 @Component
-public class ChatTool implements Tool, WechatMessageHandler {
+public class ChatTool implements WechatMessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ChatTool.class);
     private static final String FALLBACK_REPLY = "抱歉，我现在暂时无法回复，请稍后再试。";
 
     private final ReActAgentExecutor agentExecutor;
-    private final ToolRegistry toolRegistry;
     private final VoiceTool voiceTool;
     private final FileGenerationTool fileGenerationTool;
     private final ImageGenerationTool imageGenerationTool;
 
-    public ChatTool(ReActAgentExecutor agentExecutor, ToolRegistry toolRegistry,
+    public ChatTool(ReActAgentExecutor agentExecutor,
                     VoiceTool voiceTool, FileGenerationTool fileGenerationTool,
                     ImageGenerationTool imageGenerationTool) {
         this.agentExecutor = agentExecutor;
-        this.toolRegistry = toolRegistry;
         this.voiceTool = voiceTool;
         this.fileGenerationTool = fileGenerationTool;
         this.imageGenerationTool = imageGenerationTool;
-    }
-
-    @PostConstruct
-    public void init() {
-        toolRegistry.register(this);
-    }
-
-    @Override
-    public String name() {
-        return "chat";
-    }
-
-    @Override
-    public String description() {
-        return "AI 文本对话，支持多轮聊天和工具调用（天气查询、图片生成等）";
-    }
-
-    @Override
-    public Intent[] supportedIntents() {
-        return new Intent[]{Intent.CHAT};
-    }
-
-    @Override
-    public String execute(AgentContext context) {
-        log.info("ChatTool 执行 | user={} | text={}", context.getUserId(), context.getMessage());
-        return agentExecutor.execute(context);
     }
 
     @Override
@@ -77,7 +47,7 @@ public class ChatTool implements Tool, WechatMessageHandler {
 
         log.debug("ChatTool.handle 处理消息 | from={} | text={}", message.getUserId(), message.getText());
 
-        String reply = agentExecutor.execute(new AgentContext()
+        String reply = agentExecutor.execute(new com.youkeda.exercise.claw.agent.AgentContext()
                 .setUserId(message.getUserId())
                 .setMessage(message.getText())
                 .setMessageType(MessageType.TEXT));

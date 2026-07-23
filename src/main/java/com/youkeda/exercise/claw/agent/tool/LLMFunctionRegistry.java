@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
  * LLM 函数注册中心
  *
  * <p>管理所有可供 LLM 通过 Function Calling 调用的 {@link LLMFunction}。
- * 与现有 {@link ToolRegistry}（Intent 路由体系）并存。
  *
  * <p>线程安全：使用 {@link ConcurrentHashMap}。
  */

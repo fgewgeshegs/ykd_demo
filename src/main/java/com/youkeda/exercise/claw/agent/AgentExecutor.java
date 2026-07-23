@@ -6,7 +6,6 @@ package com.youkeda.exercise.claw.agent;
  * 职责：接收 AgentContext，协调整个 Agent 执行流程，返回回复文本。
  *
  * 当前实现：ReActAgentExecutor（LLM 自主 tool-calling 循环）
- * 备选实现：SimpleAgentExecutor（桥接 MessageRouter 旧体系，部分场景使用）
  */
 public interface AgentExecutor {
 

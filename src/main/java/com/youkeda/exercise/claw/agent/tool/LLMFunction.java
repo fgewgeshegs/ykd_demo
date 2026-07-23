@@ -6,13 +6,12 @@ import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
 /**
  * 可供 LLM 通过 Function Calling 调用的函数
  *
- * <p>与现有 {@link Tool} 接口并存互不冲突：
- * <ul>
- *   <li>{@link Tool} — Agent 路由体系（Intent → Tool 映射）</li>
- *   <li>{@code LLMFunction} — LLM 自主 tool-calling 循环</li>
- * </ul>
+ * <p>Agent 体系的唯一工具接口。所有的工具能力（天气、搜索、时间、地图、预算等）
+ * 都以 {@code LLMFunction} 注册到 {@link LLMFunctionRegistry}，
+ * 由 {@code ReActAgentExecutor} 在 tool-calling 循环中供 LLM 自主调度。
  *
- * 一个实现类可以同时实现两个接口，注册到各自的 Registry。
+ * <p>如需将文件/图片/音频等二进制数据传回消息收发层，
+ * 实现类可配合暂存-消费模式（如 {@code pendingImage}）进行旁路传递。
  */
 public interface LLMFunction {
 

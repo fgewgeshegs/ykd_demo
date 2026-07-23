@@ -3,8 +3,6 @@ package com.youkeda.exercise.claw.agent.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.AgentContext;
-import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.ai.file.FileGenerationService;
 import com.youkeda.exercise.claw.ai.file.FileGenerationService.FileGenerationResult;
@@ -20,18 +18,17 @@ import org.springframework.stereotype.Component;
  * 文件生成工具
  *
  * 封装 FileGenerationService，根据用户请求生成 PDF 或 Word 文档文件。
- * 同时作为 Tool 和 WechatMessageHandler 暴露。
- * 启动时自动注册到 ToolRegistry 和 LLMFunctionRegistry。
+ * 作为 WechatMessageHandler 和 LLMFunction 暴露。
+ * 启动时自动注册到 LLMFunctionRegistry。
  */
 @Component
-public class FileGenerationTool implements Tool, WechatMessageHandler, LLMFunction {
+public class FileGenerationTool implements WechatMessageHandler, LLMFunction {
 
     private static final Logger log = LoggerFactory.getLogger(FileGenerationTool.class);
     private static final String FALLBACK_REPLY = "抱歉，文件生成失败，请稍后再试。";
 
     private final FileGenerationService fileGenerationService;
     private final ContextStore contextStore;
-    private final ToolRegistry toolRegistry;
     private final LLMFunctionRegistry llmFunctionRegistry;
     private final ObjectMapper objectMapper;
 
@@ -40,12 +37,10 @@ public class FileGenerationTool implements Tool, WechatMessageHandler, LLMFuncti
 
     public FileGenerationTool(FileGenerationService fileGenerationService,
                               ContextStore contextStore,
-                              ToolRegistry toolRegistry,
                               LLMFunctionRegistry llmFunctionRegistry,
                               ObjectMapper objectMapper) {
         this.fileGenerationService = fileGenerationService;
         this.contextStore = contextStore;
-        this.toolRegistry = toolRegistry;
         this.llmFunctionRegistry = llmFunctionRegistry;
         this.objectMapper = objectMapper;
     }
@@ -67,38 +62,7 @@ public class FileGenerationTool implements Tool, WechatMessageHandler, LLMFuncti
 
     @PostConstruct
     public void init() {
-        toolRegistry.register(this);
         llmFunctionRegistry.register(this);
-    }
-
-    @Override
-    public String name() {
-        return "file_generate";
-    }
-
-    @Override
-    public String description() {
-        return "根据文字描述生成 PDF 或 Word 文档文件，支持总结对话、生成报告等";
-    }
-
-    @Override
-    public Intent[] supportedIntents() {
-        return new Intent[]{Intent.FILE_GENERATE};
-    }
-
-    @Override
-    public String execute(AgentContext context) {
-        log.info("FileGenerationTool 执行 | user={} | text={}", context.getUserId(), context.getMessage());
-
-        FileGenerationResult result = fileGenerationService.generate(
-                context.getUserId(), context.getMessage());
-        if (result == null) {
-            return FALLBACK_REPLY;
-        }
-
-        contextStore.append(context.getUserId(), "assistant",
-                "[已生成文件: " + result.fileName() + "]");
-        return "已为您生成文件：" + result.fileName();
     }
 
     // ==================== LLMFunction ====================

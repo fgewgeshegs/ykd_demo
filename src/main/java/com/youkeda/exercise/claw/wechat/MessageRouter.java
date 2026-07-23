@@ -15,10 +15,9 @@ import org.springframework.stereotype.Component;
 /**
  * 消息路由器
  *
- * 职责：
- * 1. 接收消息
- * 2. 调用 IntentClassifier 判断意图
- * 3. 根据 Intent 选择对应的 Handler 处理
+ * 按消息类型（IMAGE/VOICE/FILE/TEXT）分发到对应的处理器。
+ * TEXT 消息由 ChatTool → ReActAgentExecutor 做 LLM tool-calling 循环；
+ * 非 TEXT 消息直接分发给专用 Handler（VisionTool/VoiceTool/FileTool）。
  *
  * 不包含业务逻辑，仅负责路由分发
  */

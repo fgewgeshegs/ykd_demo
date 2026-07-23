@@ -3,8 +3,6 @@ package com.youkeda.exercise.claw.agent.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.AgentContext;
-import com.youkeda.exercise.claw.agent.classify.Intent;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.ai.image.ImageGenerationService;
@@ -22,14 +20,14 @@ import java.util.List;
 /**
  * 图片生成工具
  *
- * <p>封装 ImageGenerationService，结合 LLM 上下文理解，同时作为 Tool 和 WechatMessageHandler 暴露。
- * 启动时自动注册到 ToolRegistry 和 LLMFunctionRegistry。
+ * <p>封装 ImageGenerationService，结合 LLM 上下文理解。作为 WechatMessageHandler 和 LLMFunction 暴露。
+ * 启动时自动注册到 LLMFunctionRegistry。
  *
  * <p>注意：{@link LLMFunction#execute(String)} 只能返回文本，但图片数据通过
  * {@link #consumePendingImage()} 传递回调用方（{@code ChatTool}），确保图片能被正确发送。</p>
  */
 @Component
-public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunction {
+public class ImageGenerationTool implements WechatMessageHandler, LLMFunction {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationTool.class);
     private static final String FALLBACK_REPLY = "抱歉，图片生成失败，请稍后再试。";
@@ -46,7 +44,6 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunct
     private final ImageClient imageClient;
     private final ContextStore contextStore;
     private final LLMClient llmClient;
-    private final ToolRegistry toolRegistry;
     private final LLMFunctionRegistry llmFunctionRegistry;
     private final ObjectMapper objectMapper;
 
@@ -57,21 +54,18 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunct
                                 ImageClient imageClient,
                                 ContextStore contextStore,
                                 LLMClient llmClient,
-                                ToolRegistry toolRegistry,
                                 LLMFunctionRegistry llmFunctionRegistry,
                                 ObjectMapper objectMapper) {
         this.imageGenerationService = imageGenerationService;
         this.imageClient = imageClient;
         this.contextStore = contextStore;
         this.llmClient = llmClient;
-        this.toolRegistry = toolRegistry;
         this.llmFunctionRegistry = llmFunctionRegistry;
         this.objectMapper = objectMapper;
     }
 
     @PostConstruct
     public void init() {
-        toolRegistry.register(this);
         llmFunctionRegistry.register(this);
     }
 
@@ -89,36 +83,6 @@ public class ImageGenerationTool implements Tool, WechatMessageHandler, LLMFunct
 
     /** 图片生成结果暂存：图片字节 + 描述文本 */
     public record PendingImage(byte[] imageBytes, String description) {}
-
-    @Override
-    public String name() {
-        return "image_generate";
-    }
-
-    @Override
-    public String description() {
-        return "根据文字描述生成图片，调用 qwen-image-2.0 模型";
-    }
-
-    @Override
-    public Intent[] supportedIntents() {
-        return new Intent[]{Intent.IMAGE_GENERATE};
-    }
-
-    @Override
-    public String execute(AgentContext context) {
-        log.info("ImageGenerationTool 执行 | user={} | prompt={}",
-                context.getUserId(), context.getMessage());
-
-        String fullPrompt = enrichPrompt(context.getUserId(), context.getMessage());
-        String imageUrl = imageGenerationService.generate(fullPrompt);
-        if (imageUrl == null) {
-            return FALLBACK_REPLY;
-        }
-
-        contextStore.append(context.getUserId(), "assistant", "[图片]", null, null, imageUrl);
-        return "已为您生成图片：" + imageUrl;
-    }
 
     // ==================== LLMFunction ====================
 
