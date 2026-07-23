@@ -7,6 +7,9 @@ import com.github.wechat.ilink.sdk.core.model.MessageItem;
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
+import com.youkeda.exercise.claw.wechat.login.LoginPageServer;
+import com.youkeda.exercise.claw.wechat.login.LoginStateManager;
+import com.youkeda.exercise.claw.wechat.login.LoginStatus;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -79,44 +82,63 @@ public class WechatILinkClient {
                 .build();
 
         CompletableFuture.runAsync(() -> {
+            LoginPageServer pageServer = null;
             try {
                 String qrResult = client.executeLogin();
-                // executeLogin 返回二维码链接或 base64 图片
                 if (qrResult.startsWith("http")) {
-                    log.info("请扫码登录 → {}", qrResult);
-                    try {
-                        String os = System.getProperty("os.name").toLowerCase();
-                        if (os.contains("win")) {
-                            Runtime.getRuntime().exec(new String[]{"rundll32", "url.dll,FileProtocolHandler", qrResult});
-                        } else if (os.contains("mac")) {
-                            Runtime.getRuntime().exec(new String[]{"open", qrResult});
-                        } else {
-                            Runtime.getRuntime().exec(new String[]{"xdg-open", qrResult});
-                        }
-                        log.info("已自动打开浏览器，请在浏览器中扫码登录");
-                    } catch (IOException e) {
-                        log.warn("无法自动打开浏览器，请手动复制上方链接扫码登录", e);
+                    // URL 格式：走本地登录页面，提供完整的状态视觉反馈
+                    LoginStateManager stateManager = new LoginStateManager();
+                    stateManager.updateQrUrl(qrResult);
+                    stateManager.updateStatus(LoginStatus.WAITING_SCAN);
+                    log.info("qrUrl.length={}", qrResult.length());
+
+                    pageServer = new LoginPageServer(stateManager);
+                    int port = pageServer.start();
+                    openBrowser("http://127.0.0.1:" + port + "/login");
+
+                    // 轮询登录状态
+                    long deadline = System.currentTimeMillis() + LOGIN_TIMEOUT_MS;
+                    while (!client.isLoggedIn() && System.currentTimeMillis() < deadline) {
+                        Thread.sleep(1000);
+                    }
+                    if (client.isLoggedIn()) {
+                        loggedIn = true;
+                        stateManager.updateStatus(LoginStatus.SUCCESS);
+                        log.info("微信登录成功");
+                        Thread.sleep(3000);
+                    } else {
+                        stateManager.updateStatus(LoginStatus.TIMEOUT);
+                        log.error("微信登录超时");
+                        Thread.sleep(10000);
                     }
                 } else {
+                    // base64 格式：写文件兜底
                     String qrBase64 = qrResult.contains(",") ? qrResult.substring(qrResult.indexOf(",") + 1) : qrResult;
                     byte[] qrBytes = Base64.getDecoder().decode(qrBase64);
                     Path qrFile = Path.of("qrcode.png");
                     Files.write(qrFile, qrBytes);
                     log.info("请扫码登录 → {}", qrFile.toAbsolutePath());
-                }
-                // 等待登录完成
-                long deadline = System.currentTimeMillis() + LOGIN_TIMEOUT_MS;
-                while (!client.isLoggedIn() && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(1000);
-                }
-                if (client.isLoggedIn()) {
-                    loggedIn = true;
-                    log.info("微信登录成功");
-                } else {
-                    log.error("微信登录超时");
+
+                    long deadline = System.currentTimeMillis() + LOGIN_TIMEOUT_MS;
+                    while (!client.isLoggedIn() && System.currentTimeMillis() < deadline) {
+                        Thread.sleep(1000);
+                    }
+                    if (client.isLoggedIn()) {
+                        loggedIn = true;
+                        log.info("微信登录成功");
+                    } else {
+                        log.error("微信登录超时");
+                    }
                 }
             } catch (Exception e) {
                 log.error("微信登录异常", e);
+                if (pageServer != null) {
+                    try { Thread.sleep(10000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                }
+            } finally {
+                if (pageServer != null) {
+                    pageServer.stop();
+                }
             }
         });
     }
@@ -289,6 +311,25 @@ public class WechatILinkClient {
             } catch (Exception e) {
                 log.warn("关闭微信 iLink 客户端异常", e);
             }
+        }
+    }
+
+    /**
+     * 打开系统默认浏览器访问指定 URL
+     */
+    private void openBrowser(String url) {
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("win")) {
+                Runtime.getRuntime().exec(new String[]{"rundll32", "url.dll,FileProtocolHandler", url});
+            } else if (os.contains("mac")) {
+                Runtime.getRuntime().exec(new String[]{"open", url});
+            } else {
+                Runtime.getRuntime().exec(new String[]{"xdg-open", url});
+            }
+            log.info("已自动打开浏览器 → {}", url);
+        } catch (IOException e) {
+            log.warn("无法自动打开浏览器，请手动访问: {}", url, e);
         }
     }
 

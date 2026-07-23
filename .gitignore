@@ -54,6 +54,7 @@ src/main/resources/application.properties
 com/lth/
 
 # 忽略Claude的项目文档
+/memory/
 CLAUDE.md
 
 # 忽略设计文档（仅供 AI 参考，不应提交）
