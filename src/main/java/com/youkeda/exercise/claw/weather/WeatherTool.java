@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 /**
  * 天气查询工具
@@ -59,6 +61,25 @@ public class WeatherTool {
         }
     }
 
+    /** 查询指定日期的天气预报。调用方应确保日期在服务支持的预报范围内。 */
+    public WeatherResponse queryWeather(String city, LocalDate date) throws ClawException {
+        if (date == null || date.equals(LocalDate.now())) return queryWeather(city);
+        try {
+            long daysFromToday = ChronoUnit.DAYS.between(LocalDate.now(), date);
+            int days = (int) Math.max(1, daysFromToday + 1);
+            String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
+            String url = config.getUrl()
+                    .replace("/current.json", "/forecast.json")
+                    .replace("{city}", encodedCity)
+                    .replace("{key}", config.getKey());
+            url += "&days=" + days;
+            return parseForecastResponse(httpClient.doGet(url), city, date);
+        } catch (Exception e) {
+            if (e instanceof ClawException ce) throw ce;
+            throw new ClawException("天气预报服务暂时不可用", e);
+        }
+    }
+
     /**
      * 解析天气 API 返回的 JSON 数据
      * 支持 WeatherAPI.com 格式
@@ -95,6 +116,42 @@ public class WeatherTool {
         } catch (Exception e) {
             if (e instanceof ClawException ce) throw ce;
             throw new ClawException("解析天气数据失败", e);
+        }
+    }
+
+    private WeatherResponse parseForecastResponse(String json, String originalCity,
+                                                  LocalDate targetDate) throws ClawException {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            if (root.has("error")) {
+                String message = root.path("error").path("message").asText("未知错误");
+                throw new ClawException("天气 API 返回错误: " + message);
+            }
+            String cityName = root.path("location").path("name").asText(originalCity);
+            JsonNode forecastDays = root.path("forecast").path("forecastday");
+            if (!forecastDays.isArray()) throw new ClawException("天气 API 未返回预报数据");
+
+            for (JsonNode forecastDay : forecastDays) {
+                if (targetDate.toString().equals(forecastDay.path("date").asText())) {
+                    JsonNode day = forecastDay.path("day");
+                    WeatherResponse response = new WeatherResponse();
+                    response.setCity(cityName);
+                    response.setDate(targetDate.toString());
+                    response.setForecast(true);
+                    response.setWeather(day.path("condition").path("text").asText("未知"));
+                    response.setTemperature(day.path("avgtemp_c").asDouble());
+                    response.setMinTemperature(day.path("mintemp_c").asDouble());
+                    response.setMaxTemperature(day.path("maxtemp_c").asDouble());
+                    response.setHumidity(day.path("avghumidity").asInt());
+                    response.setChanceOfRain(day.path("daily_chance_of_rain").asInt());
+                    response.setMaxWindKph(day.path("maxwind_kph").asDouble());
+                    return response;
+                }
+            }
+            throw new ClawException("目标日期不在天气 API 返回的预报范围内");
+        } catch (Exception e) {
+            if (e instanceof ClawException ce) throw ce;
+            throw new ClawException("解析天气预报数据失败", e);
         }
     }
 }

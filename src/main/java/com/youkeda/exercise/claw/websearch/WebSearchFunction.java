@@ -54,10 +54,10 @@ public class WebSearchFunction implements LLMFunction {
 
     @Override
     public String getDescription() {
-        return "搜索互联网获取实时信息。必须在以下场景调用："
-                + "旅游景点推荐、行程规划、美食攻略、交通方式、门票价格、开放时间、"
-                + "酒店住宿、旅游政策、天气穿衣、当地习俗等。"
-                + "禁止凭记忆回答旅游相关问题，必须先搜索再回答。";
+        return "互联网兜底搜索工具。旅游场景必须优先使用地图、天气、时间等专业工具；"
+                + "只有专业工具返回 EMPTY、PARTIAL、ERROR，或需要查询其能力范围外的团队价格、"
+                + "开放时间、预约政策、酒店接待、会议室、发票等信息时才调用。"
+                + "搜索词只覆盖缺失内容，不得重复搜索专业工具已经确认的信息。";
     }
 
     @Override
@@ -93,11 +93,34 @@ public class WebSearchFunction implements LLMFunction {
 
             log.info("WebSearchFunction 执行 | query={} | count={}", query, count);
 
-            return searchService.search(query, count);
+            String rawResult = searchService.search(query, count);
+            JsonNode searchResult = objectMapper.readTree(rawResult);
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("source", "WEB_SEARCH");
+            if (searchResult.has("error")) {
+                result.put("status", "ERROR");
+                result.set("data", searchResult);
+                result.put("fallback_required", false);
+            } else if (!searchResult.path("results").isArray()
+                    || searchResult.path("results").isEmpty()) {
+                result.put("status", "EMPTY");
+                result.set("data", searchResult);
+                result.put("fallback_required", false);
+            } else {
+                result.put("status", "SUCCESS");
+                result.set("data", searchResult);
+                result.put("fallback_required", false);
+            }
+            return objectMapper.writeValueAsString(result);
 
         } catch (Exception e) {
             log.error("WebSearchFunction 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
-            return "{\"error\": \"" + e.getMessage().replace("\"", "'") + "\"}";
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("status", "ERROR");
+            result.put("source", "WEB_SEARCH");
+            result.put("error", e.getMessage());
+            result.put("fallback_required", false);
+            return result.toString();
         }
     }
 }
