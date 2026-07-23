@@ -10,6 +10,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+
 /**
  * 天气查询函数（LLM Function Calling 适配器）
  *
@@ -46,7 +50,9 @@ public class WeatherFunction implements LLMFunction {
 
     @Override
     public String getDescription() {
-        return "查询指定城市的实时天气信息，返回天气状况、温度、湿度等数据。城市名称支持中文，如：北京、上海、广州、深圳、杭州等";
+        return "查询指定城市当前或出行日期的天气。完整出游方案必须在目的地和日期确定后调用。"
+                + "远期日期超出可靠预报范围时返回 UNAVAILABLE，此时可用 web_search 查询同期气候参考，"
+                + "但必须提醒用户出发前3至7天复查。";
     }
 
     @Override
@@ -59,6 +65,10 @@ public class WeatherFunction implements LLMFunction {
         city.put("type", "string");
         city.put("description", "城市名称，如：北京、上海、广州、深圳");
 
+        ObjectNode date = properties.putObject("date");
+        date.put("type", "string");
+        date.put("description", "可选，出行日期，格式 yyyy-MM-dd；不传则查询当前天气");
+
         params.putArray("required").add("city");
 
         return params;
@@ -68,22 +78,62 @@ public class WeatherFunction implements LLMFunction {
     public String execute(String argumentsJson) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
-            JsonNode cityNode = args.get("city");
-            if (cityNode == null) {
-                return "{\"error\": \"缺少必填参数: city\"}";
+            JsonNode cityNode = args.has("city") ? args.get("city") : args.get("location");
+            if (cityNode == null || cityNode.asText().isBlank()) {
+                ObjectNode result = objectMapper.createObjectNode();
+                result.put("status", "ERROR");
+                result.put("source", "WEATHER_API");
+                result.put("error", "缺少必填参数: city");
+                result.put("fallback_required", false);
+                return result.toString();
             }
 
             String city = cityNode.asText();
             log.info("WeatherFunction 执行 | city={}", city);
 
-            WeatherResponse response = weatherTool.queryWeather(city);
+            String dateText = args.path("date").asText("");
+            LocalDate targetDate = null;
+            if (!dateText.isBlank()) {
+                try {
+                    targetDate = LocalDate.parse(dateText);
+                } catch (DateTimeParseException e) {
+                    return unavailable("日期格式必须为 yyyy-MM-dd", false);
+                }
+                long days = ChronoUnit.DAYS.between(LocalDate.now(), targetDate);
+                if (days < 0) return unavailable("不能查询过去日期的天气预报", true);
+                if (days > 14) return unavailable("日期超出14天可靠预报范围", true);
+            }
 
-            // 将 WeatherResponse 序列化为 JSON 字符串返回给 LLM
-            return objectMapper.writeValueAsString(response);
+            WeatherResponse response = targetDate == null
+                    ? weatherTool.queryWeather(city)
+                    : weatherTool.queryWeather(city, targetDate);
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("status", "SUCCESS");
+            result.put("source", "WEATHER_API");
+            result.set("data", objectMapper.valueToTree(response));
+            result.put("fallback_required", false);
+            return objectMapper.writeValueAsString(result);
 
         } catch (Exception e) {
             log.error("WeatherFunction 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
-            return "{\"error\": \"" + e.getMessage().replace("\"", "'") + "\"}";
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("status", "ERROR");
+            result.put("source", "WEATHER_API");
+            result.put("error", e.getMessage());
+            result.put("fallback_required", true);
+            return result.toString();
         }
+    }
+
+    private String unavailable(String reason, boolean webFallback) {
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("status", "UNAVAILABLE");
+        result.put("source", "WEATHER_API");
+        result.put("reason", reason);
+        result.put("fallback_required", webFallback);
+        if (webFallback) {
+            result.put("instruction", "可用 web_search 查询当地同期气候作为参考，并提醒出发前3至7天复查天气。不得把同期气候写成准确预报。");
+        }
+        return result.toString();
     }
 }

@@ -10,6 +10,12 @@ public class WeatherResponse {
     private String weather;
     private double temperature;
     private int humidity;
+    private String date;
+    private boolean forecast;
+    private double minTemperature;
+    private double maxTemperature;
+    private int chanceOfRain;
+    private double maxWindKph;
 
     public WeatherResponse() {
     }
@@ -60,4 +66,17 @@ public class WeatherResponse {
     public void setHumidity(int humidity) {
         this.humidity = humidity;
     }
+
+    public String getDate() { return date; }
+    public void setDate(String date) { this.date = date; }
+    public boolean isForecast() { return forecast; }
+    public void setForecast(boolean forecast) { this.forecast = forecast; }
+    public double getMinTemperature() { return minTemperature; }
+    public void setMinTemperature(double minTemperature) { this.minTemperature = minTemperature; }
+    public double getMaxTemperature() { return maxTemperature; }
+    public void setMaxTemperature(double maxTemperature) { this.maxTemperature = maxTemperature; }
+    public int getChanceOfRain() { return chanceOfRain; }
+    public void setChanceOfRain(int chanceOfRain) { this.chanceOfRain = chanceOfRain; }
+    public double getMaxWindKph() { return maxWindKph; }
+    public void setMaxWindKph(double maxWindKph) { this.maxWindKph = maxWindKph; }
 }
