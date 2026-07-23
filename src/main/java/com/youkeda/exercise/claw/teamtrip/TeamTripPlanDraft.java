@@ -37,11 +37,15 @@ public class TeamTripPlanDraft {
     private int optionSetVersion;
     private OptionDecisionStatus optionDecisionStatus = OptionDecisionStatus.NO_OPTIONS;
     private BudgetDecisionStatus budgetDecisionStatus = BudgetDecisionStatus.NOT_REQUIRED;
+    private String holidayStatus = "NOT_CALLED";
     private String mapStatus = "NOT_CALLED";
     private String routeStatus = "NOT_CALLED";
     private String weatherStatus = "NOT_CALLED";
+    private String transportStatus = "NOT_CALLED";
     private String webSearchStatus = "NOT_CALLED";
     private String costStatus = "NOT_CALCULATED";
+    private JsonNode lastHolidayResult;
+    private JsonNode lastTransportResult;
     private JsonNode lastCostResult;
 
     public String getDepartureCity() { return departureCity; }
@@ -114,16 +118,28 @@ public class TeamTripPlanDraft {
         this.budgetDecisionStatus = budgetDecisionStatus != null
                 ? budgetDecisionStatus : BudgetDecisionStatus.NOT_REQUIRED;
     }
+    public String getHolidayStatus() { return holidayStatus; }
+    public void setHolidayStatus(String holidayStatus) { this.holidayStatus = holidayStatus; }
     public String getMapStatus() { return mapStatus; }
     public void setMapStatus(String mapStatus) { this.mapStatus = mapStatus; }
     public String getRouteStatus() { return routeStatus; }
     public void setRouteStatus(String routeStatus) { this.routeStatus = routeStatus; }
     public String getWeatherStatus() { return weatherStatus; }
     public void setWeatherStatus(String weatherStatus) { this.weatherStatus = weatherStatus; }
+    public String getTransportStatus() { return transportStatus; }
+    public void setTransportStatus(String transportStatus) { this.transportStatus = transportStatus; }
     public String getWebSearchStatus() { return webSearchStatus; }
     public void setWebSearchStatus(String webSearchStatus) { this.webSearchStatus = webSearchStatus; }
     public String getCostStatus() { return costStatus; }
     public void setCostStatus(String costStatus) { this.costStatus = costStatus; }
+    public JsonNode getLastHolidayResult() { return lastHolidayResult; }
+    public void setLastHolidayResult(JsonNode lastHolidayResult) {
+        this.lastHolidayResult = lastHolidayResult;
+    }
+    public JsonNode getLastTransportResult() { return lastTransportResult; }
+    public void setLastTransportResult(JsonNode lastTransportResult) {
+        this.lastTransportResult = lastTransportResult;
+    }
     public JsonNode getLastCostResult() { return lastCostResult; }
     public void setLastCostResult(JsonNode lastCostResult) { this.lastCostResult = lastCostResult; }
 }

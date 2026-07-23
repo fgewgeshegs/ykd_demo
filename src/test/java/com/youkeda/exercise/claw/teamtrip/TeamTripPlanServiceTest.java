@@ -41,7 +41,9 @@ class TeamTripPlanServiceTest {
                 {"action":"collect","travel_date":"2026-08-15","duration":"2天1晚",
                  "budget_per_person":1200,"travel_scope":"杭州周边车程2小时内"}
                 """));
-        assertEquals("READY_FOR_MAP", second.path("status").asText());
+        assertEquals("READY_FOR_CONTEXT", second.path("status").asText());
+        assertEquals("holiday_check", second.path("next_tools").get(0).asText());
+        assertEquals("map_search_place", second.path("next_tools").get(1).asText());
         assertEquals("BALANCED_DEFAULT", second.path("plan_mode").asText());
         assertEquals("杭州", second.path("collected_information").path("departureCity").asText());
     }
@@ -66,8 +68,11 @@ class TeamTripPlanServiceTest {
                  "destination":"扬州"}
                 """));
 
-        assertEquals("READY_FOR_DATE", result.path("status").asText());
-        assertEquals("time_query", result.path("next_tool").asText());
+        assertEquals("READY_FOR_DATE_CONTEXT", result.path("status").asText());
+        assertEquals("time_query", result.path("next_tools").get(0).asText());
+        assertEquals("map_search_place", result.path("next_tools").get(1).asText());
+        assertNull(policy.validate("u3", "map_search_place",
+                List.of("time_query", "map_search_place")));
     }
 
     @Test
@@ -81,7 +86,8 @@ class TeamTripPlanServiceTest {
                  "destination":"杭州"}
                 """.formatted(monthDay)));
 
-        assertEquals("READY_FOR_MAP", result.path("status").asText());
+        assertEquals("READY_FOR_CONTEXT", result.path("status").asText());
+        assertEquals("holiday_check", result.path("next_tools").get(0).asText());
         assertEquals(expected.toString(),
                 result.path("collected_information").path("travelDate").asText());
     }
@@ -118,7 +124,14 @@ class TeamTripPlanServiceTest {
                  "destination":"安吉"}
                 """));
 
-        assertTrue(policy.validate("u4", "web_search", List.of("web_search")).contains("地图"));
+        assertTrue(policy.validate("u4", "web_search", List.of("web_search")).contains("并行"));
+        assertNull(policy.validate("u4", "holiday_check", List.of("holiday_check")));
+        assertNull(policy.validate("u4", "map_search_place",
+                List.of("holiday_check", "map_search_place")));
+
+        service.recordToolResult("u4", "holiday_check",
+                "{\"date\":\"2026-08-15\",\"day_type\":\"weekend\",\"team_building_score\":8}");
+        assertEquals("READY_FOR_CONTEXT", store.get("u4").getStage());
         assertNull(policy.validate("u4", "map_search_place", List.of("map_search_place")));
 
         service.recordToolResult("u4", "map_search_place",
@@ -212,10 +225,73 @@ class TeamTripPlanServiceTest {
                  "travel_date":"2026-09-05","duration":"2天1晚","budget_total":30000,
                  "destination":"无锡"}
                 """));
+        service.recordToolResult("u8", "holiday_check",
+                "{\"date\":\"2026-09-05\",\"day_type\":\"weekend\",\"team_building_score\":8}");
         service.recordToolResult("u8", "map_search_place", "{\"status\":\"SUCCESS\"}");
 
         assertTrue(policy.validate("u8", "budget_calculator",
                 List.of("web_search", "budget_calculator")).contains("不能"));
+    }
+
+    @Test
+    void shouldRequireHolidayAndTransportChecksInTeamTripFlow() throws Exception {
+        ObjectNode collected = service.handle("u-flow", objectMapper.readTree("""
+                {"action":"collect","departure_city":"上海","participant_count":30,
+                 "travel_date":"2026-10-03","duration":"2天1晚","budget_total":50000,
+                 "destination":"杭州"}
+                """));
+
+        assertEquals("READY_FOR_CONTEXT", collected.path("status").asText());
+        assertNull(policy.validate("u-flow", "holiday_check", List.of("holiday_check")));
+        assertNull(policy.validate("u-flow", "map_search_place",
+                List.of("holiday_check", "map_search_place")));
+
+        service.recordToolResult("u-flow", "holiday_check", """
+                {"date":"2026-10-03","day_type":"holiday","holiday_name":"国庆节",
+                 "team_building_score":4}
+                """);
+        TeamTripPlanDraft afterHoliday = store.get("u-flow");
+        assertEquals("SUCCESS", afterHoliday.getHolidayStatus());
+        assertEquals("READY_FOR_CONTEXT", afterHoliday.getStage());
+        assertEquals("holiday", afterHoliday.getLastHolidayResult().path("day_type").asText());
+
+        service.recordToolResult("u-flow", "map_search_place", "{\"status\":\"SUCCESS\"}");
+        assertEquals("MAP_READY", store.get("u-flow").getStage());
+
+        service.recordToolResult("u-flow", "weather_query", "{\"status\":\"SUCCESS\"}");
+        assertEquals("READY_FOR_TRANSPORT", store.get("u-flow").getStage());
+        assertNull(policy.validate("u-flow", "transport_recommend",
+                List.of("transport_recommend")));
+        assertTrue(policy.validate("u-flow", "web_search",
+                List.of("web_search")).contains("交通"));
+
+        service.recordToolResult("u-flow", "transport_recommend", """
+                {"from":"上海","to":"杭州","people":30,
+                 "recommendation":"BUS","recommendation_reason":"团队统一出行"}
+                """);
+        TeamTripPlanDraft afterTransport = store.get("u-flow");
+        assertEquals("SUCCESS", afterTransport.getTransportStatus());
+        assertEquals("TRANSPORT_READY", afterTransport.getStage());
+        assertEquals("BUS",
+                afterTransport.getLastTransportResult().path("recommendation").asText());
+        assertNull(policy.validate("u-flow", "web_search", List.of("web_search")));
+    }
+
+    @Test
+    void shouldKeepParallelContextStageWhenMapFinishesBeforeHoliday() throws Exception {
+        service.handle("u-reverse", objectMapper.readTree("""
+                {"action":"collect","departure_city":"南京","participant_count":20,
+                 "travel_date":"2026-11-07","duration":"1天","budget_total":20000,
+                 "destination":"扬州"}
+                """));
+
+        service.recordToolResult("u-reverse", "map_search_place", "{\"status\":\"SUCCESS\"}");
+        assertEquals("READY_FOR_CONTEXT", store.get("u-reverse").getStage());
+        assertNull(policy.validate("u-reverse", "holiday_check", List.of("holiday_check")));
+
+        service.recordToolResult("u-reverse", "holiday_check",
+                "{\"date\":\"2026-11-07\",\"day_type\":\"weekend\"}");
+        assertEquals("MAP_READY", store.get("u-reverse").getStage());
     }
 
     @Test

@@ -360,7 +360,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         if (userMessage == null || userMessage.trim().length() <= 3) return false;
 
         String prompt = "你是一个分类器。判断用户消息是否需要调用工具才能完整回答。\n"
-                + "需要工具：查天气、查地图/地点/路线、查时间/日期、搜索网页、"
+                + "需要工具：查天气、查地图/地点/路线、查时间/日期/节假日、搜索网页、"
                 + "生成图片、生成文件/文档、语音合成、交通推荐、预算计算。\n"
                 + "不需要工具：纯粹的聊天、问答、解释、翻译、写作、闲聊、感谢。\n"
                 + "如果用户消息很短（如\"好\"\"可以\"\"继续\"），可能是在回应之前提出的方案，"
@@ -391,7 +391,9 @@ public class ReActAgentExecutor implements AgentExecutor {
                         "这是方案展示阶段，不得调用任何工具。保持原来的自然方案展示结构和友好语气，"
                                 + "不要输出 JSON、DSML 或内部状态字段。"
                                 + "沿用加入预算功能前的旅游规划风格：自然介绍后，分别按天展示每个方案的"
-                                + "行程、活动、交通、住宿、餐饮和注意事项。"
+                                + "方案亮点、行程、活动、交通、住宿、餐饮、美食推荐和注意事项。"
+                                + "美食推荐需给出当地特色菜、适合团队的餐厅类型或特色用餐体验，"
+                                + "不能只写早餐、午餐、晚餐等泛化安排。"
                                 + "不要先做大型预算对比表，也不要输出十段式固定报告。"
                                 + "预算只作为每个方案末尾的补充，写预计总费用、人均、预算差额和待确认价格。"
                                 + "全部方案展示完后再询问用户选择；不要擅自替用户选择。"),
@@ -425,19 +427,28 @@ public class ReActAgentExecutor implements AgentExecutor {
         boolean allowMapTools = false;
 
         switch (stage) {
-            case "READY_FOR_DATE" -> {
+            case "READY_FOR_DATE", "READY_FOR_DATE_CONTEXT" -> {
                 exactNames.add("time_query");
                 exactNames.add("team_trip_plan");
+                if ("NOT_CALLED".equals(draft.getMapStatus())) allowMapTools = true;
+            }
+            case "READY_FOR_CONTEXT", "READY_FOR_HOLIDAY" -> {
+                if ("NOT_CALLED".equals(draft.getHolidayStatus())) {
+                    exactNames.add("holiday_check");
+                }
+                if ("NOT_CALLED".equals(draft.getMapStatus())) allowMapTools = true;
             }
             case "READY_FOR_MAP" -> allowMapTools = true;
-            case "MAP_INSUFFICIENT" -> exactNames.add("weather_query");
+            case "MAP_INSUFFICIENT" -> exactNames.add("web_search");
             case "WEATHER_INSUFFICIENT" ->
                     exactNames.add("web_search");
             case "MAP_READY" -> {
                 allowMapTools = true;
                 exactNames.add("weather_query");
             }
-            case "WEATHER_READY", "EVIDENCE_READY" -> {
+            case "WEATHER_READY", "READY_FOR_TRANSPORT" ->
+                    exactNames.add("transport_recommend");
+            case "TRANSPORT_READY", "EVIDENCE_READY" -> {
                 exactNames.add("team_trip_plan");
                 if (webSearchRounds < MAX_WEB_SEARCH_ROUNDS) {
                     exactNames.add("web_search");
