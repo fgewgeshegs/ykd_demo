@@ -55,6 +55,8 @@ com/lth/
 
 # 忽略Claude的项目文档
 CLAUDE.md
+AGENTS.md
+memory/
 
 # 忽略设计文档（仅供 AI 参考，不应提交）
 docs/
