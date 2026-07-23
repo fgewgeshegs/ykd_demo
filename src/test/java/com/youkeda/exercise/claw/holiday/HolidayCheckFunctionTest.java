@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.weather;
+package com.youkeda.exercise.claw.holiday;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
