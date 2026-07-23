@@ -84,6 +84,19 @@ public class WechatILinkClient {
                 // executeLogin 返回二维码链接或 base64 图片
                 if (qrResult.startsWith("http")) {
                     log.info("请扫码登录 → {}", qrResult);
+                    try {
+                        String os = System.getProperty("os.name").toLowerCase();
+                        if (os.contains("win")) {
+                            Runtime.getRuntime().exec(new String[]{"rundll32", "url.dll,FileProtocolHandler", qrResult});
+                        } else if (os.contains("mac")) {
+                            Runtime.getRuntime().exec(new String[]{"open", qrResult});
+                        } else {
+                            Runtime.getRuntime().exec(new String[]{"xdg-open", qrResult});
+                        }
+                        log.info("已自动打开浏览器，请在浏览器中扫码登录");
+                    } catch (IOException e) {
+                        log.warn("无法自动打开浏览器，请手动复制上方链接扫码登录", e);
+                    }
                 } else {
                     String qrBase64 = qrResult.contains(",") ? qrResult.substring(qrResult.indexOf(",") + 1) : qrResult;
                     byte[] qrBytes = Base64.getDecoder().decode(qrBase64);
