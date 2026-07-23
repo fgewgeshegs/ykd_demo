@@ -32,14 +32,12 @@ import java.util.Set;
  * <p>执行流程：
  * <ol>
  *   <li>取对话历史 + 当前用户消息</li>
- *   <li>调 LLM（带所有已注册的 {@link LLMFunction} 定义）</li>
+ *   <li>快速判断：明显不需要工具的闲聊直接 LLM 回复（不含工具定义），跳过后续循环</li>
+ *   <li>调 LLM（带已注册的 {@link LLMFunction} 定义）</li>
  *   <li>LLM 返回文本 → 结束，保存回复到上下文</li>
- *   <li>LLM 返回 tool_calls → 逐个执行 → 结果追加到消息列表 → 回到步骤 2</li>
+ *   <li>LLM 返回 tool_calls → 逐个执行 → 结果追加到消息列表 → 回到步骤 3</li>
  *   <li>达到最大轮次 → 返回超时提示</li>
  * </ol>
- *
- * <p>对应架构演进路线中的 {@code ReActAgentExecutor} 阶段：
- * {@code SimpleAgentExecutor → IntentAgentExecutor → ReActAgentExecutor}
  */
 @Component
 public class ReActAgentExecutor implements AgentExecutor {
@@ -68,7 +66,7 @@ public class ReActAgentExecutor implements AgentExecutor {
      * 保证用户可以随时要求生成文件、图片或语音。
      */
     private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
-            Set.of("file_generate", "image_generate", "text_to_speech");
+            Set.of("file_generate", "image_generate", "text_to_speech", "plan_proposal");
 
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
     private static final String LIMIT_REPLY =
@@ -119,6 +117,22 @@ public class ReActAgentExecutor implements AgentExecutor {
                             + "必须从已保存的团建草稿阶段继续，只执行后续必要步骤；"
                             + "不得复述“处理步骤达到上限”或再次要求用户回复“继续生成”；"
                             + "不得重新收集或覆盖用户已经确认的出发地、人数、日期、天数、目的地和预算。"));
+        }
+
+        // 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
+        if (!continuationRequest && isSimpleChat(userMessage)) {
+            log.debug("快速通道：用户消息不需工具，走纯对话 | user={}", userId);
+            LLMResponse quickResponse = llmClient.chatWithTools(messages, List.of());
+            if (quickResponse != null && !quickResponse.isToolCall()
+                    && quickResponse.getContent() != null
+                    && !quickResponse.getContent().isBlank()) {
+                String reply = quickResponse.getContent();
+                log.info("快速对话回复 | user={} | reply={}", userId, reply);
+                contextStore.append(userId, "assistant", reply);
+                return reply;
+            }
+            // 快速路径异常（LLM 无返回或仍调工具），回退到完整工具循环
+            log.warn("快速对话路径异常，回退到工具循环 | user={}", userId);
         }
 
         // 2. 所有可用工具定义
@@ -335,6 +349,27 @@ public class ReActAgentExecutor implements AgentExecutor {
         return message.content().contains("本轮处理步骤已达到上限")
                 || message.content().contains("请回复“继续生成”")
                 || message.content().contains("请回复\"继续生成\"");
+    }
+
+    /**
+     * 快速判断用户消息是否需要调用工具。
+     * <p>超短消息可能是对计划提议的回应，保守地返回 false 进入工具循环。
+     * 实际判断由一次不带工具的 LLM 调用完成，只有 LLM 明确判断为 CHAT_ONLY 时才跳过。
+     */
+    private boolean isSimpleChat(String userMessage) {
+        if (userMessage == null || userMessage.trim().length() <= 3) return false;
+
+        String prompt = "你是一个分类器。判断用户消息是否需要调用工具才能完整回答。\n"
+                + "需要工具：查天气、查地图/地点/路线、查时间/日期、搜索网页、"
+                + "生成图片、生成文件/文档、语音合成、交通推荐、预算计算。\n"
+                + "不需要工具：纯粹的聊天、问答、解释、翻译、写作、闲聊、感谢。\n"
+                + "如果用户消息很短（如\"好\"\"可以\"\"继续\"），可能是在回应之前提出的方案，"
+                + "需要让工具系统处理，返回 NEED_TOOLS。\n"
+                + "不确定时返回 NEED_TOOLS。\n"
+                + "只返回一个词：NEED_TOOLS 或 CHAT_ONLY。";
+
+        String result = llmClient.chatWithSystemPrompt(prompt, userMessage);
+        return "CHAT_ONLY".equals(result != null ? result.trim() : "");
     }
 
     private String policyBlocked(String reason) {

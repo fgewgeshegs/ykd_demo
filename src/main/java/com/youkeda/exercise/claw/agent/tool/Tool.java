@@ -4,15 +4,15 @@ import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.classify.Intent;
 
 /**
- * 工具接口
+ * 工具接口（旧 Agent 路由体系）
  *
  * Agent 体系中每个可调用的能力都是一个 Tool。
- * 未来 Planner 将通过 ToolRegistry 查找合适的 Tool 并调用。
- *
- * 当前实现：
- * - ChatTool（封装 ChatService）
- * - VisionTool（封装 VisionService）
- * - ImageGenerationTool（封装 ImageGenerationService）
+ * 与 {@link LLMFunction} 接口并存：
+ * <ul>
+ *   <li>{@link Tool} — 非 TEXT 消息类型（IMAGE/VOICE/FILE）通过 ToolRegistry 按 Intent 路由</li>
+ *   <li>{@link LLMFunction} — TEXT 消息由 LLM 通过 Function Calling 自主调用</li>
+ * </ul>
+ * 一个实现类可以同时实现两个接口，注册到各自的 Registry。
  */
 public interface Tool {
 

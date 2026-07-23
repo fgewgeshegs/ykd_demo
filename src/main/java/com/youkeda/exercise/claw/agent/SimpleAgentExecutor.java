@@ -14,10 +14,8 @@ import org.springframework.stereotype.Component;
  * 当前实现：桥接 MessageRouter 体系，不改变任何现有行为。
  * 内部流程：AgentContext → WechatMessage → MessageRouter.route() → 回复文本。
  *
- * 未来演进路径：
- * SimpleAgentExecutor（当前）
- *   → IntentAgentExecutor（加入 Planner 替换 IntentClassifier）
- *     → ReActAgentExecutor（Planner → ToolRegistry → Tool 调用循环）
+ * 架构定位：MessageRouter 路由的后备执行器。主动路由主力已为 {@link ReActAgentExecutor}，
+ * 本类仅在部分非 ReAct 场景下作为 MessageRouter 的代理层保留。
  */
 @Component
 public class SimpleAgentExecutor implements AgentExecutor {

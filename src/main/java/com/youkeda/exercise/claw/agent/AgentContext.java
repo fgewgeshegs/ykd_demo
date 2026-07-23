@@ -28,7 +28,9 @@ public class AgentContext {
     private MessageType messageType;
 
     /**
-     * 意图分类结果（IntentClassifier 产出，后续由 Planner 替代）
+     * 意图分类结果（旧 IntentClassifier 产物，已不再用于 TEXT 消息路由。
+     * TEXT 消息走 ReActAgentExecutor 的 LLM tool-calling 自主判断；
+     * 此字段在非 TEXT 消息的旧路由路径中保留使用。）
      */
     private Intent intent;
 

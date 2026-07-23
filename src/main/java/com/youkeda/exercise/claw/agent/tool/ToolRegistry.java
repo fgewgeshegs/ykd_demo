@@ -11,10 +11,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 工具注册中心
+ * 工具注册中心（旧 Agent 路由体系）
  *
- * 职责：管理所有 Tool 的注册、查找与列表。
- * 当前作为 Spring Bean 使用，未来 Planner 通过它查找可用工具。
+ * 职责：管理所有 {@link Tool} 的注册、查找与列表。
+ * 维护 Intent → Tool 映射，供非 TEXT 消息（IMAGE/VOICE/FILE）的类型路由使用。
+ * 与 {@link LLMFunctionRegistry}（LLM 自主 tool-calling）并存。
  *
  * 线程安全：使用 synchronized 保证并发注册/查找安全。
  */

@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## SDK Source Reference
 
@@ -141,26 +141,16 @@ Uses Apache Tika (AutoDetectParser) for document text extraction and MIME type d
 - Size check at `maxFileSize` bytes
 - Returns `FileParseResult(text, List<EmbeddedImage>)` or null on failure
 
-### Agent System
+### Agent System (emerging)
 
-两层 Agent 体系并存，按消息类型分流：
+Future-proof Agent architecture bridging to `MessageRouter`. Not the active routing path.
 
-**Layer 1 — 非 TEXT 消息（IMAGE/VOICE/FILE）：**
-由 `MessageRouter` 按 `MessageType` 直接分发给对应的 `Tool` 实现类（`VisionTool`, `VoiceTool`, `FileTool`），走旧 Intent 路由体系。
+- `AgentExecutor` → `SimpleAgentExecutor` (wraps `MessageRouter`)
+- `Tool` (in `agent/tool/`) → `ChatTool` / `VisionTool` / `ImageGenerationTool` — auto-register via `ToolRegistry` at `@PostConstruct`
+- `ToolRegistry` (in `agent/tool/`) — `Map<Intent, Tool>`
+- `AgentContext` — userId, message, intent, rawMessage
 
-- `Tool` 接口 — 按 `Intent` 映射，通过 `ToolRegistry` 注册
-- `LLMFunction` 接口 — LLM Function Calling 定义，通过 `LLMFunctionRegistry` 注册
-- 一个实现类可同时实现两个接口（如 `ImageGenerationTool`, `FileGenerationTool`）
-
-**Layer 2 — TEXT 消息（主力）：**
-全量走 `ChatTool` → `ReActAgentExecutor`（LLM tool-calling 循环）：
-1. LLM + 所有 `LLMFunction` 定义 → 自主决定调哪个工具
-2. 执行工具 → 结果追加到消息列表 → 继续下一轮
-3. 工具轮次上限或无工具需要 → 生成最终回复
-
-- `AgentExecutor` 接口 → `ReActAgentExecutor` 主实现 / `SimpleAgentExecutor` 后备
-- `AgentContext` — userId, message, messageType, intent（非 TEXT 路由用）, rawMessage
-- `LLMIntentClassifier` 已移除，`Intent` 枚举仅在非 TEXT 旧路由中使用
+**Planned evolution**: `SimpleAgentExecutor` → `PlannerAgentExecutor` (Planner replaces IntentClassifier) → `ReActAgentExecutor`.
 
 ### Exception Handling
 
