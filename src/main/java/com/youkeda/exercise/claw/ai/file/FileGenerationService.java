@@ -79,10 +79,31 @@ public class FileGenerationService {
      * @return 文件生成结果（字节、文件名、描述），失败返回 null
      */
     public FileGenerationResult generate(String userId, String userText) {
-        log.info("FileGenerationService 开始生成 | user={} | text={}", userId, userText);
+        return generate(userId, userText, null);
+    }
 
-        // 1. 检测目标格式
-        FileFormat format = detectFormat(userText);
+    /**
+     * 生成文件（带格式提示）
+     *
+     * @param userId      用户标识
+     * @param userText    用户请求文本
+     * @param formatHint  格式提示（"pdf" 或 "docx"），不为 null 时优先使用此格式
+     * @return 文件生成结果（字节、文件名、描述），失败返回 null
+     */
+    public FileGenerationResult generate(String userId, String userText, String formatHint) {
+        log.info("FileGenerationService 开始生成 | user={} | text={} | formatHint={}", userId, userText, formatHint);
+
+        // 1. 检测目标格式（优先使用 formatHint）
+        FileFormat format;
+        if (formatHint != null) {
+            format = switch (formatHint.toLowerCase()) {
+                case "pdf" -> FileFormat.PDF;
+                case "docx", "doc", "word" -> FileFormat.DOCX;
+                default -> detectFormat(userText);
+            };
+        } else {
+            format = detectFormat(userText);
+        }
         log.info("检测到文件格式 | format={}", format);
 
         // 2. 获取对话历史并调用 LLM 生成文档内容
@@ -134,11 +155,12 @@ public class FileGenerationService {
 
     private FileFormat detectFormat(String userText) {
         String lower = userText.toLowerCase();
-        if (lower.contains("word") || lower.contains("docx") || lower.contains("文档")) {
-            return FileFormat.DOCX;
-        }
+        // "pdf" 优先级最高（避免 "PDF文档" 被误判为 DOCX）
         if (lower.contains("pdf")) {
             return FileFormat.PDF;
+        }
+        if (lower.contains("word") || lower.contains("docx") || lower.contains("文档")) {
+            return FileFormat.DOCX;
         }
         // 默认 PDF
         return FileFormat.PDF;
@@ -186,8 +208,8 @@ public class FileGenerationService {
                         y = PAGE_HEIGHT - MARGIN;
                     }
 
-                    // 渲染前清理不支持的字形（如 • 在 CJK 字体中经常缺失）
-                    String sanitized = sanitizePdfText(line);
+                    // 渲染前清理不支持的字形 + 行内 Markdown 标记
+                    String sanitized = stripInlineMarkdown(sanitizePdfText(line));
 
                     if (sanitized.startsWith("# ")) {
                         // 一级标题：大号加粗居中
@@ -373,20 +395,20 @@ public class FileGenerationService {
 
             for (String line : lines) {
                 if (line.startsWith("# ")) {
-                    createDocxParagraph(document, line.substring(2), true, 22);
+                    createDocxFormattedParagraph(document, line.substring(2), true, 22);
                 } else if (line.startsWith("## ")) {
-                    createDocxParagraph(document, line.substring(3), true, 18);
+                    createDocxFormattedParagraph(document, line.substring(3), true, 18);
                 } else if (line.startsWith("### ")) {
-                    createDocxParagraph(document, line.substring(4), true, 15);
+                    createDocxFormattedParagraph(document, line.substring(4), true, 15);
                 } else if (line.startsWith("- ")) {
-                    createDocxParagraph(document, "• " + line.substring(2), false, 12);
+                    createDocxFormattedParagraph(document, "• " + line.substring(2), false, 12);
                 } else if (line.matches("^\\d+\\.\\s.*")) {
-                    createDocxParagraph(document, line, false, 12);
+                    createDocxFormattedParagraph(document, line, false, 12);
                 } else if (line.trim().isEmpty()) {
                     // 空行：空段落
                     document.createParagraph();
                 } else {
-                    createDocxParagraph(document, line, false, 12);
+                    createDocxFormattedParagraph(document, line, false, 12);
                 }
             }
 
@@ -396,17 +418,111 @@ public class FileGenerationService {
         }
     }
 
-    private void createDocxParagraph(XWPFDocument document, String text, boolean bold, int fontSize) {
+    private void createDocxFormattedParagraph(XWPFDocument document, String text, boolean paragraphBold, int fontSize) {
         XWPFParagraph paragraph = document.createParagraph();
         // 标题段落设置间距
-        if (bold && fontSize > 14) {
+        if (paragraphBold && fontSize > 14) {
             paragraph.setSpacingAfter(200);
         }
-        XWPFRun run = paragraph.createRun();
-        run.setText(text);
-        run.setBold(bold);
-        run.setFontSize(fontSize);
-        run.setFontFamily("微软雅黑");
+
+        // 解析行内 Markdown 格式，分段创建 Runs
+        List<TextSegment> segments = parseInlineFormatting(text);
+        for (TextSegment segment : segments) {
+            if (segment.text().isEmpty()) continue;
+            XWPFRun run = paragraph.createRun();
+            run.setText(segment.text());
+            run.setBold(paragraphBold || segment.bold());
+            run.setItalic(segment.italic());
+            run.setFontSize(fontSize);
+            run.setFontFamily("微软雅黑");
+        }
+    }
+
+    // ==================== 行内 Markdown 格式解析 ====================
+
+    /**
+     * 行内格式化的文本段
+     *
+     * @param text   文本内容（不含 Markdown 标记）
+     * @param bold   是否粗体
+     * @param italic 是否斜体
+     */
+    record TextSegment(String text, boolean bold, boolean italic) {}
+
+    /**
+     * 解析行内 Markdown 格式标记
+     * <p>支持：{@code **粗体**}、{@code *斜体*}
+     * 先解析粗体，剩余部分再解析斜体，避免 {@code **} 与 {@code *} 冲突。</p>
+     */
+    private List<TextSegment> parseInlineFormatting(String line) {
+        if (line == null || line.isEmpty()) {
+            return List.of(new TextSegment(line != null ? line : "", false, false));
+        }
+        List<TextSegment> result = new ArrayList<>();
+
+        // 第一遍：提取 **bold**
+        java.util.regex.Pattern boldPattern = java.util.regex.Pattern.compile("\\*\\*(.+?)\\*\\*");
+        java.util.regex.Matcher boldMatcher = boldPattern.matcher(line);
+        int lastEnd = 0;
+
+        while (boldMatcher.find()) {
+            // 粗体前的文本 → 可能包含 *italic*
+            String before = line.substring(lastEnd, boldMatcher.start());
+            if (!before.isEmpty()) {
+                result.addAll(parseItalic(before));
+            }
+            // 粗体段
+            result.add(new TextSegment(boldMatcher.group(1), true, false));
+            lastEnd = boldMatcher.end();
+        }
+
+        // 剩余文本
+        String remaining = line.substring(lastEnd);
+        if (!remaining.isEmpty()) {
+            result.addAll(parseItalic(remaining));
+        }
+
+        // 完全没有匹配到任何标记
+        if (result.isEmpty()) {
+            result.add(new TextSegment(line, false, false));
+        }
+
+        return result;
+    }
+
+    /**
+     * 从文本中提取 *italic* 片段
+     */
+    private List<TextSegment> parseItalic(String text) {
+        List<TextSegment> segments = new ArrayList<>();
+        java.util.regex.Pattern italicPattern = java.util.regex.Pattern.compile("\\*(.+?)\\*");
+        java.util.regex.Matcher matcher = italicPattern.matcher(text);
+        int lastEnd = 0;
+
+        while (matcher.find()) {
+            String before = text.substring(lastEnd, matcher.start());
+            if (!before.isEmpty()) {
+                segments.add(new TextSegment(before, false, false));
+            }
+            segments.add(new TextSegment(matcher.group(1), false, true));
+            lastEnd = matcher.end();
+        }
+
+        String remaining = text.substring(lastEnd);
+        if (!remaining.isEmpty()) {
+            segments.add(new TextSegment(remaining, false, false));
+        }
+
+        return segments;
+    }
+
+    /**
+     * 去除行内 Markdown 标记（用于 PDF 等不支持富文本的场景）
+     */
+    private String stripInlineMarkdown(String text) {
+        if (text == null || text.isEmpty()) return text;
+        return text.replaceAll("\\*\\*(.+?)\\*\\*", "$1")
+                   .replaceAll("\\*(.+?)\\*", "$1");
     }
 
     // ==================== 结果类型 ====================

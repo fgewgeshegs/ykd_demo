@@ -35,6 +35,9 @@ public class FileGenerationTool implements Tool, WechatMessageHandler, LLMFuncti
     private final LLMFunctionRegistry llmFunctionRegistry;
     private final ObjectMapper objectMapper;
 
+    /** 待发送的文件数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
+    private volatile PendingFile pendingFile;
+
     public FileGenerationTool(FileGenerationService fileGenerationService,
                               ContextStore contextStore,
                               ToolRegistry toolRegistry,
@@ -46,6 +49,21 @@ public class FileGenerationTool implements Tool, WechatMessageHandler, LLMFuncti
         this.llmFunctionRegistry = llmFunctionRegistry;
         this.objectMapper = objectMapper;
     }
+
+    /**
+     * 消费待发送的文件数据
+     * <p>被 {@code ChatTool} 在工具调用循环结束后调用，如果存在则发送文件而非纯文本。</p>
+     *
+     * @return 待发送的文件数据，没有则返回 null
+     */
+    public PendingFile consumePendingFile() {
+        PendingFile file = pendingFile;
+        pendingFile = null;
+        return file;
+    }
+
+    /** 文件生成结果暂存：文件字节 + 文件名 + 描述 */
+    public record PendingFile(byte[] fileBytes, String fileName, String description) {}
 
     @PostConstruct
     public void init() {
@@ -127,14 +145,20 @@ public class FileGenerationTool implements Tool, WechatMessageHandler, LLMFuncti
             String topic = topicNode.asText();
             log.info("FileGenerationTool LLM调用 | topic={}", topic);
 
+            // 读取 LLM 指定的格式
+            String format = args.has("format") ? args.get("format").asText() : null;
+
             // 用 topic 作为用户消息调用 generate（内部会做 LLM 内容生成 + 渲染）
-            FileGenerationResult result = fileGenerationService.generate("system", topic);
+            FileGenerationResult result = fileGenerationService.generate("system", topic, format);
             if (result == null) {
                 return "{\"error\": \"文件生成失败\"}";
             }
 
             log.info("文件生成成功 | fileName={} | size={}bytes",
                     result.fileName(), result.fileBytes().length);
+
+            // 暂存文件供 ChatTool 取走发送（execute() 只能返回文本，文件字节通过此通道传递）
+            pendingFile = new PendingFile(result.fileBytes(), result.fileName(), result.description());
 
             return "{\"fileName\": \"" + result.fileName()
                     + "\", \"description\": \"" + result.description()
