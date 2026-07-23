@@ -44,7 +44,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private static final int MAX_HISTORY = 20;
 
     /** 工具调用循环最大轮次 */
-    private static final int MAX_ROUNDS = 5;
+    private static final int MAX_ROUNDS = 10;
 
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
 
