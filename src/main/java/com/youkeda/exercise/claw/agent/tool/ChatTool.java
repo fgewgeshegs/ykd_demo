@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * 作为 WechatMessageHandler 暴露。
  *
  * <p>TTS 语音合成特殊处理：当工具调用循环中触发了 {@code text_to_speech}，
- * {@link VoiceTool} 会暂存音频数据，{@link #handle(WechatMessage)} 在 executor
+ * {@link VoiceFunction} 会暂存音频数据，{@link #handle(WechatMessage)} 在 executor
  * 返回后优先发送语音文件而非纯文本回复。</p>
  */
 @Component
@@ -26,12 +26,12 @@ public class ChatTool implements WechatMessageHandler {
     private static final String FALLBACK_REPLY = "抱歉，我现在暂时无法回复，请稍后再试。";
 
     private final ReActAgentExecutor agentExecutor;
-    private final VoiceTool voiceTool;
+    private final VoiceFunction voiceTool;
     private final FileGenerationTool fileGenerationTool;
     private final ImageGenerationTool imageGenerationTool;
 
     public ChatTool(ReActAgentExecutor agentExecutor,
-                    VoiceTool voiceTool, FileGenerationTool fileGenerationTool,
+                    VoiceFunction voiceTool, FileGenerationTool fileGenerationTool,
                     ImageGenerationTool imageGenerationTool) {
         this.agentExecutor = agentExecutor;
         this.voiceTool = voiceTool;
@@ -58,7 +58,7 @@ public class ChatTool implements WechatMessageHandler {
         }
 
         // 检查 TTS 是否生成了待发送的语音（text_to_speech 工具调用的结果）
-        VoiceTool.PendingAudio audio = voiceTool.consumePendingAudio();
+        VoiceFunction.PendingAudio audio = voiceTool.consumePendingAudio();
         if (audio != null && audio.audioBytes() != null && audio.audioBytes().length > 0) {
             log.info("TTS 音频待发送 | size={}bytes | from={}", audio.audioBytes().length, message.getUserId());
             return WechatReply.file(audio.audioBytes(), "AI语音回复.mp3", audio.text());

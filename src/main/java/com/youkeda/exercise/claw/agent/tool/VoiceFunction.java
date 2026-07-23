@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 语音工具
+ * 语音函数
  *
  * <p>职责：
  * <ul>
@@ -28,9 +28,9 @@ import org.springframework.stereotype.Component;
  * {@link #consumePendingAudio()} 传递回调用方（{@code ChatTool}），确保语音文件能被正确发送。</p>
  */
 @Component
-public class VoiceTool implements LLMFunction {
+public class VoiceFunction implements LLMFunction {
 
-    private static final Logger log = LoggerFactory.getLogger(VoiceTool.class);
+    private static final Logger log = LoggerFactory.getLogger(VoiceFunction.class);
 
     private static final String ASR_FAILED_REPLY = "抱歉，语音识别失败，请重试。";
 
@@ -42,7 +42,7 @@ public class VoiceTool implements LLMFunction {
     /** 待发送的音频数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
     private volatile PendingAudio pendingAudio;
 
-    public VoiceTool(VoiceService voiceService,
+    public VoiceFunction(VoiceService voiceService,
                       WechatILinkClient wechatClient,
                       LLMFunctionRegistry functionRegistry,
                       ObjectMapper objectMapper) {
@@ -70,7 +70,7 @@ public class VoiceTool implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("VoiceTool 已注册到 LLMFunctionRegistry（text_to_speech）");
+        log.info("VoiceFunction 已注册到 LLMFunctionRegistry（text_to_speech）");
     }
 
     // ==================== LLMFunction（text_to_speech） ====================

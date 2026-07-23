@@ -4,7 +4,7 @@ import com.youkeda.exercise.claw.agent.tool.ChatTool;
 import com.youkeda.exercise.claw.agent.tool.FileTool;
 import com.youkeda.exercise.claw.agent.tool.SimpleReplyTool;
 import com.youkeda.exercise.claw.agent.tool.VisionTool;
-import com.youkeda.exercise.claw.agent.tool.VoiceTool;
+import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  *
  * 按消息类型（IMAGE/VOICE/FILE/TEXT）分发到对应的处理器。
  * TEXT 消息由 ChatTool → ReActAgentExecutor 做 LLM tool-calling 循环；
- * 非 TEXT 消息直接分发给专用 Handler（VisionTool/VoiceTool/FileTool）。
+ * 非 TEXT 消息直接分发给专用 Handler（VisionTool/VoiceFunction/FileTool）。
  *
  * 不包含业务逻辑，仅负责路由分发
  */
@@ -29,13 +29,13 @@ public class MessageRouter {
     private final ChatTool chatTool;
     private final VisionTool visionTool;
     private final SimpleReplyTool fallbackTool;
-    private final VoiceTool voiceTool;
+    private final VoiceFunction voiceTool;
     private final FileTool fileTool;
 
     public MessageRouter(ChatTool chatTool,
                          VisionTool visionTool,
                          SimpleReplyTool fallbackTool,
-                         VoiceTool voiceTool,
+                         VoiceFunction voiceTool,
                          FileTool fileTool) {
         this.chatTool = chatTool;
         this.visionTool = visionTool;
