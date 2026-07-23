@@ -62,6 +62,14 @@ public class ReActAgentExecutor implements AgentExecutor {
     private static final int MAX_WEB_SEARCH_ROUNDS = 2;
     private static final int MAX_WEB_SEARCH_CALLS = 5;
 
+    /**
+     * 不受团建阶段限制的通用工具名称。
+     * 即使用户处于等待选择/确认等阶段，这些工具也始终对 LLM 可见，
+     * 保证用户可以随时要求生成文件、图片或语音。
+     */
+    private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
+            Set.of("file_generate", "image_generate", "text_to_speech");
+
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
     private static final String LIMIT_REPLY =
             "已根据当前可用信息整理方案；尚未完成核实的费用会标记为“待确认”。";
@@ -371,7 +379,11 @@ public class ReActAgentExecutor implements AgentExecutor {
                                                      int webSearchRounds) {
         TeamTripPlanDraft draft = teamTripPlanService.getDraft(userId);
         if (draft == null) return allTools;
-        if (toolCallPolicy.shouldReplyWithoutTools(userId)) return List.of();
+        if (toolCallPolicy.shouldReplyWithoutTools(userId)) {
+            return allTools.stream()
+                    .filter(t -> ALWAYS_AVAILABLE_TOOLS.contains(t.name()))
+                    .toList();
+        }
 
         String stage = draft.getStage();
         Set<String> exactNames = new HashSet<>();
@@ -418,7 +430,8 @@ public class ReActAgentExecutor implements AgentExecutor {
         boolean finalAllowMapTools = allowMapTools;
         List<ToolDefinition> selected = allTools.stream()
                 .filter(tool -> exactNames.contains(tool.name())
-                        || (finalAllowMapTools && tool.name().startsWith("map_")))
+                        || (finalAllowMapTools && tool.name().startsWith("map_"))
+                        || ALWAYS_AVAILABLE_TOOLS.contains(tool.name()))
                 .toList();
         log.debug("按团建阶段筛选工具 | user={} | stage={} | tools={}",
                 userId, stage, selected.stream().map(ToolDefinition::name).toList());

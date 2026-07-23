@@ -375,16 +375,56 @@ public class FileGenerationService {
     /**
      * 清理 PDF 文本中的无效字形字符
      * <p>
-     * 某些 CJK 字体缺少特定 Unicode 字符的 Glyph（如 {@code • U+2022 BULLET}），
-     * 直接调用 {@code showText()} 会抛出 {@code IllegalArgumentException}。
-     * 此方法在渲染前将不支持字符替换为安全的替代字符。
+     * CJK 字体（如微软雅黑）缺少 Emoji 和部分符号的 Glyph，
+     * 直接调用 {@code showText()} 会抛出 {@code IllegalArgumentException: No glyph for U+XXXX}。
+     * 此方法在渲染前移除这些不支持的字符。
      */
     private String sanitizePdfText(String text) {
         if (text == null || text.isEmpty()) {
             return text;
         }
-        // U+2022 • 项目符号 → ASCII 连字符（CJK 字体普遍缺少此字形）
-        return text.replace('•', '-');
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0, len = text.length(); i < len; i++) {
+            char c = text.charAt(i);
+            int cp = c;
+            boolean isSupplementary = false;
+            if (Character.isHighSurrogate(c) && i + 1 < len) {
+                char low = text.charAt(i + 1);
+                if (Character.isLowSurrogate(low)) {
+                    cp = Character.toCodePoint(c, low);
+                    isSupplementary = true;
+                }
+            }
+            if (isCjkSafeCodepoint(cp)) {
+                sb.append(c);
+                if (isSupplementary) {
+                    sb.append(text.charAt(i + 1));
+                    i++;
+                }
+            }
+        }
+        return sb.toString().replace('•', '-');
+    }
+
+    /**
+     * 判断码点是否在 CJK 字体（微软雅黑/宋体）的字形覆盖范围内。
+     * 白名单策略：只保留 ASCII + CJK 统一表意文字及扩展区，其余一律丢弃。
+     * 这样就不需要逐个符号维护黑名单——每遇到一个新符号缺字就再加一轮补丁。
+     */
+    private static boolean isCjkSafeCodepoint(int cp) {
+        if (cp >= 0x0020 && cp <= 0x007E) return true;  // ASCII 可打印
+        if (cp >= 0x00A0 && cp <= 0x00FF) return true;  // Latin-1 补充
+        if (cp >= 0x2010 && cp <= 0x2027) return true;  // 通用标点
+        if (cp == 0x2026 || cp == 0x2032 || cp == 0x2033) return true;  // … ′ ″
+        if (cp >= 0x2E80 && cp <= 0x2FDF) return true;  // CJK 部首补充
+        if (cp >= 0x3000 && cp <= 0x303F) return true;  // CJK 符号及标点
+        if (cp >= 0x31C0 && cp <= 0x31EF) return true;  // CJK 笔画
+        if (cp >= 0x3200 && cp <= 0x33FF) return true;  // 带圈/括号 CJK
+        if (cp >= 0x3400 && cp <= 0x4DBF) return true;  // CJK 扩展 A
+        if (cp >= 0x4E00 && cp <= 0x9FFF) return true;  // CJK 统一表意文字（基本）
+        if (cp >= 0xF900 && cp <= 0xFAFF) return true;  // CJK 兼容表意文字
+        if (cp >= 0xFF00 && cp <= 0xFFEF) return true;  // 半角/全角形式
+        return false;
     }
 
     // ==================== DOCX 生成（POI 5.2.5） ====================
