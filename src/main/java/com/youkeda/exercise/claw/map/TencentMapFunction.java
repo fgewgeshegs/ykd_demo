@@ -58,7 +58,8 @@ public class TencentMapFunction {
             @Override
             public String getDescription() {
                 return "搜索指定地点，根据关键词和位置查找附近的景点、餐厅、酒店、活动场地等POI信息。" +
-                        "适合用户问「附近有什么」或「推荐团建地点」时使用。返回结果包含地址和距离。";
+                        "适合用户问「附近有什么」或「推荐团建地点」时优先使用。返回结构化状态、地址和距离。" +
+                        "如果状态为 EMPTY、PARTIAL 或 ERROR，再按 missing_information 使用 web_search 补充。";
             }
 
             @Override
@@ -89,15 +90,20 @@ public class TencentMapFunction {
                     String location = args.path("location").asText("");
 
                     if (keyword.isBlank()) {
-                        return "{\"error\": \"缺少必填参数: keyword\"}";
+                        return errorResult("缺少必填参数: keyword");
                     }
 
                     log.info("TencentMapFunction.map_search_place | keyword={} | location={}", keyword, location);
-                    return mapService.searchPlace(keyword, location);
+                    String data = mapService.searchPlace(keyword, location);
+                    if (data.contains("未找到")) {
+                        return result("EMPTY", data, List.of("地点候选"), true);
+                    }
+                    return result("SUCCESS", data,
+                            List.of("团建项目详情", "团队价格", "开放时间和预约政策"), true);
 
                 } catch (Exception e) {
                     log.error("map_search_place 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
-                    return "地点搜索失败：" + e.getMessage();
+                    return errorResult("地点搜索失败：" + e.getMessage());
                 }
             }
         });
@@ -153,22 +159,22 @@ public class TencentMapFunction {
                     String mode = args.path("mode").asText("driving");
 
                     if (origin.isBlank()) {
-                        return "{\"error\": \"缺少必填参数: origin\"}";
+                        return errorResult("缺少必填参数: origin");
                     }
                     if (destination.isBlank()) {
-                        return "{\"error\": \"缺少必填参数: destination\"}";
+                        return errorResult("缺少必填参数: destination");
                     }
 
                     log.info("TencentMapFunction.map_route_planning | origin={} | destination={} | mode={}",
                             origin, destination, mode);
-                    return mapService.routePlanning(origin, destination, mode);
+                    return result("SUCCESS", mapService.routePlanning(origin, destination, mode), List.of(), false);
 
                 } catch (TencentMapException e) {
                     log.error("map_route_planning 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
-                    return "路线规划失败：" + e.getMessage();
+                    return errorResult("路线规划失败：" + e.getMessage());
                 } catch (Exception e) {
                     log.error("map_route_planning 执行异常 | args={} | error={}", argumentsJson, e.getMessage());
-                    return "路线规划异常：" + e.getMessage();
+                    return errorResult("路线规划异常：" + e.getMessage());
                 }
             }
         });
@@ -227,26 +233,49 @@ public class TencentMapFunction {
                     }
 
                     if (origin.isBlank()) {
-                        return "{\"error\": \"缺少必填参数: origin\"}";
+                        return errorResult("缺少必填参数: origin");
                     }
                     if (destinations.isEmpty()) {
-                        return "{\"error\": \"缺少必填参数: destinations\"}";
+                        return errorResult("缺少必填参数: destinations");
                     }
 
                     log.info("TencentMapFunction.map_distance_calculate | origin={} | destinations={}",
                             origin, destinations);
-                    return mapService.calculateDistance(new DistanceRequest(origin, destinations));
+                    String data = mapService.calculateDistance(new DistanceRequest(origin, destinations));
+                    if (data.startsWith("计算失败")) {
+                        return result("EMPTY", data, List.of("候选地点距离和路线"), true);
+                    }
+                    if (data.contains("距离计算失败")) {
+                        return result("PARTIAL", data, List.of("部分候选地点距离"), true);
+                    }
+                    return result("SUCCESS", data, List.of(), false);
 
                 } catch (TencentMapException e) {
                     log.error("map_distance_calculate 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
-                    return "距离计算失败：" + e.getMessage();
+                    return errorResult("距离计算失败：" + e.getMessage());
                 } catch (Exception e) {
                     log.error("map_distance_calculate 执行异常 | args={} | error={}", argumentsJson, e.getMessage());
-                    return "距离计算异常：" + e.getMessage();
+                    return errorResult("距离计算异常：" + e.getMessage());
                 }
             }
         });
 
         log.info("TencentMapFunction 已注册 3 个 LLM Function: map_search_place, map_route_planning, map_distance_calculate");
+    }
+
+    private String result(String status, String data, List<String> missingInformation,
+                          boolean fallbackRequired) {
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("status", status);
+        result.put("source", "TENCENT_MAP");
+        result.put("data", data);
+        ArrayNode missing = result.putArray("missing_information");
+        missingInformation.forEach(missing::add);
+        result.put("fallback_required", fallbackRequired);
+        return result.toString();
+    }
+
+    private String errorResult(String message) {
+        return result("ERROR", message, List.of("地图信息"), true);
     }
 }
