@@ -64,6 +64,13 @@ public class TencentMapClient {
             String responseBody = httpClient.doGet(url);
             JsonNode root = objectMapper.readTree(responseBody);
 
+            // 348 = 参数错误，通常是地名不是标准行政区划（如"莫干山""拈花湾"等景区名）
+            if (root.path("status").asInt(-1) == 348) {
+                throw new TencentMapException("348",
+                        "无法识别地址「" + address + "」，该地址不是标准行政区划名称。" +
+                        "请尝试使用城市或区县名称，例如「湖州德清」「无锡拈花湾」");
+            }
+
             checkApiResponse(root, "地理编码");
 
             JsonNode location = root.path("result").path("location");
