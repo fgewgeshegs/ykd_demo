@@ -12,8 +12,10 @@ import java.util.List;
 /**
  * 聊天服务
  *
- * 职责：封装多轮对话的业务逻辑，通过 ContextStore 维护上下文，
- * 调用 LLMClient 完成模型交互
+ * <p>封装无工具调用的单轮对话逻辑。当前主要用于 {@code FileTool} 文件分析场景，
+ * 通过 {@link LLMClient#chatWithSystemPrompt} 完成模型交互。
+ *
+ * <p>多轮对话 + tool-calling 的主链路见 {@code ReActAgentExecutor}。
  */
 @Service
 public class ChatService {

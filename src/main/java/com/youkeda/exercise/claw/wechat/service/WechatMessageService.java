@@ -81,7 +81,7 @@ public class WechatMessageService {
     }
 
     /**
-     * 消息轮询主循环（适配新 SDK v2.3.3 getUpdates + snake_case 模型）
+     * 消息轮询主循环（适配新 SDK getUpdates + snake_case 模型）
      */
     private void pollLoop() {
         while (running.get()) {

@@ -32,8 +32,7 @@ import org.apache.fontbox.ttf.TrueTypeFont;
  * 根据用户需求生成 PDF 或 Word 文档文件。
  * 流程：格式检测 → LLM 生成文档内容 → PDFBox/POI 渲染 → 返回字节
  *
- * PDF 依赖 PDFBox 2.0.31，DOCX 依赖 Apache POI 5.2.5
- * （均由 tika-parsers-standard-package 间接引入）
+ * PDF 依赖 PDFBox，DOCX 依赖 Apache POI（均由 tika-parsers-standard-package 间接引入）
  */
 @Service
 public class FileGenerationService {

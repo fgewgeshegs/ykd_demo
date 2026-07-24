@@ -618,14 +618,6 @@ public class TeamTripPlanService {
         return budgetStatusText(status);
     }
 
-    private static String priceCompletenessText(JsonNode cost) {
-        if (cost == null || cost.isNull()) return "待核算";
-        JsonNode missing = cost.path("missingPriceItems");
-        return missing.isArray() && !missing.isEmpty()
-                ? "缺 " + missing.size() + " 项"
-                : "完整";
-    }
-
     private static String formatMoneyRange(Double min, Double max) {
         if (min == null && max == null) return "待确认";
         if (min == null) min = max;

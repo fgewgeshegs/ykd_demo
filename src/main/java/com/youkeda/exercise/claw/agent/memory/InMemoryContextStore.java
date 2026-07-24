@@ -106,12 +106,4 @@ public class InMemoryContextStore implements ContextStore {
         log.debug("已清除用户上下文 | userId={}", userId);
     }
 
-    @Override
-    public void updateLastMediaUrl(String userId, String contentPrefix, String url) {
-        Message last = findLastByPrefix(userId, contentPrefix);
-        if (last == null) return;
-        // InMemoryContextStore 的 Message 是 immutable record，无法原地更新
-        // 当前通过 append 新标记替代；如果后续需要精确替换，可改为 mutable 或重建队列
-        log.debug("updateLastMediaUrl 记录用于后续查找 | userId={} | prefix={}", userId, contentPrefix);
-    }
 }

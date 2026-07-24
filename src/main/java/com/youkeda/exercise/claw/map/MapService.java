@@ -4,6 +4,8 @@ import com.youkeda.exercise.claw.map.TencentMapClient.DirectionResult;
 import com.youkeda.exercise.claw.map.TencentMapClient.GeoPoint;
 import com.youkeda.exercise.claw.map.TencentMapClient.PoiResult;
 import com.youkeda.exercise.claw.map.model.DistanceRequest;
+import com.youkeda.exercise.claw.map.model.PlaceSearchRequest;
+import com.youkeda.exercise.claw.map.model.RouteRequest;
 import com.youkeda.exercise.claw.map.model.PlaceResponse;
 import com.youkeda.exercise.claw.map.model.RouteResponse;
 import org.slf4j.Logger;
@@ -34,28 +36,27 @@ public class MapService {
     /**
      * 地点搜索：根据关键词和位置搜索 POI
      *
-     * @param keyword  搜索关键词（如"团建基地"）
-     * @param location 位置限定（如"无锡"）
+     * @param request 搜索请求（关键词、位置限定）
      * @return 格式化的自然语言文本结果
      */
-    public String searchPlace(String keyword, String location) {
-        log.info("地点搜索 | keyword={} | location={}", keyword, location);
+    public String searchPlace(PlaceSearchRequest request) {
+        log.info("地点搜索 | keyword={} | location={}", request.keyword(), request.location());
 
         // 如果提供了位置，先地理编码获取坐标（用于排序和距离显示）
         GeoPoint center = null;
-        if (location != null && !location.isBlank()) {
+        if (request.location() != null && !request.location().isBlank()) {
             try {
-                center = mapClient.geocode(location);
+                center = mapClient.geocode(request.location());
             } catch (Exception e) {
-                log.warn("位置地理编码失败，使用文本限定搜索 | location={}", location);
+                log.warn("位置地理编码失败，使用文本限定搜索 | location={}", request.location());
             }
         }
 
         // 执行地点搜索
-        List<PoiResult> poiResults = mapClient.searchPoi(keyword, location);
+        List<PoiResult> poiResults = mapClient.searchPoi(request.keyword(), request.location());
 
         if (poiResults.isEmpty()) {
-            return "在" + (location != null ? location : "当前位置") + "附近未找到与「" + keyword + "」相关的地点。";
+            return "在" + (request.location() != null ? request.location() : "当前位置") + "附近未找到与「" + request.keyword() + "」相关的地点。";
         }
 
         // 转换为 PlaceResponse 并格式化
@@ -83,37 +84,36 @@ public class MapService {
      * 3. 调用路线规划 API
      * 4. 封装为自然语言文本
      *
-     * @param origin      起点名称（如"无锡学院"）
-     * @param destination 终点名称（如"拈花湾"）
-     * @param mode        出行方式（driving/walking/transit）
+     * @param request 路线规划请求（起点、终点、出行方式）
      * @return 格式化的路线规划文本
      */
-    public String routePlanning(String origin, String destination, String mode) {
-        log.info("路线规划 | origin={} | destination={} | mode={}", origin, destination, mode);
+    public String routePlanning(RouteRequest request) {
+        log.info("路线规划 | origin={} | destination={} | mode={}",
+                request.origin(), request.destination(), request.normalizedMode());
 
         // Step 1: 地理编码起点
-        GeoPoint fromPoint = mapClient.geocode(origin);
+        GeoPoint fromPoint = mapClient.geocode(request.origin());
 
         // Step 2: 地理编码终点
-        GeoPoint toPoint = mapClient.geocode(destination);
+        GeoPoint toPoint = mapClient.geocode(request.destination());
 
         // Step 3: 调用路线规划 API
         DirectionResult direction = mapClient.direction(
                 fromPoint.lat(), fromPoint.lng(),
                 toPoint.lat(), toPoint.lng(),
-                mode);
+                request.normalizedMode());
 
         // Step 4: 封装结果
         RouteResponse response = new RouteResponse();
-        response.setOrigin(origin);
-        response.setDestination(destination);
+        response.setOrigin(request.origin());
+        response.setDestination(request.destination());
         response.setDistance(direction.distance());
         response.setDuration(direction.duration());
         response.setMode(direction.mode());
         response.setPolyline(direction.polyline());
 
         log.info("路线规划完成 | {}→{} | 距离={}m | 耗时={}s",
-                origin, destination, direction.distance(), direction.duration());
+                request.origin(), request.destination(), direction.distance(), direction.duration());
         return response.toText();
     }
 

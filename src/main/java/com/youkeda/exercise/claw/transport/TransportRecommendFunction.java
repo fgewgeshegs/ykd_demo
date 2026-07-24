@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.transport.model.TransportRequest;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -115,7 +116,7 @@ public class TransportRecommendFunction implements LLMFunction {
             log.info("TransportRecommendFunction 执行 | from={} | to={} | people={} | budget={}",
                     from, to, people, budget);
 
-            return transportService.recommend(from, to, people, budget);
+            return transportService.recommend(new TransportRequest(from, to, people, budget));
 
         } catch (Exception e) {
             log.error("TransportRecommendFunction 执行失败 | args={} | error={}",

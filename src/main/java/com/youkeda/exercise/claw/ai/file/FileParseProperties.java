@@ -27,11 +27,6 @@ public class FileParseProperties {
      */
     private int maxEmbeddedImages = 5;
 
-    /**
-     * 送给 VisionService 分析的内嵌图片最大数量
-     */
-    private int maxAnalyzedEmbeddedImages = 3;
-
     public long getMaxFileSize() {
         return maxFileSize;
     }
@@ -54,13 +49,5 @@ public class FileParseProperties {
 
     public void setMaxEmbeddedImages(int maxEmbeddedImages) {
         this.maxEmbeddedImages = maxEmbeddedImages;
-    }
-
-    public int getMaxAnalyzedEmbeddedImages() {
-        return maxAnalyzedEmbeddedImages;
-    }
-
-    public void setMaxAnalyzedEmbeddedImages(int maxAnalyzedEmbeddedImages) {
-        this.maxAnalyzedEmbeddedImages = maxAnalyzedEmbeddedImages;
     }
 }

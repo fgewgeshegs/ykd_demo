@@ -119,13 +119,6 @@ public class VoiceService {
     }
 
     /**
-     * 是否启用 TTS
-     */
-    public boolean isTtsEnabled() {
-        return voiceProperties.isTtsEnabled();
-    }
-
-    /**
      * 语音合成结果
      */
     public static class VoiceSynthesisResult {

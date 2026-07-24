@@ -5,7 +5,7 @@ import com.youkeda.exercise.claw.wechat.model.WechatReply;
 
 /**
  * 微信消息处理器接口
- * <p>WeChat 消息路由体系中的处理器接口，区别于 Agent 体系中的 {@link Tool}。
+ * <p>WeChat 消息路由体系中的处理器接口。
  *
  * 所有消息处理逻辑实现此接口，通过 Spring 容器自动收集
  * 支持文本、图片等多种消息类型

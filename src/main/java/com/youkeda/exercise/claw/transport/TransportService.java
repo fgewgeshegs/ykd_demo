@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.map.MapService;
+import com.youkeda.exercise.claw.map.model.RouteRequest;
 import com.youkeda.exercise.claw.transport.model.TransportOption;
+import com.youkeda.exercise.claw.transport.model.TransportRequest;
 import com.youkeda.exercise.claw.transport.model.TransportResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,20 +62,21 @@ public class TransportService {
     /**
      * 执行交通方式推荐
      *
-     * @param from   出发地
-     * @param to     目的地
-     * @param people 人数
-     * @param budget 可选预算
+     * @param request 交通推荐请求（出发地、目的地、人数、预算）
      * @return 结构化 JSON 结果字符串
      */
-    public String recommend(String from, String to, int people, Integer budget) {
-        log.info("交通方式推荐 | from={} | to={} | people={} | budget={}", from, to, people, budget);
+    public String recommend(TransportRequest request) {
+        String from = request.getFrom();
+        String to = request.getTo();
+        int people = request.getPeople();
+        log.info("交通方式推荐 | from={} | to={} | people={} | budget={}",
+                from, to, people, request.getBudget());
 
         // Step 1: 获取驾车距离和耗时（通过腾讯地图路线规划）
         double distanceMeters = 0;
         int drivingDurationSeconds = DEFAULT_DRIVING_DURATION_SECONDS;
         try {
-            String routeText = mapService.routePlanning(from, to, "driving");
+            String routeText = mapService.routePlanning(new RouteRequest(from, to, "driving"));
             distanceMeters = parseDistanceFromText(routeText);
             drivingDurationSeconds = parseDurationFromText(routeText);
             log.info("路线规划获取成功 | distanceMeters={} | durationSeconds={}",
@@ -94,7 +97,7 @@ public class TransportService {
 
         // Step 3: 决策推荐（含推荐理由）
         TransportDecisionEngine.DecisionResult decision =
-                decisionEngine.decide(distanceKm, people, options, budget);
+                decisionEngine.decide(distanceKm, people, options, request.getBudget());
 
         // Step 4: 构建结果
         TransportResult result = new TransportResult();
@@ -107,7 +110,7 @@ public class TransportService {
         result.setOptions(options);
         result.setRecommendation(decision.recommendation);
         result.setRecommendationReason(decision.reason);
-        result.setBudget(budget);
+        result.setBudget(request.getBudget());
 
         return toJson(result);
     }

@@ -130,8 +130,4 @@ public class RedisContextStore implements ContextStore {
         log.debug("已清除用户 Redis 上下文 | userId={}", userId);
     }
 
-    @Override
-    public void updateLastMediaUrl(String userId, String contentPrefix, String url) {
-        log.debug("updateLastMediaUrl 记录 | userId={} | prefix={} | url={}", userId, contentPrefix, url);
-    }
 }

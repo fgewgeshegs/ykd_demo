@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import com.youkeda.exercise.claw.map.model.DistanceRequest;
+import com.youkeda.exercise.claw.map.model.PlaceSearchRequest;
+import com.youkeda.exercise.claw.map.model.RouteRequest;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,7 +96,7 @@ public class TencentMapFunction {
                     }
 
                     log.info("TencentMapFunction.map_search_place | keyword={} | location={}", keyword, location);
-                    String data = mapService.searchPlace(keyword, location);
+                    String data = mapService.searchPlace(new PlaceSearchRequest(keyword, location));
                     if (data.contains("未找到")) {
                         return result("EMPTY", data, List.of("地点候选"), true);
                     }
@@ -167,7 +169,8 @@ public class TencentMapFunction {
 
                     log.info("TencentMapFunction.map_route_planning | origin={} | destination={} | mode={}",
                             origin, destination, mode);
-                    return result("SUCCESS", mapService.routePlanning(origin, destination, mode), List.of(), false);
+                    return result("SUCCESS", mapService.routePlanning(
+                            new RouteRequest(origin, destination, mode)), List.of(), false);
 
                 } catch (TencentMapException e) {
                     log.error("map_route_planning 执行失败 | args={} | error={}", argumentsJson, e.getMessage());

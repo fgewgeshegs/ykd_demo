@@ -43,11 +43,6 @@ public class VoiceProperties {
      */
     private String ttsVoice = "longxiaochun_v2";
 
-    /**
-     * 是否启用 TTS 语音回复（关闭时语音消息以文本回复）
-     */
-    private boolean ttsEnabled = true;
-
     public String getApiKey() {
         return apiKey;
     }
@@ -94,13 +89,5 @@ public class VoiceProperties {
 
     public void setTtsVoice(String ttsVoice) {
         this.ttsVoice = ttsVoice;
-    }
-
-    public boolean isTtsEnabled() {
-        return ttsEnabled;
-    }
-
-    public void setTtsEnabled(boolean ttsEnabled) {
-        this.ttsEnabled = ttsEnabled;
     }
 }

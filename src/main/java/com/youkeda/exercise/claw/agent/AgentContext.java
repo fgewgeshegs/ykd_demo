@@ -7,7 +7,6 @@ import com.youkeda.exercise.claw.wechat.model.WechatMessage;
  * Agent 执行上下文
  *
  * 封装一次 Agent 调用的所有输入信息，贯穿整个执行链路。
- * 未来可扩展：会话历史、用户画像、多轮对话状态等。
  */
 public class AgentContext {
 
@@ -31,17 +30,6 @@ public class AgentContext {
      */
     private WechatMessage rawMessage;
 
-    // ========== 未来扩展字段 ==========
-
-    /**
-     * 会话 ID（预留：多轮对话支持）
-     */
-    private String conversationId;
-
-    /**
-     * 历史消息（预留：上下文记忆）
-     */
-    private java.util.List<String> history;
 
     public String getUserId() {
         return userId;
@@ -79,21 +67,4 @@ public class AgentContext {
         return this;
     }
 
-    public String getConversationId() {
-        return conversationId;
-    }
-
-    public AgentContext setConversationId(String conversationId) {
-        this.conversationId = conversationId;
-        return this;
-    }
-
-    public java.util.List<String> getHistory() {
-        return history;
-    }
-
-    public AgentContext setHistory(java.util.List<String> history) {
-        this.history = history;
-        return this;
-    }
 }

@@ -27,7 +27,7 @@ import java.util.Set;
  * ReAct 模式 Agent 执行器
  *
  * <p>核心调度器：接收用户消息，通过 LLM + Function Calling 的循环自主决定调用哪些工具，
- * 最终给出回复。替代了旧的 {@code LLMIntentClassifier} + 硬编码路由。
+ * 最终给出回复。
  *
  * <p>执行流程：
  * <ol>

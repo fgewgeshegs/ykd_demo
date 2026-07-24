@@ -28,7 +28,7 @@ public record Message(String role, String content,
                        String toolCallId, String toolName,
                        String reasoningContent) {
 
-    /** 兼容原有不含 reasoning_content 的完整构造方式。 */
+    /** 构造带 toolCallId 和 toolName 但不含 reasoningContent 的消息。 */
     public Message(String role, String content,
                    String mediaEncryptParam, String mediaAesKey,
                    String mediaUrl,
