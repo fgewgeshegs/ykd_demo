@@ -51,7 +51,7 @@ public class ReActAgentExecutor implements AgentExecutor {
      * 工具调用循环最大轮次。
      * 搜索轮次和工具总数另有独立硬限制，这里给保存方案与预算核算预留自动收尾空间。
      */
-    private static final int MAX_ROUNDS = 12;
+    private static final int MAX_ROUNDS = 15;
 
     /** 单次请求允许执行的最大工具数，防止模型陷入循环 */
     private static final int MAX_TOOL_CALLS = 16;

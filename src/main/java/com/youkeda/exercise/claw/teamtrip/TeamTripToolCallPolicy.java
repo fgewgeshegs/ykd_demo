@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.teamtrip;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 
 /** 在完整团建方案流程中约束工具调用顺序。 */
 @Component
@@ -25,6 +26,14 @@ public class TeamTripToolCallPolicy {
     }
 
     /**
+     * 始终可用的工具：即使用户处于等待阶段也允许调用，
+     * 保证用户随时可以要求生成图片、文件或语音。
+     */
+    private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
+            Set.of("file_generate", "image_generate", "text_to_speech",
+                    "plan_proposal", "place_image_search");
+
+    /**
      * @return null 表示允许；非空字符串表示阻止原因
      */
     public String validate(String userId, String toolName, List<String> currentBatchTools) {
@@ -32,7 +41,8 @@ public class TeamTripToolCallPolicy {
         if (draft == null || "team_trip_plan".equals(toolName)) return null;
 
         String stage = draft.getStage();
-        if (shouldReplyWithoutTools(userId)) {
+        if (shouldReplyWithoutTools(userId)
+                && !ALWAYS_AVAILABLE_TOOLS.contains(toolName)) {
             return "当前流程正在等待用户补充、选择或确认，暂不允许调用外部工具。";
         }
         if (("READY_FOR_DATE".equals(stage) || "READY_FOR_DATE_CONTEXT".equals(stage))
