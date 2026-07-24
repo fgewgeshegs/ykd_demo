@@ -24,6 +24,9 @@ public class TeamTripPlanService {
     private static final Pattern DAYS_PATTERN = Pattern.compile("(\\d+)\\s*天");
     private static final Pattern NIGHTS_PATTERN = Pattern.compile("(\\d+)\\s*晚");
     private static final Pattern MONTH_DAY_PATTERN = Pattern.compile("(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*[日号]");
+    private static final Pattern OPTION_LABEL_PATTERN = Pattern.compile(
+            "(?:方案\\s*([A-Za-z0-9一二三四五]+)|([A-Za-z0-9一二三四五]+)\\s*方案)",
+            Pattern.CASE_INSENSITIVE);
     private static final Set<String> PREFERENCE_FIELDS = Set.of(
             "activity_preferences", "team_goal", "participant_profile",
             "transport_preference", "accommodation_preference",
@@ -104,6 +107,25 @@ public class TeamTripPlanService {
         };
     }
 
+    /** 方案已经完成预算确认时生成确定性回复，不再进入等待预算决定阶段。 */
+    public String renderFinalizedReply(String userId) {
+        TeamTripPlanDraft draft = stateStore.get(userId);
+        if (draft == null) return null;
+        TeamTripPlanOption selected = findOption(draft, draft.getSelectedOptionId());
+        if (selected == null) return null;
+
+        StringBuilder reply = new StringBuilder("已确认：")
+                .append(defaultText(selected.getDisplayName(), selected.getOptionId()))
+                .append('\n');
+        appendCostSummary(reply, selected.getCostResult());
+        if (draft.getBudgetDecisionStatus() == BudgetDecisionStatus.OVERRUN_ACCEPTED) {
+            reply.append("\n你已接受当前超预算金额，预算确认完成。");
+        } else {
+            reply.append("\n该方案预算确认完成。");
+        }
+        return reply.toString().trim();
+    }
+
     /** 达到内部处理上限时直接给出当前可用方案，不要求用户确认是否继续。 */
     public String renderBestAvailableReply(String userId) {
         TeamTripPlanDraft draft = stateStore.get(userId);
@@ -136,9 +158,19 @@ public class TeamTripPlanService {
         }
         snapshot.put("plan_mode", draft.getPlanMode());
         snapshot.set("priorities", objectMapper.valueToTree(draft.getPriorities()));
+        if (!blank(draft.getSelectedOptionId())) {
+            snapshot.put("selected_option_id", draft.getSelectedOptionId());
+        }
 
         ArrayNode options = snapshot.putArray("options");
         for (TeamTripPlanOption option : draft.getOptions()) {
+            // 用户已经选定方案后，预算确认和调整阶段只展示所选方案。
+            // 其他候选仍保留在状态中，便于用户明确要求返回比较时复用。
+            if (!blank(draft.getSelectedOptionId())
+                    && !"AWAITING_OPTION_SELECTION".equals(draft.getStage())
+                    && !draft.getSelectedOptionId().equals(option.getOptionId())) {
+                continue;
+            }
             ObjectNode item = options.addObject();
             item.put("option_id", option.getOptionId());
             item.put("display_name", option.getDisplayName());
@@ -179,12 +211,18 @@ public class TeamTripPlanService {
             if (!isWaitingForUser(draft)) {
                 advanceInitialResearch(draft);
             }
-        } else if (toolName.startsWith("map_")) {
-            if ("map_route_planning".equals(toolName) || "map_distance_calculate".equals(toolName)) {
-                draft.setRouteStatus(status);
-            } else {
-                draft.setMapStatus(status);
+        } else if ("map_distance_calculate".equals(toolName)) {
+            draft.setRouteStatus(isInsufficient(status) ? status : "DISTANCE_READY");
+            if (!isWaitingForUser(draft)) {
+                draft.setStage(isInsufficient(status) ? "MAP_INSUFFICIENT" : "READY_FOR_ROUTE");
             }
+        } else if ("map_route_planning".equals(toolName)) {
+            draft.setRouteStatus(status);
+            if (!isWaitingForUser(draft)) {
+                draft.setStage(isInsufficient(status) ? "MAP_INSUFFICIENT" : "MAP_READY");
+            }
+        } else if (toolName.startsWith("map_")) {
+            draft.setMapStatus(status);
             if (!isWaitingForUser(draft)) {
                 if ("READY_FOR_DATE".equals(previousStage)
                         || "READY_FOR_DATE_CONTEXT".equals(previousStage)) {
@@ -254,7 +292,7 @@ public class TeamTripPlanService {
                     ? "同时并行调用地图工具确认地点和路线；"
                     : "此前完成的地图结果继续复用，无需重复查询；")
                     + "两者完成后再依次查询天气和交通方案，最后补齐价格、保存候选方案并核算预算。");
-            addOutputContract(result);
+            addOutputContract(result, draft);
         }
         refreshState(result, draft);
         stateStore.save(userId, draft);
@@ -301,14 +339,14 @@ public class TeamTripPlanService {
         result.put("next_tool", "budget_calculator");
         result.put("instruction", "候选方案已保存。先补齐每个方案交通、住宿、餐饮、门票和活动的单价来源；"
                 + "价格查询与 budget_calculator 不得同轮调用。价格齐备后一次批量核算全部方案。");
-        addOutputContract(result);
+        addOutputContract(result, draft);
         refreshState(result, draft);
         stateStore.save(userId, draft);
         return result;
     }
 
     private ObjectNode selectOption(String userId, TeamTripPlanDraft draft, String optionId) {
-        TeamTripPlanOption selected = findOption(draft, optionId);
+        TeamTripPlanOption selected = findOptionForSelection(draft, optionId);
         if (selected == null) return saveError(userId, draft, "未找到候选方案：" + optionId);
 
         draft.getOptions().forEach(option ->
@@ -330,7 +368,7 @@ public class TeamTripPlanService {
                 result.put("instruction", "方案已选择且预算比较完成，可以按 output_contract 输出最终确认版。");
             }
         }
-        addOutputContract(result);
+        addOutputContract(result, draft);
         refreshState(result, draft);
         stateStore.save(userId, draft);
         return result;
@@ -414,9 +452,11 @@ public class TeamTripPlanService {
                     result.put("status", "AWAITING_ADJUSTMENT_PREFERENCE");
                     result.put("instruction", "只询问用户最希望保留住宿品质、团建活动、餐饮标准还是交通便利性，不自动修改。");
                 } else {
+                    draft.getPreferences().put("adjustment_preferences", preference);
                     draft.setStage("OPTION_REVISION_REQUIRED");
                     result.put("status", "OPTION_REVISION_REQUIRED");
-                    result.put("instruction", "按用户调整偏好只修改所选方案，重新查询受影响价格并再次核算。");
+                    result.put("instruction", "按用户调整偏好只修改所选方案，保留 selected_option_id，"
+                            + "不得重新生成或展示其他候选方案；重新查询受影响价格并再次核算。");
                 }
             }
             case "UPDATE_BUDGET_LIMIT" -> {
@@ -445,7 +485,7 @@ public class TeamTripPlanService {
                 return saveError(userId, draft, "无法识别预算决定，请确认接受超预算、调整到预算内、更新预算上限或查看调整项。");
             }
         }
-        addOutputContract(result);
+        addOutputContract(result, draft);
         refreshState(result, draft);
         stateStore.save(userId, draft);
         return result;
@@ -471,6 +511,8 @@ public class TeamTripPlanService {
             result.put("instruction", "用户已表示不接受当前费用。先确认最希望保留的项目，不自动降低标准或删除活动。");
         } else if (containsAny(normalized, "换地方", "目的地", "不想去")) {
             draft.setDestination(null);
+            draft.setMapStatus("NOT_CALLED");
+            draft.setRouteStatus("NOT_CALLED");
             invalidateAllOptions(draft);
             draft.setStage("READY_FOR_MAP");
             result.put("next_tool", "map_search_place");
@@ -491,7 +533,7 @@ public class TeamTripPlanService {
             result.put("next_tool", "none");
             result.put("instruction", "保留未修改的硬性条件，只调整受反馈影响的方案内容；价格变化后重新核算。");
         }
-        addOutputContract(result);
+        addOutputContract(result, draft);
         refreshState(result, draft);
         stateStore.save(userId, draft);
         return result;
@@ -516,7 +558,12 @@ public class TeamTripPlanService {
             }
         }
 
-        if (draft.getOptions().size() > 1) {
+        TeamTripPlanOption selected = findOption(draft, draft.getSelectedOptionId());
+        if (selected != null) {
+            // 调整已选方案后的重新核算不能把用户送回候选方案选择阶段。
+            draft.setOptionDecisionStatus(OptionDecisionStatus.OPTION_SELECTED);
+            evaluateSelectedBudget(draft, selected);
+        } else if (draft.getOptions().size() > 1) {
             draft.setOptionDecisionStatus(OptionDecisionStatus.AWAITING_OPTION_SELECTION);
             draft.setStage("AWAITING_OPTION_SELECTION");
         } else if (draft.getOptions().size() == 1) {
@@ -825,13 +872,20 @@ public class TeamTripPlanService {
         result.set("collected_information", objectMapper.valueToTree(draft));
     }
 
-    private void addOutputContract(ObjectNode result) {
-        result.putArray("output_contract")
+    private void addOutputContract(ObjectNode result, TeamTripPlanDraft draft) {
+        ArrayNode contract = result.putArray("output_contract");
+        contract
                 .add("保持加入预算功能前的自然旅游方案展示结构，不使用大型候选预算对比表或十段式固定报告")
                 .add("先自然介绍方案并明确列出方案亮点，再按天展示行程、活动、交通、住宿、餐饮、美食推荐和注意事项")
                 .add("美食推荐应包含当地特色菜、适合团队的餐厅类型或特色用餐体验，不能只写泛化的早午晚餐安排")
-                .add("预算只作为对应方案末尾的补充，引用 budget_calculator 的总费用、人均、预算差额和待确认价格")
-                .add("全部方案展示后再询问用户选择，不得替用户自动决定");
+                .add("预算只作为对应方案末尾的补充，引用 budget_calculator 的总费用、人均、预算差额和待确认价格");
+        if (!blank(draft.getSelectedOptionId())
+                && !"AWAITING_OPTION_SELECTION".equals(draft.getStage())) {
+            contract.add("用户已选定方案，只展示和调整 selected_option_id 对应方案；"
+                    + "不得展示其他候选方案，也不得再次询问用户选择方案");
+        } else {
+            contract.add("全部方案展示后再询问用户选择，不得替用户自动决定");
+        }
     }
 
     private ObjectNode saveError(String userId, TeamTripPlanDraft draft, String message) {
@@ -847,6 +901,47 @@ public class TeamTripPlanService {
         return draft.getOptions().stream()
                 .filter(option -> optionId.equals(option.getOptionId()))
                 .findFirst().orElse(null);
+    }
+
+    /**
+     * 用户选择时既接受稳定的内部 ID，也接受界面上的“方案C”、完整展示名称或字母简写。
+     * 成本回写等内部流程仍使用 {@link #findOption(TeamTripPlanDraft, String)} 精确匹配，
+     * 避免模糊匹配污染工具间的数据关联。
+     */
+    private TeamTripPlanOption findOptionForSelection(TeamTripPlanDraft draft, String reference) {
+        TeamTripPlanOption exact = findOption(draft, reference);
+        if (exact != null || blank(reference)) return exact;
+
+        String normalized = normalizeOptionReference(reference);
+        String visibleLabel = extractVisibleOptionLabel(reference);
+        List<TeamTripPlanOption> matches = draft.getOptions().stream()
+                .filter(option -> {
+                    String id = normalizeOptionReference(option.getOptionId());
+                    String displayName = normalizeOptionReference(option.getDisplayName());
+                    if (normalized.equals(id) || normalized.equals(displayName)) return true;
+
+                    String visibleReference = normalized.startsWith("方案")
+                            ? normalized : "方案" + normalized;
+                    return displayName.startsWith(visibleReference)
+                            || (!visibleLabel.isBlank()
+                            && displayName.startsWith("方案" + visibleLabel));
+                })
+                .toList();
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
+    private static String extractVisibleOptionLabel(String value) {
+        if (value == null) return "";
+        Matcher matcher = OPTION_LABEL_PATTERN.matcher(value);
+        if (!matcher.find()) return "";
+        String label = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+        return normalizeOptionReference(label);
+    }
+
+    private static String normalizeOptionReference(String value) {
+        if (value == null) return "";
+        return value.toLowerCase()
+                .replaceAll("[\\s_:：\\-—（）()【】\\[\\]，,。.]+", "");
     }
 
     private void parseDuration(TeamTripPlanDraft draft, String duration) {
@@ -910,7 +1005,8 @@ public class TeamTripPlanService {
             draft.setStage("READY_FOR_CONTEXT");
             return;
         }
-        draft.setStage(isInsufficient(draft.getMapStatus()) ? "MAP_INSUFFICIENT" : "MAP_READY");
+        draft.setStage(isInsufficient(draft.getMapStatus())
+                ? "MAP_INSUFFICIENT" : "READY_FOR_DISTANCE");
     }
 
     private static boolean isWaitingForUser(TeamTripPlanDraft draft) {

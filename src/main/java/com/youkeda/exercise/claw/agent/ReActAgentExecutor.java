@@ -119,8 +119,21 @@ public class ReActAgentExecutor implements AgentExecutor {
                             + "不得重新收集或覆盖用户已经确认的出发地、人数、日期、天数、目的地和预算。"));
         }
 
+        WaitingInputResult waitingInput = handleWaitingInput(userId, userMessage);
+        if (waitingInput.handled()) {
+            if (waitingInput.reply() != null && !waitingInput.reply().isBlank()) {
+                contextStore.append(userId, "assistant", waitingInput.reply());
+                return waitingInput.reply();
+            }
+            messages.add(new Message("system", waitingInput.transitionSummary()));
+        }
+
         // 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
-        if (!continuationRequest && isSimpleChat(userMessage)) {
+        // 团建流程正在等待选择、确认或补充时，用户的回复必须先经过状态工具，
+        // 不能被“闲聊”分类提前截断，否则只会口头确认而不会更新持久状态。
+        boolean waitingForTeamTripInput = toolCallPolicy.shouldReplyWithoutTools(userId);
+        if (!continuationRequest && !waitingInput.handled()
+                && !waitingForTeamTripInput && isSimpleChat(userMessage)) {
             log.debug("快速通道：用户消息不需工具，走纯对话 | user={}", userId);
             LLMResponse quickResponse = llmClient.chatWithTools(messages, List.of());
             if (quickResponse != null && !quickResponse.isToolCall()
@@ -383,20 +396,158 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
     }
 
+    /**
+     * 等待用户决策的阶段使用确定性状态转移，不把“是否调用状态工具”交给模型判断。
+     * 无法明确识别的输入仍返回未处理，由正常 LLM 流程澄清。
+     */
+    private WaitingInputResult handleWaitingInput(String userId, String userMessage) {
+        TeamTripPlanDraft draft = teamTripPlanService.getDraft(userId);
+        if (draft == null || userMessage == null || userMessage.isBlank()) {
+            return WaitingInputResult.unhandled();
+        }
+
+        String stage = draft.getStage();
+        if ("AWAITING_OPTION_SELECTION".equals(stage)) {
+            var args = objectMapper.createObjectNode();
+            args.put("action", "select_option");
+            args.put("selected_option_id", userMessage.trim());
+            JsonNode result = teamTripPlanService.handle(userId, args);
+            if ("INVALID_ARGUMENT".equals(result.path("status").asText())) {
+                return WaitingInputResult.unhandled();
+            }
+
+            TeamTripPlanDraft updated = teamTripPlanService.getDraft(userId);
+            log.info("等待阶段直接记录方案选择 | user={} | input={} | selected={} | stage={}",
+                    userId, userMessage, updated.getSelectedOptionId(), updated.getStage());
+            if (toolCallPolicy.shouldReplyWithoutTools(userId)) {
+                return WaitingInputResult.replied(renderWaitingWithOriginalStructure(userId));
+            }
+            if ("FINALIZABLE".equals(updated.getStage())) {
+                return WaitingInputResult.replied(renderFinalizedWithOriginalStructure(userId));
+            }
+            return WaitingInputResult.transitioned(
+                    "用户的方案选择已经写入结构化状态。继续处理所选方案，禁止重新收集需求或生成其他候选方案。");
+        }
+
+        if ("AWAITING_BUDGET_DECISION".equals(stage)) {
+            String decision = parseBudgetDecision(userMessage);
+            if (decision == null) return WaitingInputResult.unhandled();
+
+            var args = objectMapper.createObjectNode();
+            args.put("action", "budget_decision");
+            args.put("budget_decision", decision);
+            JsonNode result = teamTripPlanService.handle(userId, args);
+            if ("INVALID_ARGUMENT".equals(result.path("status").asText())) {
+                return WaitingInputResult.unhandled();
+            }
+
+            TeamTripPlanDraft updated = teamTripPlanService.getDraft(userId);
+            log.info("等待阶段直接记录预算决定 | user={} | decision={} | stage={}",
+                    userId, decision, updated.getStage());
+            if ("ACCEPT_OVERRUN".equals(decision)) {
+                return WaitingInputResult.replied(renderFinalizedWithOriginalStructure(userId));
+            }
+            if (toolCallPolicy.shouldReplyWithoutTools(userId)) {
+                return WaitingInputResult.replied(teamTripPlanService.renderWaitingReply(userId));
+            }
+            return WaitingInputResult.transitioned(
+                    "用户的预算决定已经写入结构化状态。只继续处理所选方案，不得重新询问同一预算决定。");
+        }
+
+        if ("AWAITING_ADJUSTMENT_PREFERENCE".equals(stage)
+                && containsAny(userMessage, "住宿", "活动", "餐饮", "交通")) {
+            var args = objectMapper.createObjectNode();
+            args.put("action", "budget_decision");
+            args.put("budget_decision", "REVISE_TO_BUDGET");
+            args.put("adjustment_preferences", userMessage.trim());
+            teamTripPlanService.handle(userId, args);
+            log.info("等待阶段直接记录调整偏好 | user={} | preference={}", userId, userMessage);
+            return WaitingInputResult.transitioned(
+                    "用户的调整偏好已经写入结构化状态。只修改并重新核算所选方案，不得展示其他候选方案。");
+        }
+
+        return WaitingInputResult.unhandled();
+    }
+
+    private String parseBudgetDecision(String userMessage) {
+        String normalized = userMessage.replaceAll("[\\s，。！!？?]", "");
+        if (containsAny(normalized, "先看看", "有哪些调整", "调整选项")) {
+            return "SHOW_ADJUSTMENT_OPTIONS";
+        }
+        if (containsAny(normalized, "不接受", "预算内", "控制预算", "调整", "太贵")) {
+            return "REVISE_TO_BUDGET";
+        }
+        if (containsAny(normalized, "接受", "同意", "没问题", "按此方案", "就这个",
+                "可以超预算")) {
+            return "ACCEPT_OVERRUN";
+        }
+        return null;
+    }
+
+    private static boolean containsAny(String value, String... words) {
+        if (value == null) return false;
+        for (String word : words) {
+            if (value.contains(word)) return true;
+        }
+        return false;
+    }
+
+    /** 用户完成方案和预算确认后，只渲染已选方案的完整最终版。 */
+    private String renderFinalizedWithOriginalStructure(String userId) {
+        String snapshot = teamTripPlanService.buildPresentationSnapshot(userId);
+        List<Message> finalMessages = List.of(
+                new Message("system",
+                        "用户已经完成方案选择和预算确认。不得调用任何工具。"
+                                + "只展示快照 options 中的已选方案，直接输出可执行的最终版，"
+                                + "不得提及或补写其他候选方案。"
+                                + "最终版必须包含方案亮点、按天行程、活动、交通、住宿、餐饮、"
+                                + "当地美食推荐、注意事项和最终预算摘要。"
+                                + "用户已经接受当前超预算金额，不得再次询问是否接受、是否调整、"
+                                + "选择哪个方案或还有什么想法。"
+                                + "不要输出 JSON、内部状态、快照说明或生成过程。"),
+                new Message("user", "以下是已经确认的最终方案数据，请直接生成最终执行版：\n" + snapshot));
+        LLMResponse response = llmClient.chatWithTools(finalMessages, List.of());
+        if (response != null && !response.isToolCall()
+                && response.getContent() != null && !response.getContent().isBlank()) {
+            return response.getContent();
+        }
+        log.warn("最终方案渲染失败，返回已确认的结构化摘要 | user={}", userId);
+        return teamTripPlanService.renderFinalizedReply(userId);
+    }
+
     private String renderWaitingWithOriginalStructure(String userId) {
         String fallback = teamTripPlanService.renderWaitingReply(userId);
+        TeamTripPlanDraft draft = teamTripPlanService.getDraft(userId);
+        if (draft == null) return fallback;
+
+        String stage = draft.getStage();
+        // 补充信息、调整偏好和修订原因都只是一个简短问题，不应再次渲染候选方案。
+        if (!"AWAITING_OPTION_SELECTION".equals(stage)
+                && !"AWAITING_BUDGET_DECISION".equals(stage)) {
+            return fallback;
+        }
+
         String snapshot = teamTripPlanService.buildPresentationSnapshot(userId);
+        boolean selectedOptionOnly = !"AWAITING_OPTION_SELECTION".equals(stage)
+                && draft.getSelectedOptionId() != null
+                && !draft.getSelectedOptionId().isBlank();
+        String decisionInstruction = selectedOptionOnly
+                ? "用户已经选定方案。只展示快照 options 中的已选方案，不得提及、复述或补写其他候选方案，"
+                        + "也不得再次询问用户选择哪个方案；回复末尾只询问用户如何处理当前方案的预算。"
+                : "当前仍在候选方案选择阶段。全部候选方案展示完后再询问用户选择；不要擅自替用户选择。";
         List<Message> presentationMessages = List.of(
                 new Message("system",
                         "这是方案展示阶段，不得调用任何工具。保持原来的自然方案展示结构和友好语气，"
                                 + "不要输出 JSON、DSML 或内部状态字段。"
+                                + "直接从面向用户的方案内容开始，不要说“基于快照”“根据已核算快照”"
+                                + "“以下是展示回复”，也不要解释内容的生成过程。"
                                 + "沿用加入预算功能前的旅游规划风格：自然介绍后，分别按天展示每个方案的"
                                 + "方案亮点、行程、活动、交通、住宿、餐饮、美食推荐和注意事项。"
                                 + "美食推荐需给出当地特色菜、适合团队的餐厅类型或特色用餐体验，"
                                 + "不能只写早餐、午餐、晚餐等泛化安排。"
                                 + "不要先做大型预算对比表，也不要输出十段式固定报告。"
                                 + "预算只作为每个方案末尾的补充，写预计总费用、人均、预算差额和待确认价格。"
-                                + "全部方案展示完后再询问用户选择；不要擅自替用户选择。"),
+                                + decisionInstruction),
                 new Message("user", "请根据以下已核算快照生成面向用户的回复：\n" + snapshot));
         LLMResponse response = llmClient.chatWithTools(presentationMessages, List.of());
         if (response != null && !response.isToolCall()
@@ -418,7 +569,10 @@ public class ReActAgentExecutor implements AgentExecutor {
         if (draft == null) return allTools;
         if (toolCallPolicy.shouldReplyWithoutTools(userId)) {
             return allTools.stream()
-                    .filter(t -> ALWAYS_AVAILABLE_TOOLS.contains(t.name()))
+                    // “等待用户”只表示上一轮应停下来提问；用户的新回复到达后，
+                    // 必须重新开放状态工具，才能记录选择、预算决定或调整偏好。
+                    .filter(t -> "team_trip_plan".equals(t.name())
+                            || ALWAYS_AVAILABLE_TOOLS.contains(t.name()))
                     .toList();
         }
 
@@ -439,6 +593,8 @@ public class ReActAgentExecutor implements AgentExecutor {
                 if ("NOT_CALLED".equals(draft.getMapStatus())) allowMapTools = true;
             }
             case "READY_FOR_MAP" -> allowMapTools = true;
+            case "READY_FOR_DISTANCE" -> exactNames.add("map_distance_calculate");
+            case "READY_FOR_ROUTE" -> exactNames.add("map_route_planning");
             case "MAP_INSUFFICIENT" -> exactNames.add("web_search");
             case "WEATHER_INSUFFICIENT" ->
                     exactNames.add("web_search");
@@ -518,5 +674,19 @@ public class ReActAgentExecutor implements AgentExecutor {
             log.debug("异常工具名参数无法解析 | name={}", call.name());
         }
         return call.name();
+    }
+
+    private record WaitingInputResult(boolean handled, String reply, String transitionSummary) {
+        private static WaitingInputResult unhandled() {
+            return new WaitingInputResult(false, null, null);
+        }
+
+        private static WaitingInputResult replied(String reply) {
+            return new WaitingInputResult(true, reply, null);
+        }
+
+        private static WaitingInputResult transitioned(String summary) {
+            return new WaitingInputResult(true, null, summary);
+        }
     }
 }

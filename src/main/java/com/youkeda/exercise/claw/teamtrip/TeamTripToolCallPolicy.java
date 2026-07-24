@@ -46,6 +46,12 @@ public class TeamTripToolCallPolicy {
         if ("READY_FOR_MAP".equals(stage) && !toolName.startsWith("map_")) {
             return "完整方案必须先调用地图工具确认地点；读取地图结果后才能调用其他外部工具。";
         }
+        if ("READY_FOR_DISTANCE".equals(stage) && !"map_distance_calculate".equals(toolName)) {
+            return "地点候选已确认，必须先使用 map_distance_calculate 比较候选地点距离。";
+        }
+        if ("READY_FOR_ROUTE".equals(stage) && !"map_route_planning".equals(toolName)) {
+            return "距离比较已完成，必须先使用 map_route_planning 核实核心路线和耗时。";
+        }
         if ("MAP_INSUFFICIENT".equals(stage) && !"web_search".equals(toolName)) {
             return "地图服务本轮已返回信息不足或不可用，请停止重复地图查询并改用一次聚焦的 web_search。";
         }

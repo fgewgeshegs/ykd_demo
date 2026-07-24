@@ -12,6 +12,7 @@ import java.time.ZoneId;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -219,6 +220,84 @@ class TeamTripPlanServiceTest {
     }
 
     @Test
+    void shouldSelectOptionByVisibleNameInsteadOfRequiringInternalId() throws Exception {
+        service.handle("u-visible-option", objectMapper.readTree("""
+                {"action":"collect","departure_city":"合肥","participant_count":10,
+                 "travel_date":"2026-09-05","duration":"2天1晚","budget_total":4000,
+                 "destination":"杭州"}
+                """));
+        service.handle("u-visible-option", objectMapper.readTree("""
+                {"action":"save_options","options":[
+                  {"option_id":"plan_a","display_name":"方案A：西湖漫游","positioning":"经济型","itinerary_summary":"西湖"},
+                  {"option_id":"plan_b","display_name":"方案B：户外团建","positioning":"团建型","itinerary_summary":"拓展"},
+                  {"option_id":"plan_c","display_name":"方案C：室内潮玩","positioning":"室内型","itinerary_summary":"潮玩"}
+                ]}
+                """));
+
+        ObjectNode selected = service.handle("u-visible-option", objectMapper.readTree("""
+                {"action":"select_option","selected_option_id":"C方案"}
+                """));
+
+        assertEquals("COST_PARTIAL", selected.path("status").asText());
+        assertEquals("plan_c", store.get("u-visible-option").getSelectedOptionId());
+        assertEquals("SELECTED", store.get("u-visible-option").getOptions().get(2).getPlanStatus());
+    }
+
+    @Test
+    void shouldKeepSelectedOptionAfterAdjustmentAndHideOtherCandidates() throws Exception {
+        service.handle("u-adjust", objectMapper.readTree("""
+                {"action":"collect","departure_city":"合肥","participant_count":20,
+                 "travel_date":"2026-09-05","duration":"2天1晚","budget_total":5000,
+                 "destination":"杭州","option_count":3}
+                """));
+        service.handle("u-adjust", objectMapper.readTree("""
+                {"action":"save_options","options":[
+                  {"option_id":"A","display_name":"方案A","positioning":"经济型","itinerary_summary":"西湖经典游"},
+                  {"option_id":"B","display_name":"方案B","positioning":"团建型","itinerary_summary":"团建活动优先"},
+                  {"option_id":"C","display_name":"方案C","positioning":"品质型","itinerary_summary":"品质住宿"}
+                ]}
+                """));
+        service.recordToolResult("u-adjust", "budget_calculator", """
+                {"status":"SUCCESS","plans":[
+                  {"planId":"A","costStatus":"SUCCESS","estimatedTotalMin":4800,
+                   "estimatedTotalMax":4800,"targetBudget":5000,"budgetStatus":"WITHIN_BUDGET"},
+                  {"planId":"B","costStatus":"SUCCESS","estimatedTotalMin":6000,
+                   "estimatedTotalMax":6000,"targetBudget":5000,"budgetStatus":"OVER_BUDGET",
+                   "overrunMin":1000,"overrunMax":1000,"overrunRateMax":20},
+                  {"planId":"C","costStatus":"SUCCESS","estimatedTotalMin":7000,
+                   "estimatedTotalMax":7000,"targetBudget":5000,"budgetStatus":"OVER_BUDGET",
+                   "overrunMin":2000,"overrunMax":2000,"overrunRateMax":40}
+                ]}
+                """);
+        service.handle("u-adjust", objectMapper.readTree("""
+                {"action":"select_option","selected_option_id":"B"}
+                """));
+        service.handle("u-adjust", objectMapper.readTree("""
+                {"action":"budget_decision","budget_decision":"REVISE_TO_BUDGET",
+                 "adjustment_preferences":"保留活动"}
+                """));
+
+        service.recordToolResult("u-adjust", "budget_calculator", """
+                {"status":"SUCCESS","plans":[
+                  {"planId":"B","costStatus":"SUCCESS","estimatedTotalMin":4900,
+                   "estimatedTotalMax":4900,"targetBudget":5000,"budgetStatus":"WITHIN_BUDGET",
+                   "overrunMin":0,"overrunMax":0}
+                ]}
+                """);
+
+        TeamTripPlanDraft draft = store.get("u-adjust");
+        assertEquals("B", draft.getSelectedOptionId());
+        assertEquals("FINALIZABLE", draft.getStage());
+        assertEquals(OptionDecisionStatus.OPTION_SELECTED, draft.getOptionDecisionStatus());
+
+        String snapshot = service.buildPresentationSnapshot("u-adjust");
+        assertTrue(snapshot.contains("\"selected_option_id\":\"B\""));
+        assertTrue(snapshot.contains("\"option_id\":\"B\""));
+        assertFalse(snapshot.contains("\"option_id\":\"A\""));
+        assertFalse(snapshot.contains("\"option_id\":\"C\""));
+    }
+
+    @Test
     void shouldPreventPriceSearchAndCostCalculationInSameBatch() throws Exception {
         service.handle("u8", objectMapper.readTree("""
                 {"action":"collect","departure_city":"上海","participant_count":20,
@@ -228,6 +307,8 @@ class TeamTripPlanServiceTest {
         service.recordToolResult("u8", "holiday_check",
                 "{\"date\":\"2026-09-05\",\"day_type\":\"weekend\",\"team_building_score\":8}");
         service.recordToolResult("u8", "map_search_place", "{\"status\":\"SUCCESS\"}");
+        service.recordToolResult("u8", "map_distance_calculate", "{\"status\":\"SUCCESS\"}");
+        service.recordToolResult("u8", "map_route_planning", "{\"status\":\"SUCCESS\"}");
 
         assertTrue(policy.validate("u8", "budget_calculator",
                 List.of("web_search", "budget_calculator")).contains("不能"));
@@ -256,6 +337,16 @@ class TeamTripPlanServiceTest {
         assertEquals("holiday", afterHoliday.getLastHolidayResult().path("day_type").asText());
 
         service.recordToolResult("u-flow", "map_search_place", "{\"status\":\"SUCCESS\"}");
+        assertEquals("READY_FOR_DISTANCE", store.get("u-flow").getStage());
+        assertNull(policy.validate("u-flow", "map_distance_calculate",
+                List.of("map_distance_calculate")));
+
+        service.recordToolResult("u-flow", "map_distance_calculate", "{\"status\":\"SUCCESS\"}");
+        assertEquals("READY_FOR_ROUTE", store.get("u-flow").getStage());
+        assertNull(policy.validate("u-flow", "map_route_planning",
+                List.of("map_route_planning")));
+
+        service.recordToolResult("u-flow", "map_route_planning", "{\"status\":\"SUCCESS\"}");
         assertEquals("MAP_READY", store.get("u-flow").getStage());
 
         service.recordToolResult("u-flow", "weather_query", "{\"status\":\"SUCCESS\"}");
@@ -291,6 +382,12 @@ class TeamTripPlanServiceTest {
 
         service.recordToolResult("u-reverse", "holiday_check",
                 "{\"date\":\"2026-11-07\",\"day_type\":\"weekend\"}");
+        assertEquals("READY_FOR_DISTANCE", store.get("u-reverse").getStage());
+
+        service.recordToolResult("u-reverse", "map_distance_calculate", "{\"status\":\"SUCCESS\"}");
+        assertEquals("READY_FOR_ROUTE", store.get("u-reverse").getStage());
+
+        service.recordToolResult("u-reverse", "map_route_planning", "{\"status\":\"SUCCESS\"}");
         assertEquals("MAP_READY", store.get("u-reverse").getStage());
     }
 
