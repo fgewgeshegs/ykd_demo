@@ -66,7 +66,7 @@ public class ReActAgentExecutor implements AgentExecutor {
      * 保证用户可以随时要求生成文件、图片或语音。
      */
     private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
-            Set.of("file_generate", "image_generate", "text_to_speech", "plan_proposal");
+            Set.of("file_generate", "image_generate", "text_to_speech", "plan_proposal", "place_image_search");
 
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
     private static final String LIMIT_REPLY =
@@ -262,14 +262,21 @@ public class ReActAgentExecutor implements AgentExecutor {
             }
             // 已进入必须等待用户输入的阶段时，只用精简快照生成原有展示结构。
             // 不携带搜索原文和完整工具历史，也不再开放任何工具。
+            // 但若本轮执行了始终可用的旁路工具（图片/文件/语音），应让 LLM 基于工具结果
+            // 自然回应，不要用方案快照覆盖工具执行效果。
             if (toolCallPolicy.shouldReplyWithoutTools(userId)) {
-                String waitingReply = renderWaitingWithOriginalStructure(userId);
-                if (waitingReply != null && !waitingReply.isBlank()) {
-                    TeamTripPlanDraft draft = teamTripPlanService.getDraft(userId);
-                    log.info("等待用户输入，返回原方案展示结构 | user={} | stage={}",
-                            userId, draft != null ? draft.getStage() : "UNKNOWN");
-                    contextStore.append(userId, "assistant", waitingReply);
-                    return waitingReply;
+                boolean justUsedAlwaysAvailable = toolCalls.stream()
+                        .anyMatch(tc -> ALWAYS_AVAILABLE_TOOLS.contains(
+                                resolveToolName(tc, allowedToolNames)));
+                if (!justUsedAlwaysAvailable) {
+                    String waitingReply = renderWaitingWithOriginalStructure(userId);
+                    if (waitingReply != null && !waitingReply.isBlank()) {
+                        TeamTripPlanDraft draft = teamTripPlanService.getDraft(userId);
+                        log.info("等待用户输入，返回原方案展示结构 | user={} | stage={}",
+                                userId, draft != null ? draft.getStage() : "UNKNOWN");
+                        contextStore.append(userId, "assistant", waitingReply);
+                        return waitingReply;
+                    }
                 }
             }
             // 已进入等待用户阶段，或本轮所有调用都被策略/去重阻止时，

@@ -1,6 +1,8 @@
 package com.youkeda.exercise.claw.agent.tool;
 
 import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
+import com.youkeda.exercise.claw.map.PlaceImageFunction;
+import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -8,6 +10,8 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * 聊天工具
@@ -29,14 +33,20 @@ public class ChatTool implements WechatMessageHandler {
     private final VoiceFunction voiceTool;
     private final FileGenerationTool fileGenerationTool;
     private final ImageGenerationTool imageGenerationTool;
+    private final PlaceImageFunction placeImageFunction;
+    private final WechatILinkClient wechatClient;
 
     public ChatTool(ReActAgentExecutor agentExecutor,
                     VoiceFunction voiceTool, FileGenerationTool fileGenerationTool,
-                    ImageGenerationTool imageGenerationTool) {
+                    ImageGenerationTool imageGenerationTool,
+                    PlaceImageFunction placeImageFunction,
+                    WechatILinkClient wechatClient) {
         this.agentExecutor = agentExecutor;
         this.voiceTool = voiceTool;
         this.fileGenerationTool = fileGenerationTool;
         this.imageGenerationTool = imageGenerationTool;
+        this.placeImageFunction = placeImageFunction;
+        this.wechatClient = wechatClient;
     }
 
     @Override
@@ -72,10 +82,24 @@ public class ChatTool implements WechatMessageHandler {
             return WechatReply.file(file.fileBytes(), file.fileName(), file.description());
         }
 
+        // 检查地点图片搜索是否产生了待发送的图片（place_image_search 工具调用的结果）
+        List<PlaceImageFunction.PendingPlaceImage> placeImages = placeImageFunction.consumePendingPlaceImages();
+        if (placeImages != null && !placeImages.isEmpty()) {
+            PlaceImageFunction.PendingPlaceImage first = placeImages.get(0);
+            if (first.imageBytes() != null && first.imageBytes().length > 0) {
+                log.info("待发送地点图片 | place={} | count={} | size={}bytes | from={}",
+                        first.placeName(), placeImages.size(), first.imageBytes().length, message.getUserId());
+                // 文本先行发出，再返回图片
+                wechatClient.sendTextMessage(message.getUserId(), reply);
+                return WechatReply.image(first.imageBytes());
+            }
+        }
+
         // 检查图片生成工具是否产生了待发送的图片（image_generate 工具调用的结果）
         ImageGenerationTool.PendingImage image = imageGenerationTool.consumePendingImage();
         if (image != null && image.imageBytes() != null && image.imageBytes().length > 0) {
             log.info("待发送图片 | size={}bytes | from={}", image.imageBytes().length, message.getUserId());
+            wechatClient.sendTextMessage(message.getUserId(), reply);
             return WechatReply.image(image.imageBytes());
         }
 
