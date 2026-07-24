@@ -53,7 +53,7 @@ public class FileTool implements WechatMessageHandler {
     }
 
     @Override
-    public WechatReply handle(WechatMessage message) {
+    public List<WechatReply> handle(WechatMessage message) {
         if (message.getType() != MessageType.FILE) {
             return null;
         }
@@ -65,7 +65,7 @@ public class FileTool implements WechatMessageHandler {
         byte[] fileBytes = downloadFile(message);
         if (fileBytes == null || fileBytes.length == 0) {
             log.warn("文件下载失败 | from={} | fileName={}", message.getUserId(), fileName);
-            return WechatReply.text(FALLBACK_REPLY);
+            return List.of(WechatReply.text(FALLBACK_REPLY));
         }
 
         log.info("文件下载成功 | fileName={} | size={} bytes", fileName, fileBytes.length);
@@ -74,11 +74,11 @@ public class FileTool implements WechatMessageHandler {
         String mimeType = fileParseService.detectMimeType(fileBytes);
         log.info("文件 MIME 类型 | fileName={} | mimeType={}", fileName, mimeType);
 
-        // 3. 按内容类型分发
+        // 3. 按内容类型分发（返回 List 以兼容新接口）
         if (mimeType.startsWith("image/")) {
-            return handleImageFile(fileBytes, mimeType, fileName, message.getUserId());
+            return List.of(handleImageFile(fileBytes, mimeType, fileName, message.getUserId()));
         } else {
-            return handleDocumentFile(fileBytes, fileName, message.getUserId());
+            return List.of(handleDocumentFile(fileBytes, fileName, message.getUserId()));
         }
     }
 

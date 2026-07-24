@@ -12,6 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * 消息路由器
  *
@@ -45,17 +48,16 @@ public class MessageRouter {
     }
 
     /**
-     * 路由消息到对应的处理器
+     * 路由消息到对应的处理器，返回回复列表。
      *
      * @param message 微信消息
-     * @return 回复内容（WechatReply，包含 TEXT 或 IMAGE 类型）
+     * @return 回复列表，null 或空列表表示不回复
      */
-    public WechatReply route(WechatMessage message) {
+    public List<WechatReply> route(WechatMessage message) {
         // 图片消息：直接走 VisionHandler（保留已有图片处理流程）
         if (message.getType() == MessageType.IMAGE) {
             log.info("路由：图片消息 → VisionTool | from={}", message.getUserId());
-            WechatReply reply = visionTool.handle(message);
-            return fallbackIfEmpty(reply, message);
+            return fallbackIfEmpty(visionTool.handle(message), message);
         }
 
         // 语音消息：ASR → ChatTool（ReActAgentExecutor tool-calling）→ auto TTS
@@ -76,38 +78,47 @@ public class MessageRouter {
             textMsg.setType(MessageType.TEXT);
             textMsg.setText(voiceText);
 
-            WechatReply textReply = chatTool.handle(textMsg);
-            if (textReply == null || !textReply.hasContent()) {
+            List<WechatReply> replies = chatTool.handle(textMsg);
+            if (replies == null || replies.isEmpty() || !hasContent(replies)) {
                 return fallbackIfEmpty(null, message);
             }
-            // ChatTool 如果返回非文本（如图片），直接返回
-            if (textReply.getType() != MessageType.TEXT) {
-                return textReply;
+
+            // 3. 取最后一条文本回复做 TTS，替换为语音文件
+            WechatReply lastTextReply = null;
+            int lastTextIdx = -1;
+            for (int i = replies.size() - 1; i >= 0; i--) {
+                if (replies.get(i).getType() == MessageType.TEXT) {
+                    lastTextReply = replies.get(i);
+                    lastTextIdx = i;
+                    break;
+                }
             }
 
-            // 3. 自动 TTS 语音回复
-            WechatReply voiceReply = voiceTool.synthesizeTextToFile(textReply.getText());
-            if (voiceReply != null && voiceReply.hasContent()) {
-                return voiceReply;
+            if (lastTextReply != null) {
+                WechatReply voiceReply = voiceTool.synthesizeTextToFile(lastTextReply.getText());
+                if (voiceReply != null && voiceReply.hasContent()) {
+                    // TTS 成功：替换最后一条文本为语音，其余不变
+                    List<WechatReply> mixed = new java.util.ArrayList<>(replies);
+                    mixed.set(lastTextIdx, voiceReply);
+                    return mixed;
+                }
+                // TTS 失败：返回原始列表
+                log.warn("TTS 合成失败，保留文本回复 | from={}", message.getUserId());
             }
 
-            // 4. TTS 失败降级为文本回复
-            log.warn("TTS 合成失败，降级为文本回复 | from={}", message.getUserId());
-            return textReply;
+            return replies;
         }
 
-        // 文件消息：直接走 FileTool（根据文件内容类型分发：图片→视觉模型，文档→文本提取+LLM）
+        // 文件消息：直接走 FileTool
         if (message.getType() == MessageType.FILE) {
             log.info("路由：文件消息 → FileTool | from={} | fileName={}", message.getUserId(), message.getFileName());
-            WechatReply reply = fileTool.handle(message);
-            return fallbackIfEmpty(reply, message);
+            return fallbackIfEmpty(fileTool.handle(message), message);
         }
 
-        // 文本消息：全部走 ChatTool，由 ReActAgentExecutor 通过 LLM tool-calling 循环自主路由
+        // 文本消息：全部走 ChatTool
         if (message.getType() == MessageType.TEXT) {
             log.info("路由：文本消息 → ChatTool | from={}", message.getUserId());
-            WechatReply reply = chatTool.handle(message);
-            return fallbackIfEmpty(reply, message);
+            return fallbackIfEmpty(chatTool.handle(message), message);
         }
 
         // 其他类型：兜底
@@ -118,11 +129,20 @@ public class MessageRouter {
     /**
      * 如果 Handler 返回空或没有内容，使用兜底回复
      */
-    private WechatReply fallbackIfEmpty(WechatReply reply, WechatMessage message) {
-        if (reply != null && reply.hasContent()) {
-            return reply;
+    private List<WechatReply> fallbackIfEmpty(List<WechatReply> replies, WechatMessage message) {
+        if (replies != null && !replies.isEmpty() && hasContent(replies)) {
+            return replies;
         }
         log.info("路由：Handler 返回空，使用兜底 | from={}", message.getUserId());
         return fallbackTool.handle(message);
+    }
+
+    private boolean hasContent(List<WechatReply> replies) {
+        for (WechatReply r : replies) {
+            if (r != null && r.hasContent()) {
+                return true;
+            }
+        }
+        return false;
     }
 }

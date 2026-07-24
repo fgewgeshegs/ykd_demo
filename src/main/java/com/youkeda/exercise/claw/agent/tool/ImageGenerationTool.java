@@ -157,7 +157,7 @@ public class ImageGenerationTool implements WechatMessageHandler, LLMFunction {
     }
 
     @Override
-    public WechatReply handle(WechatMessage message) {
+    public List<WechatReply> handle(WechatMessage message) {
         log.info("ImageGenerationTool.handle 处理消息 | from={} | text={}", message.getUserId(), message.getText());
 
         // 1. 用 LLM（带历史）将简短请求展开为完整图片描述
@@ -167,7 +167,7 @@ public class ImageGenerationTool implements WechatMessageHandler, LLMFunction {
         String imageUrl = imageGenerationService.generate(fullPrompt);
         if (imageUrl == null) {
             log.warn("图片生成失败");
-            return WechatReply.text(FALLBACK_REPLY);
+            return List.of(WechatReply.text(FALLBACK_REPLY));
         }
 
         // 3. 记住 AI 图片 URL（后续描述/编辑可从此下载）
@@ -177,7 +177,7 @@ public class ImageGenerationTool implements WechatMessageHandler, LLMFunction {
         byte[] imageBytes = imageClient.downloadImage(imageUrl);
         if (imageBytes == null || imageBytes.length == 0) {
             log.warn("图片下载失败 | url={}", imageUrl);
-            return WechatReply.text(FALLBACK_REPLY);
+            return List.of(WechatReply.text(FALLBACK_REPLY));
         }
 
         log.info("图片生成并下载成功 | size={} bytes", imageBytes.length);
@@ -185,7 +185,7 @@ public class ImageGenerationTool implements WechatMessageHandler, LLMFunction {
         // 5. 保存 [图片] 到上下文
         contextStore.append(message.getUserId(), "assistant", "[图片]", null, null, imageUrl);
 
-        return WechatReply.image(imageBytes);
+        return List.of(WechatReply.image(imageBytes));
     }
 
     /**

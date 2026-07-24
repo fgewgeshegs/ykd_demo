@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Base64;
+import java.util.List;
 
 /**
  * 视觉理解工具
@@ -42,7 +43,7 @@ public class VisionTool implements WechatMessageHandler {
     }
 
     @Override
-    public WechatReply handle(WechatMessage message) {
+    public List<WechatReply> handle(WechatMessage message) {
         if (message.getType() == MessageType.IMAGE) {
             return analyzeImage(message);
         }
@@ -56,25 +57,25 @@ public class VisionTool implements WechatMessageHandler {
         return null;
     }
 
-    private WechatReply analyzeImage(WechatMessage message) {
+    private List<WechatReply> analyzeImage(WechatMessage message) {
         log.info("VisionTool 分析图片 | user={}", message.getUserId());
 
         String imageDataUrl = downloadImageAsDataUrl(message);
         if (imageDataUrl == null) {
             log.warn("无法获取图片数据 | from={}", message.getUserId());
-            return WechatReply.text(FALLBACK_REPLY);
+            return List.of(WechatReply.text(FALLBACK_REPLY));
         }
 
         String reply = visionService.analyze(imageDataUrl, null);
         if (reply == null || reply.isEmpty()) {
             log.warn("图片分析失败 | from={}", message.getUserId());
-            return WechatReply.text(FALLBACK_REPLY);
+            return List.of(WechatReply.text(FALLBACK_REPLY));
         }
 
         contextStore.append(message.getUserId(), "user", "[用户发送了一张图片]");
         contextStore.append(message.getUserId(), "assistant", reply);
 
-        return WechatReply.text(reply);
+        return List.of(WechatReply.text(reply));
     }
 
     /**

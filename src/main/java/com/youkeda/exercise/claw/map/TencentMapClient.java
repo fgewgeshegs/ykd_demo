@@ -36,6 +36,9 @@ public class TencentMapClient {
     /** 距离矩阵 API */
     private static final String DISTANCE_URL = "https://apis.map.qq.com/ws/distance/v1/";
 
+    /** POI 详情 API */
+    private static final String DETAIL_URL = "https://apis.map.qq.com/ws/place/v1/detail";
+
     private final TencentMapProperties properties;
     private final HttpClientUtil httpClient;
     private final ObjectMapper objectMapper;
@@ -117,6 +120,7 @@ public class TencentMapClient {
             JsonNode dataArray = root.path("data");
             if (dataArray.isArray()) {
                 for (JsonNode item : dataArray) {
+                    String id = item.path("id").asText("");
                     String title = item.path("title").asText("");
                     String address = item.path("address").asText("");
                     JsonNode loc = item.path("location");
@@ -125,7 +129,7 @@ public class TencentMapClient {
                     double distance = item.path("_distance").asDouble(0);
                     String category = item.path("category").asText("");
 
-                    results.add(new PoiResult(title, address, lat, lng, distance, category));
+                    results.add(new PoiResult(id, title, address, lat, lng, distance, category));
                 }
             }
 
@@ -264,6 +268,63 @@ public class TencentMapClient {
         }
     }
 
+    /**
+     * POI 详情：根据 POI ID 获取详细信息（含图片）
+     *
+     * @param poiId POI 唯一标识（从 searchPoi 结果中获取）
+     * @return 图片 URL 列表（可能为空）
+     * @throws TencentMapException 查询失败时抛出
+     */
+    public List<String> getPlaceDetail(String poiId) throws TencentMapException {
+        checkApiKey();
+        if (poiId == null || poiId.isBlank()) {
+            return List.of();
+        }
+        try {
+            String url = DETAIL_URL + "?id=" + URLEncoder.encode(poiId, StandardCharsets.UTF_8)
+                    + "&key=" + properties.getApiKey();
+
+            log.debug("POI 详情请求 | id={}", poiId);
+
+            String responseBody = httpClient.doGet(url);
+            JsonNode root = objectMapper.readTree(responseBody);
+
+            checkApiResponse(root, "POI详情");
+
+            // 腾讯地图 POI 详情返回 rich_info 中的图片
+            JsonNode richInfo = root.path("result").path("rich_info");
+            List<String> imageUrls = new ArrayList<>();
+
+            // 尝试从 rich_info.pic_list 提取图片
+            JsonNode picList = richInfo.path("pic_list");
+            if (picList.isArray()) {
+                for (JsonNode pic : picList) {
+                    String picUrl = pic.path("pic_url").asText("");
+                    if (!picUrl.isBlank()) {
+                        imageUrls.add(picUrl);
+                    }
+                }
+            }
+
+            // 如果 pic_list 为空，尝试从 head.pic_url 获取头图
+            if (imageUrls.isEmpty()) {
+                String headPic = richInfo.path("head").path("pic_url").asText("");
+                if (!headPic.isBlank()) {
+                    imageUrls.add(headPic);
+                }
+            }
+
+            log.info("POI 详情完成 | id={} | images={}", poiId, imageUrls.size());
+            return imageUrls;
+
+        } catch (TencentMapException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("POI 详情查询失败 | id={} | error={}", poiId, e.getMessage());
+            return List.of();
+        }
+    }
+
     // ==================== Internal helpers ====================
 
     private void checkApiKey() {
@@ -308,7 +369,7 @@ public class TencentMapClient {
     /**
      * POI 搜索结果
      */
-    public record PoiResult(String title, String address,
+    public record PoiResult(String id, String title, String address,
                             double lat, double lng,
                             double distance, String category) {
     }

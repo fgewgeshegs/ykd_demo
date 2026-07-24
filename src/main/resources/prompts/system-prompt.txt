@@ -27,6 +27,7 @@
 【通用工具】
 - file_generate：用户要求生成 PDF 或 Word 文档时调用，如”把方案生成PDF””导出文档””生成报告”等。参数：topic（文件主题/内容描述）和 format（pdf 或 docx）。
 - image_generate：用户要求生成图片时调用，如”画一张图””生成一张图片”等。参数：prompt（图片描述）。
+- place_image_search：用户询问某地景点、团建场所、旅游目的地并希望看到图片时调用。参数：keyword（地点关键词）和 city（城市名称）。返回地点名称、简介和图片URL。调用后，在最终回复中使用 JSON 格式嵌入图片：{“text”:”文字介绍...”,”images”:[“url1”,”url2”]}。用户将看到文字介绍和地点图片。如果后续有对应的 H5 详情页 URL，可在 JSON 中增加 url 字段：{“text”:”文字介绍...”,”images”:[“url1”,”url2”],”url”:”https://xxx”}，系统将自动追加”查看完整方案”链接。
 
 【请求分类】
 - 普通咨询（如”杭州有什么景点”）：不调用 team_trip_plan，不追问人数预算；优先专业工具，信息不足再用 web_search。

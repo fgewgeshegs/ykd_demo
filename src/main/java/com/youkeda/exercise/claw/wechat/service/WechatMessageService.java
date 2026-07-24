@@ -107,9 +107,13 @@ public class WechatMessageService {
                                 wechatClient.startTyping(fromUserId);
 
                                 try {
-                                    WechatReply reply = messageRouter.route(wechatMsg);
-                                    if (reply != null && reply.hasContent()) {
-                                        sendReply(fromUserId, reply);
+                                    List<WechatReply> replies = messageRouter.route(wechatMsg);
+                                    if (replies != null) {
+                                        for (WechatReply reply : replies) {
+                                            if (reply != null && reply.hasContent()) {
+                                                sendReply(fromUserId, reply);
+                                            }
+                                        }
                                     }
                                 } catch (Exception e) {
                                     log.error("消息路由处理异常 | error={}", e.getMessage());
@@ -253,10 +257,38 @@ public class WechatMessageService {
                 wechatClient.sendFileMessage(toUserId, reply.getFileBytes(),
                         reply.getFileName(), reply.getFileDescription());
             }
+            case LINK -> {
+                // 微信 SDK 不支持原生链接消息，以格式化文本发送
+                String linkText = buildLinkText(reply.getTitle(), reply.getLinkDescription(), reply.getUrl());
+                wechatClient.sendTextMessage(toUserId, linkText);
+            }
             default -> {
                 wechatClient.sendTextMessage(toUserId, reply.getText());
             }
         }
+    }
+
+    /**
+     * 构建链接的文本表示（微信不支持原生链接消息时的降级方案）
+     */
+    private String buildLinkText(String title, String description, String url) {
+        StringBuilder sb = new StringBuilder();
+        if (title != null && !title.isBlank()) {
+            sb.append("【").append(title).append("】");
+        }
+        if (description != null && !description.isBlank()) {
+            if (!sb.isEmpty()) {
+                sb.append("\n");
+            }
+            sb.append(description);
+        }
+        if (url != null && !url.isBlank()) {
+            if (!sb.isEmpty()) {
+                sb.append("\n");
+            }
+            sb.append("👉 ").append(url);
+        }
+        return sb.toString();
     }
 
     @PreDestroy

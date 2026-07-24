@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 /**
  * 兜底回复处理器
  *
@@ -19,8 +21,8 @@ public class SimpleReplyTool implements WechatMessageHandler {
     private static final String FALLBACK_REPLY = "暂时无法理解该消息类型";
 
     @Override
-    public WechatReply handle(WechatMessage message) {
+    public List<WechatReply> handle(WechatMessage message) {
         log.debug("SimpleReplyTool 兜底处理 | from={} | type={}", message.getUserId(), message.getType());
-        return WechatReply.text(FALLBACK_REPLY);
+        return List.of(WechatReply.text(FALLBACK_REPLY));
     }
 }

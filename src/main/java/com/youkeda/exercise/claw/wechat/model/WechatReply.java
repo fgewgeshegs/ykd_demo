@@ -38,6 +38,21 @@ public class WechatReply {
      */
     private String fileDescription;
 
+    /**
+     * 链接标题（LINK 类型时有效）
+     */
+    private String title;
+
+    /**
+     * 链接描述（LINK 类型时有效）
+     */
+    private String linkDescription;
+
+    /**
+     * 链接 URL（LINK 类型时有效）
+     */
+    private String url;
+
     public static WechatReply text(String text) {
         return new WechatReply().setType(MessageType.TEXT).setText(text);
     }
@@ -63,12 +78,29 @@ public class WechatReply {
     }
 
     /**
+     * 创建链接回复（如"点击查看完整方案"H5 链接）
+     *
+     * @param title       链接标题
+     * @param description 链接描述
+     * @param url         链接 URL
+     * @return WechatReply
+     */
+    public static WechatReply link(String title, String description, String url) {
+        return new WechatReply()
+                .setType(MessageType.LINK)
+                .setTitle(title)
+                .setLinkDescription(description)
+                .setUrl(url);
+    }
+
+    /**
      * 判断该回复是否有有效内容
      */
     public boolean hasContent() {
         return (type == MessageType.TEXT && text != null && !text.isEmpty())
                 || (type == MessageType.IMAGE && imageBytes != null && imageBytes.length > 0)
-                || (type == MessageType.FILE && fileBytes != null && fileBytes.length > 0);
+                || (type == MessageType.FILE && fileBytes != null && fileBytes.length > 0)
+                || (type == MessageType.LINK && url != null && !url.isEmpty());
     }
 
     public MessageType getType() {
@@ -122,6 +154,33 @@ public class WechatReply {
 
     public WechatReply setFileDescription(String fileDescription) {
         this.fileDescription = fileDescription;
+        return this;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public WechatReply setTitle(String title) {
+        this.title = title;
+        return this;
+    }
+
+    public String getLinkDescription() {
+        return linkDescription;
+    }
+
+    public WechatReply setLinkDescription(String linkDescription) {
+        this.linkDescription = linkDescription;
+        return this;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public WechatReply setUrl(String url) {
+        this.url = url;
         return this;
     }
 }

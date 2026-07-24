@@ -14,6 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 /**
  * 文件生成工具
  *
@@ -135,7 +137,7 @@ public class FileGenerationTool implements WechatMessageHandler, LLMFunction {
     }
 
     @Override
-    public WechatReply handle(WechatMessage message) {
+    public List<WechatReply> handle(WechatMessage message) {
         if (message.getType() != MessageType.TEXT) {
             return null;
         }
@@ -147,7 +149,7 @@ public class FileGenerationTool implements WechatMessageHandler, LLMFunction {
                 message.getUserId(), message.getText());
         if (result == null) {
             log.warn("文件生成失败 | from={}", message.getUserId());
-            return WechatReply.text(FALLBACK_REPLY);
+            return List.of(WechatReply.text(FALLBACK_REPLY));
         }
 
         contextStore.append(message.getUserId(), "assistant",
@@ -156,6 +158,6 @@ public class FileGenerationTool implements WechatMessageHandler, LLMFunction {
         log.info("文件生成成功 | fileName={} | size={} bytes",
                 result.fileName(), result.fileBytes().length);
 
-        return WechatReply.file(result.fileBytes(), result.fileName(), result.description());
+        return List.of(WechatReply.file(result.fileBytes(), result.fileName(), result.description()));
     }
 }
