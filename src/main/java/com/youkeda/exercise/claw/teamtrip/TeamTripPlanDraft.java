@@ -1,14 +1,17 @@
 package com.youkeda.exercise.claw.teamtrip;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 团建/出游方案草稿，保存跨轮对话中的结构化需求和流程状态。 */
-public class TeamTripPlanDraft {
+/**
+ * 团建/出游方案业务数据。
+ *
+ * <p>仅包含结构化业务数据（出发地、人数、日期、预算、方案列表等）。
+ * 不包含编排状态（stage 已移除，由 Agent Runtime 的 PlanState 管理）。
+ */
+class TeamTripPlanDraft {
 
     private String departureCity;
     private Integer participantCount;
@@ -28,25 +31,16 @@ public class TeamTripPlanDraft {
     private Map<String, String> preferences = new LinkedHashMap<>();
     private List<String> priorities = new ArrayList<>();
     private String planMode = "BALANCED_DEFAULT";
-    private String stage = "COLLECTING";
     private int version = 1;
     private String lastFeedback;
     private List<TeamTripPlanOption> options = new ArrayList<>();
     private int optionCount = 3;
     private String selectedOptionId;
     private int optionSetVersion;
-    private OptionDecisionStatus optionDecisionStatus = OptionDecisionStatus.NO_OPTIONS;
-    private BudgetDecisionStatus budgetDecisionStatus = BudgetDecisionStatus.NOT_REQUIRED;
-    private String holidayStatus = "NOT_CALLED";
-    private String mapStatus = "NOT_CALLED";
-    private String routeStatus = "NOT_CALLED";
-    private String weatherStatus = "NOT_CALLED";
-    private String transportStatus = "NOT_CALLED";
-    private String webSearchStatus = "NOT_CALLED";
     private String costStatus = "NOT_CALCULATED";
-    private JsonNode lastHolidayResult;
-    private JsonNode lastTransportResult;
-    private JsonNode lastCostResult;
+
+    public String getCostStatus() { return costStatus; }
+    public void setCostStatus(String costStatus) { this.costStatus = costStatus; }
 
     public String getDepartureCity() { return departureCity; }
     public void setDepartureCity(String departureCity) { this.departureCity = departureCity; }
@@ -92,8 +86,6 @@ public class TeamTripPlanDraft {
     }
     public String getPlanMode() { return planMode; }
     public void setPlanMode(String planMode) { this.planMode = planMode; }
-    public String getStage() { return stage; }
-    public void setStage(String stage) { this.stage = stage; }
     public int getVersion() { return version; }
     public void setVersion(int version) { this.version = version; }
     public String getLastFeedback() { return lastFeedback; }
@@ -108,38 +100,4 @@ public class TeamTripPlanDraft {
     public void setSelectedOptionId(String selectedOptionId) { this.selectedOptionId = selectedOptionId; }
     public int getOptionSetVersion() { return optionSetVersion; }
     public void setOptionSetVersion(int optionSetVersion) { this.optionSetVersion = optionSetVersion; }
-    public OptionDecisionStatus getOptionDecisionStatus() { return optionDecisionStatus; }
-    public void setOptionDecisionStatus(OptionDecisionStatus optionDecisionStatus) {
-        this.optionDecisionStatus = optionDecisionStatus != null
-                ? optionDecisionStatus : OptionDecisionStatus.NO_OPTIONS;
-    }
-    public BudgetDecisionStatus getBudgetDecisionStatus() { return budgetDecisionStatus; }
-    public void setBudgetDecisionStatus(BudgetDecisionStatus budgetDecisionStatus) {
-        this.budgetDecisionStatus = budgetDecisionStatus != null
-                ? budgetDecisionStatus : BudgetDecisionStatus.NOT_REQUIRED;
-    }
-    public String getHolidayStatus() { return holidayStatus; }
-    public void setHolidayStatus(String holidayStatus) { this.holidayStatus = holidayStatus; }
-    public String getMapStatus() { return mapStatus; }
-    public void setMapStatus(String mapStatus) { this.mapStatus = mapStatus; }
-    public String getRouteStatus() { return routeStatus; }
-    public void setRouteStatus(String routeStatus) { this.routeStatus = routeStatus; }
-    public String getWeatherStatus() { return weatherStatus; }
-    public void setWeatherStatus(String weatherStatus) { this.weatherStatus = weatherStatus; }
-    public String getTransportStatus() { return transportStatus; }
-    public void setTransportStatus(String transportStatus) { this.transportStatus = transportStatus; }
-    public String getWebSearchStatus() { return webSearchStatus; }
-    public void setWebSearchStatus(String webSearchStatus) { this.webSearchStatus = webSearchStatus; }
-    public String getCostStatus() { return costStatus; }
-    public void setCostStatus(String costStatus) { this.costStatus = costStatus; }
-    public JsonNode getLastHolidayResult() { return lastHolidayResult; }
-    public void setLastHolidayResult(JsonNode lastHolidayResult) {
-        this.lastHolidayResult = lastHolidayResult;
-    }
-    public JsonNode getLastTransportResult() { return lastTransportResult; }
-    public void setLastTransportResult(JsonNode lastTransportResult) {
-        this.lastTransportResult = lastTransportResult;
-    }
-    public JsonNode getLastCostResult() { return lastCostResult; }
-    public void setLastCostResult(JsonNode lastCostResult) { this.lastCostResult = lastCostResult; }
 }

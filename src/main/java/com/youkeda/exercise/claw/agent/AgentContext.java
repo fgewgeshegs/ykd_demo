@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.agent;
 
+import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 
@@ -7,6 +8,7 @@ import com.youkeda.exercise.claw.wechat.model.WechatMessage;
  * Agent 执行上下文
  *
  * 封装一次 Agent 调用的所有输入信息，贯穿整个执行链路。
+ * {@link #planState} 为可选字段——非多步骤任务时为 null，0 额外开销。
  */
 public class AgentContext {
 
@@ -29,6 +31,11 @@ public class AgentContext {
      * 原始微信消息（IMAGE 类型时有效，携带 CDN 下载参数）
      */
     private WechatMessage rawMessage;
+
+    /**
+     * 当前会话的计划状态（可选，简单任务时为 null）
+     */
+    private PlanState planState;
 
 
     public String getUserId() {
@@ -64,6 +71,13 @@ public class AgentContext {
 
     public AgentContext setRawMessage(WechatMessage rawMessage) {
         this.rawMessage = rawMessage;
+        return this;
+    }
+
+    public PlanState getPlanState() { return planState; }
+
+    public AgentContext setPlanState(PlanState planState) {
+        this.planState = planState;
         return this;
     }
 
