@@ -2,8 +2,6 @@ package com.youkeda.exercise.claw.teamtrip;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -63,24 +61,24 @@ class TeamTripPlanServiceTest {
 
     @Test
     void shouldNormalizeCommonModelAliasesAndCamelCaseOptions() throws Exception {
-        TeamTripPlanFunction function = new TeamTripPlanFunction(
-                service, objectMapper, new LLMFunctionRegistry());
-
-        function.execute("""
-                {"action":"collect","origin":"上海","people":30,"start_date":"2026-08-05",
+        String collectArgs = """
+                {"origin":"上海","people":30,"start_date":"2026-08-05",
                  "days":2,"budget":20000,"destination":"无锡"}
-                """, new FunctionExecutionContext("u-alias", "继续生成"));
+                """;
+        service.handle("u-alias", objectMapper.readTree(
+                "{\"action\":\"collect\"," + collectArgs.substring(1)));
+
         TeamTripPlanDraft draft = store.get("u-alias");
         assertEquals("上海", draft.getDepartureCity());
         assertEquals(30, draft.getParticipantCount());
         assertEquals(20000d, draft.getBudgetTotal());
 
-        function.execute("""
+        service.handle("u-alias", objectMapper.readTree("""
                 {"action":"save_options","option_count":1,"options":[{
                   "optionId":"plan_a","displayName":"太湖方案",
                   "positioning":"均衡型","itinerarySummary":"太湖两日行程"
                 }]}
-                """, new FunctionExecutionContext("u-alias", "保存方案"));
+                """));
         assertEquals("plan_a", store.get("u-alias").getOptions().get(0).getOptionId());
         assertEquals("太湖方案", store.get("u-alias").getOptions().get(0).getDisplayName());
     }

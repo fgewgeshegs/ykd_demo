@@ -43,6 +43,7 @@ public class TeamTripPlanService {
      * @return 业务数据的结果描述，不包含编排指令（stage、next_tool、instruction、output_contract 均已移除）
      */
     public ObjectNode handle(String userId, JsonNode args) {
+        normalizeAliases((ObjectNode) args);
         String action = text(args, "action");
         if ("reset".equals(action)) {
             stateStore.clear(userId);
@@ -413,6 +414,41 @@ public class TeamTripPlanService {
 
     private static boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+    // ==================== Alias Normalization ====================
+
+    /**
+     * 兼容模型偶尔生成的常见别名和驼峰字段，统一转换为工具契约中的 snake_case。
+     */
+    private void normalizeAliases(ObjectNode args) {
+        copyAlias(args, "departure_city", "origin", "departureCity");
+        copyAlias(args, "participant_count", "people", "headcount", "participantCount");
+        copyAlias(args, "travel_date", "start_date", "travelDate", "startDate");
+        copyAlias(args, "budget_total", "budget", "total_budget", "budgetTotal");
+        copyAlias(args, "budget_per_person", "per_person_budget", "budgetPerPerson");
+        copyAlias(args, "selected_option_id", "selectedOptionId");
+
+        JsonNode options = args.get("options");
+        if (options != null && options.isArray()) {
+            for (JsonNode option : options) {
+                if (!(option instanceof ObjectNode object)) continue;
+                copyAlias(object, "option_id", "optionId", "plan_id", "planId");
+                copyAlias(object, "display_name", "displayName", "plan_name", "planName");
+                copyAlias(object, "itinerary_summary", "itinerarySummary");
+            }
+        }
+    }
+
+    private void copyAlias(ObjectNode object, String canonical, String... aliases) {
+        if (object.has(canonical)) return;
+        for (String alias : aliases) {
+            JsonNode value = object.get(alias);
+            if (value != null && !value.isNull()) {
+                object.set(canonical, value);
+                return;
+            }
+        }
     }
 
     private static boolean positive(Double value) {
