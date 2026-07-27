@@ -10,6 +10,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.Executors;
@@ -36,18 +38,30 @@ public class SqliteDataStore implements ContextStore {
         this.props = props;
         for (int i = 0; i < SEGMENTS; i++) writeLocks[i] = new Object();
 
+        // 确保数据库父目录存在
+        try {
+            Path dbFile = Path.of(props.getDbPath());
+            Path parent = dbFile.getParent();
+            if (parent != null && !Files.exists(parent)) {
+                Files.createDirectories(parent);
+                log.info("创建数据库目录 | path={}", parent);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("创建数据库目录失败 | path=" + props.getDbPath(), e);
+        }
+
         // 初始化 HikariCP 连接池
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl("jdbc:sqlite:" + props.getDbPath());
         config.setMaximumPoolSize(5);
         config.setMinimumIdle(1);
-        config.setConnectionInitSqls(List.of(
-            "PRAGMA journal_mode=WAL;",
-            "PRAGMA busy_timeout=" + props.getBusyTimeoutMs() + ";",
-            "PRAGMA synchronous=NORMAL;",
-            "PRAGMA cache_size=-64000;",
+        config.setConnectionInitSql(
+            "PRAGMA journal_mode=WAL;" +
+            "PRAGMA busy_timeout=" + props.getBusyTimeoutMs() + ";" +
+            "PRAGMA synchronous=NORMAL;" +
+            "PRAGMA cache_size=-64000;" +
             "PRAGMA foreign_keys=ON;"
-        ));
+        );
         config.setPoolName("claw-sqlite");
         this.dataSource = new HikariDataSource(config);
     }

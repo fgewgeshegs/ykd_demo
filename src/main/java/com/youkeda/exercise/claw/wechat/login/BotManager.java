@@ -11,6 +11,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -47,6 +51,7 @@ public class BotManager {
                     if (bot.isLoggedIn()) {
                         bots.add(bot);
                         log.info("Bot 会话恢复成功 | botId={}", row.botId());
+                        return;
                     } else {
                         log.warn("Bot 会话已过期，已禁用 | botId={}", row.botId());
                         sqliteDataStore.disableBotSession(row.botId());
@@ -56,8 +61,99 @@ public class BotManager {
                     sqliteDataStore.disableBotSession(row.botId());
                 }
             }
-        } else {
-            log.info("无已保存的 Bot 会话，等待首次扫码登录");
+        }
+
+        // 无有效 session，发起首次扫码登录
+        log.info("无已保存的 Bot 会话，发起扫码登录");
+        startLoginFlow();
+    }
+
+    /**
+     * 发起首次扫码登录流程：创建 BotInstance → 获取二维码 → 展示 → 等待扫码 → 保存 session
+     */
+    private void startLoginFlow() {
+        BotInstance bot = new BotInstance();
+        LoginPageServer pageServer = null;
+        String qrResult;
+        try {
+            qrResult = bot.executeLogin();
+        } catch (Exception e) {
+            log.error("获取二维码失败", e);
+            return;
+        }
+
+        try {
+            if (qrResult.startsWith("http")) {
+                // URL 格式：走本地登录页面
+                LoginStateManager stateManager = new LoginStateManager();
+                stateManager.updateQrUrl(qrResult);
+                stateManager.updateStatus(LoginStatus.WAITING_SCAN);
+
+                pageServer = new LoginPageServer(stateManager);
+                int port = pageServer.start();
+                openBrowser("http://127.0.0.1:" + port + "/login");
+
+                // 轮询登录状态
+                long deadline = System.currentTimeMillis() + 120_000;
+                while (!bot.isLoggedIn() && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(1000);
+                }
+                if (bot.isLoggedIn()) {
+                    stateManager.updateStatus(LoginStatus.SUCCESS);
+                    log.info("微信登录成功");
+                    saveSession(bot, null);
+                    Thread.sleep(3000);
+                } else {
+                    stateManager.updateStatus(LoginStatus.TIMEOUT);
+                    log.error("微信登录超时");
+                    Thread.sleep(10000);
+                }
+            } else {
+                // base64 格式：写文件兜底
+                String qrBase64 = qrResult.contains(",")
+                        ? qrResult.substring(qrResult.indexOf(",") + 1)
+                        : qrResult;
+                byte[] qrBytes = Base64.getDecoder().decode(qrBase64);
+                Path qrFile = Path.of("qrcode.png");
+                Files.write(qrFile, qrBytes);
+                log.info("请扫码登录 → {}", qrFile.toAbsolutePath());
+
+                long deadline = System.currentTimeMillis() + 120_000;
+                while (!bot.isLoggedIn() && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(1000);
+                }
+                if (bot.isLoggedIn()) {
+                    log.info("微信登录成功");
+                    saveSession(bot, null);
+                } else {
+                    log.error("微信登录超时");
+                }
+            }
+        } catch (Exception e) {
+            log.error("微信登录异常", e);
+        } finally {
+            if (pageServer != null) {
+                pageServer.stop();
+            }
+        }
+    }
+
+    /**
+     * 打开系统默认浏览器
+     */
+    private static void openBrowser(String url) {
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("win")) {
+                Runtime.getRuntime().exec(new String[]{"rundll32", "url.dll,FileProtocolHandler", url});
+            } else if (os.contains("mac")) {
+                Runtime.getRuntime().exec(new String[]{"open", url});
+            } else {
+                Runtime.getRuntime().exec(new String[]{"xdg-open", url});
+            }
+            log.info("已自动打开浏览器 → {}", url);
+        } catch (IOException e) {
+            log.warn("无法自动打开浏览器，请手动访问: {}", url, e);
         }
     }
 
