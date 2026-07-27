@@ -29,6 +29,7 @@ public class LongTermMemoryService {
     private final MemoryStore memoryStore;
     private final MemoryTopicResolver topicResolver;
     private final MemoryConsolidator consolidator;
+    private final MemoryWriteCoordinator writeCoordinator;
     private final Executor memoryTaskExecutor;
 
     public LongTermMemoryService(LongTermMemoryProperties props,
@@ -37,6 +38,7 @@ public class LongTermMemoryService {
                                   MemoryStore memoryStore,
                                   MemoryTopicResolver topicResolver,
                                   MemoryConsolidator consolidator,
+                                  MemoryWriteCoordinator writeCoordinator,
                                   @Qualifier("memoryTaskExecutor") Executor memoryTaskExecutor) {
         this.props = props;
         this.extractor = extractor;
@@ -44,6 +46,7 @@ public class LongTermMemoryService {
         this.memoryStore = memoryStore;
         this.topicResolver = topicResolver;
         this.consolidator = consolidator;
+        this.writeCoordinator = writeCoordinator;
         this.memoryTaskExecutor = memoryTaskExecutor;
     }
 
@@ -109,29 +112,35 @@ public class LongTermMemoryService {
             if (extracted.isEmpty()) return;
 
             for (MemoryItem item : extracted) {
-                // 2. 重要性过滤
-                if (item.importance() < props.getImportanceThreshold()) {
-                    log.debug("记忆重要性不足，丢弃 | importance={} | content={}",
-                            item.importance(), item.content());
-                    continue;
-                }
-
-                // 3. 向量化
-                float[] vector = embeddingClient.embed(item.content());
-
-                StoreOutcome outcome = storeOrConsolidate(userId, item, vector);
-                if (outcome == StoreOutcome.ADDED) {
-                    log.info("记忆入库 | userId={} | category={} | importance={} | content={}",
-                            userId, item.category(), item.importance(), item.content());
-                } else if (outcome == StoreOutcome.UPDATED || outcome == StoreOutcome.MERGED) {
-                    log.info("记忆整合 | userId={} | category={} | outcome={} | content={}",
-                            userId, item.category(), outcome, item.content());
-                } else if (outcome == StoreOutcome.FAILED) {
-                    log.warn("记忆写入失败 | userId={} | content={}", userId, item.content());
+                try {
+                    processExtractedItem(userId, item);
+                } catch (Exception e) {
+                    log.error("单条记忆处理失败，继续处理剩余记忆 | userId={} | memoryId={} | content={}",
+                            userId, item.id(), item.content(), e);
                 }
             }
         } catch (Exception e) {
             log.error("记忆处理管线异常 | userId={}", userId, e);
+        }
+    }
+
+    private void processExtractedItem(String userId, MemoryItem item) {
+        if (item.importance() < props.getImportanceThreshold()) {
+            log.debug("记忆重要性不足，丢弃 | importance={} | content={}",
+                    item.importance(), item.content());
+            return;
+        }
+
+        float[] vector = embeddingClient.embed(item.content());
+        StoreOutcome outcome = storeOrConsolidate(userId, item, vector);
+        if (outcome == StoreOutcome.ADDED) {
+            log.info("记忆入库 | userId={} | category={} | importance={} | content={}",
+                    userId, item.category(), item.importance(), item.content());
+        } else if (outcome == StoreOutcome.UPDATED || outcome == StoreOutcome.MERGED) {
+            log.info("记忆整合 | userId={} | category={} | outcome={} | content={}",
+                    userId, item.category(), outcome, item.content());
+        } else if (outcome == StoreOutcome.FAILED) {
+            log.warn("记忆写入失败 | userId={} | content={}", userId, item.content());
         }
     }
 
@@ -291,6 +300,13 @@ public class LongTermMemoryService {
     }
 
     private StoreOutcome storeOrConsolidate(
+            String userId, MemoryItem incoming, float[] incomingVector) {
+        return writeCoordinator.withTopicLock(
+                userId, incoming.topicKey(),
+                () -> storeOrConsolidateLocked(userId, incoming, incomingVector));
+    }
+
+    private StoreOutcome storeOrConsolidateLocked(
             String userId, MemoryItem incoming, float[] incomingVector) {
         MemoryItem existing = memoryStore.findByTopicKey(userId, incoming.topicKey());
         if (existing == null) {

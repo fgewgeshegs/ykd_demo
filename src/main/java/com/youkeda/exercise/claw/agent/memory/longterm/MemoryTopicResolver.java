@@ -7,9 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.Locale;
 
 /** Resolves a stable topic key for manually saved memories. */
@@ -50,26 +47,16 @@ public class MemoryTopicResolver {
             }
             return new TopicResolution(topicKey, confidence);
         } catch (Exception e) {
-            String fallback = fallbackKey(category, content);
-            log.warn("记忆主题识别失败，使用保守键 | key={} | content={}", fallback, content);
-            return new TopicResolution(fallback, 0.3f);
+            // An empty key keeps the semantic-consolidation fallback available.
+            // A content hash would make every correction look like a different topic.
+            log.warn("记忆主题识别失败，使用语义降级 | category={} | content={}",
+                    category, content);
+            return new TopicResolution("", 0.3f);
         }
     }
 
     static boolean isValidTopicKey(String value) {
         return value != null && value.matches("[a-z0-9][a-z0-9._-]{2,63}");
-    }
-
-    private String fallbackKey(MemoryCategory category, String content) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(content.strip().toLowerCase(Locale.ROOT)
-                            .getBytes(StandardCharsets.UTF_8));
-            return category.name().toLowerCase(Locale.ROOT)
-                    + ".fallback." + HexFormat.of().formatHex(digest, 0, 6);
-        } catch (Exception e) {
-            return category.name().toLowerCase(Locale.ROOT) + ".fallback.unknown";
-        }
     }
 
     private String stripCodeFence(String output) {

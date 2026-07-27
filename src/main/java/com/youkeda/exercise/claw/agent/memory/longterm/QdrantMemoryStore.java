@@ -370,8 +370,8 @@ public class QdrantMemoryStore implements MemoryStore {
             float confidence = payload.containsKey("confidence")
                     ? getDouble(payload, "confidence") : 0.5f;
             String sourceStr = getString(payload, "source");
-            long createdMs = (long) getDouble(payload, "createdAt");
-            long updatedMs = (long) getDouble(payload, "updatedAt");
+            long createdMs = getLong(payload, "createdAt");
+            long updatedMs = getLong(payload, "updatedAt");
             int hitCount = (int) getDouble(payload, "hitCount");
 
             return new MemoryItem(
@@ -409,6 +409,17 @@ public class QdrantMemoryStore implements MemoryStore {
         } catch (Exception ignored) {
         }
         return 0f;
+    }
+
+    private long getLong(Map<String, Value> payload, String key) {
+        Value value = payload.get(key);
+        if (value == null) return 0L;
+        try {
+            if (value.hasIntegerValue()) return value.getIntegerValue();
+            if (value.hasDoubleValue()) return (long) value.getDoubleValue();
+        } catch (Exception ignored) {
+        }
+        return 0L;
     }
 
     private List<Float> toFloatList(float[] arr) {

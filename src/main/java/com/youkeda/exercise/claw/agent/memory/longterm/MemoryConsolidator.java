@@ -62,16 +62,30 @@ public class MemoryConsolidator {
     private MemoryMergeDecision fallback(MemoryItem existing, MemoryItem incoming) {
         boolean sameTopic = !incoming.topicKey().isBlank()
                 && incoming.topicKey().equals(existing.topicKey());
-        if (!sameTopic) {
-            return new MemoryMergeDecision(MemoryMergeAction.ADD, incoming.content());
+        if (sameTopic || isExplicitCorrection(incoming.content())) {
+            return new MemoryMergeDecision(MemoryMergeAction.UPDATE, incoming.content());
         }
-        if (incoming.category() == MemoryCategory.PREFERENCE
-                || incoming.category() == MemoryCategory.EXPERIENCE) {
-            return new MemoryMergeDecision(
-                    MemoryMergeAction.MERGE,
-                    existing.content() + "；" + incoming.content());
-        }
-        return new MemoryMergeDecision(MemoryMergeAction.UPDATE, incoming.content());
+        return new MemoryMergeDecision(MemoryMergeAction.ADD, incoming.content());
+    }
+
+    private boolean isExplicitCorrection(String content) {
+        if (content == null) return false;
+        String normalized = content.toLowerCase();
+        return normalized.contains("不再")
+                || normalized.contains("现在不")
+                || normalized.contains("已经不")
+                || normalized.contains("不能")
+                || normalized.contains("不喜欢")
+                || normalized.contains("不要")
+                || normalized.contains("改为")
+                || normalized.contains("改成")
+                || normalized.contains("取消")
+                || normalized.contains("停止")
+                || normalized.contains("no longer")
+                || normalized.contains("cannot")
+                || normalized.contains("don't")
+                || normalized.contains("do not")
+                || normalized.contains("instead");
     }
 
     private String stripCodeFence(String output) {

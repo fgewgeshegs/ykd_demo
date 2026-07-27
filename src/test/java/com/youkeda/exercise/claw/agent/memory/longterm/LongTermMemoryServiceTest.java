@@ -18,6 +18,7 @@ class LongTermMemoryServiceTest {
     private MemoryStore memoryStore;
     private MemoryTopicResolver topicResolver;
     private MemoryConsolidator consolidator;
+    private MemoryWriteCoordinator writeCoordinator;
     private LongTermMemoryService service;
 
     @BeforeEach
@@ -30,11 +31,12 @@ class LongTermMemoryServiceTest {
         memoryStore = mock(MemoryStore.class);
         topicResolver = mock(MemoryTopicResolver.class);
         consolidator = mock(MemoryConsolidator.class);
+        writeCoordinator = new MemoryWriteCoordinator();
         when(topicResolver.resolve(any(), anyString()))
                 .thenReturn(new MemoryTopicResolver.TopicResolution("test.topic", 0.9f));
         service = new LongTermMemoryService(
                 properties, extractor, embeddingClient, memoryStore,
-                topicResolver, consolidator, Runnable::run);
+                topicResolver, consolidator, writeCoordinator, Runnable::run);
     }
 
     @Test
@@ -187,10 +189,33 @@ class LongTermMemoryServiceTest {
     void asyncProcessingDropsWorkWhenBoundedQueueRejectsIt() {
         service = new LongTermMemoryService(
                 properties, extractor, embeddingClient, memoryStore,
-                topicResolver, consolidator,
+                topicResolver, consolidator, writeCoordinator,
                 task -> { throw new RejectedExecutionException("full"); });
 
         assertFalse(service.processAndStoreAsync("u1", "用户喜欢安静的酒店", "知道了"));
         verifyNoInteractions(extractor);
+    }
+
+    @Test
+    void oneFailedExtractedMemoryDoesNotDropRemainingItems() {
+        MemoryItem failed = MemoryItem.ofAuto(
+                "u1", MemoryCategory.FACT, "profile.name",
+                "用户姓名无法向量化", "我的姓名无法向量化", 0.8f, 0.9f);
+        MemoryItem valid = MemoryItem.ofAuto(
+                "u1", MemoryCategory.RULE, "travel.budget",
+                "用户出行预算不超过五千元", "预算不要超过五千", 0.8f, 0.9f);
+        float[] validVector = new float[]{1f, 0f};
+        String userMessage = "这是一条长度足够的用户消息内容";
+        when(extractor.extract("u1", userMessage, "好的"))
+                .thenReturn(List.of(failed, valid));
+        when(embeddingClient.embed(failed.content()))
+                .thenThrow(new IllegalStateException("bad input"));
+        when(embeddingClient.embed(valid.content())).thenReturn(validVector);
+        when(memoryStore.search("u1", validVector, 1, 0.90f)).thenReturn(List.of());
+        when(memoryStore.upsert(valid, validVector)).thenReturn(true);
+
+        service.processAndStore("u1", userMessage, "好的");
+
+        verify(memoryStore).upsert(valid, validVector);
     }
 }

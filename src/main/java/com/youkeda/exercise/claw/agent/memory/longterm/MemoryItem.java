@@ -88,6 +88,7 @@ public record MemoryItem(
         if (left.isBlank()) return right;
         if (right.isBlank() || left.equals(right)) return left;
         String merged = left + "\n" + right;
-        return merged.length() <= 1000 ? merged : merged.substring(0, 1000);
+        return merged.length() <= 1000
+                ? merged : merged.substring(merged.length() - 1000);
     }
 }
