@@ -15,20 +15,21 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 微信消息监听服务
- *
- * 职责：
- * - 定时轮询微信消息（新 SDK getUpdates）
- * - 将消息交由 MessageRouter 路由分发
- * - 根据 WechatReply 类型（TEXT/IMAGE/VOICE/FILE）调用对应的发送方法
+ * 微信消息监听服务。
+ * 轮询线程只负责收消息 + 入线程池，worker 并行处理消息。
  */
 @Service
 public class WechatMessageService {
 
     private static final Logger log = LoggerFactory.getLogger(WechatMessageService.class);
+
+    private static final int WORKER_COUNT = 4;
 
     private final WechatILinkClient wechatClient;
     private final WechatProperties wechatProperties;
@@ -37,6 +38,7 @@ public class WechatMessageService {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
+    private final ExecutorService workers = Executors.newFixedThreadPool(WORKER_COUNT);
 
     private static final int ERROR_SLEEP_MS = 5000;
 
@@ -53,83 +55,59 @@ public class WechatMessageService {
     @PostConstruct
     public void start() {
         if (!wechatProperties.isEnabled()) {
-            log.info("微信消息服务未启用 (wechat.ilink.enabled=false)");
+            log.info("微信消息服务未启用");
             return;
         }
 
-        // 等待登录完成（最多等 60 秒）
+        // 等待 BotManager 加载完成
         long deadline = System.currentTimeMillis() + 60_000;
-        while (!wechatClient.isLoggedIn() && System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
+        while (System.currentTimeMillis() < deadline) {
+            var msgs = wechatClient.receiveMessages();
+            if (msgs != null) {
+                break;  // client 就绪
+            }
+            try { Thread.sleep(1000); } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
             }
         }
 
-        if (!wechatClient.isLoggedIn()) {
-            log.warn("微信未登录，消息服务不启动");
-            return;
-        }
-
-        log.info("微信消息服务启动，开始监听消息");
+        log.info("微信消息服务启动，开始监听消息（worker={}）", WORKER_COUNT);
         running.set(true);
         pollThread = new Thread(this::pollLoop, "wechat-poll-thread");
         pollThread.setDaemon(true);
         pollThread.start();
     }
 
-    /**
-     * 消息轮询主循环（适配新 SDK getUpdates + snake_case 模型）
-     */
     private void pollLoop() {
         while (running.get()) {
             try {
                 List<WeixinMessage> messages = wechatClient.receiveMessages();
-
                 if (messages != null && !messages.isEmpty()) {
                     log.info("收到{}条消息", messages.size());
                     for (WeixinMessage msg : messages) {
                         String fromUserId = msg.getFrom_user_id();
-                        String contextToken = msg.getContext_token();
-
                         if (fromUserId == null || fromUserId.isEmpty()) continue;
 
                         if (msg.getItem_list() != null) {
                             for (var item : msg.getItem_list()) {
-                                WechatMessage wechatMsg = buildWechatMessage(item, fromUserId, contextToken);
+                                WechatMessage wechatMsg = buildWechatMessage(item, fromUserId, msg.getContext_token());
                                 if (wechatMsg == null) continue;
 
-                                // 统一上下文：发一条存一条（文字/语音/图片）
-                                saveMessageToContext(wechatMsg);
-
-                                wechatClient.startTyping(fromUserId);
-
-                                try {
-                                    WechatReply reply = messageRouter.route(wechatMsg);
-                                    if (reply != null && reply.hasContent()) {
-                                        sendReply(fromUserId, reply);
-                                    }
-                                } catch (Exception e) {
-                                    log.error("消息路由处理异常 | error={}", e.getMessage());
-                                }
+                                // 入线程池，worker 并行处理
+                                workers.submit(() -> processMessage(wechatMsg));
                             }
                         }
                     }
                 }
-
                 Thread.sleep(wechatProperties.getPollIntervalMs());
-
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.info("微信消息轮询服务被中断");
                 break;
             } catch (Exception e) {
-                log.warn("接收消息异常，将在{}ms后重试: {}", ERROR_SLEEP_MS, e.getMessage());
-                try {
-                    Thread.sleep(ERROR_SLEEP_MS);
-                } catch (InterruptedException ie) {
+                log.warn("接收消息异常，{}ms后重试: {}", ERROR_SLEEP_MS, e.getMessage());
+                try { Thread.sleep(ERROR_SLEEP_MS); } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
                 }
@@ -138,9 +116,29 @@ public class WechatMessageService {
         log.info("微信消息轮询服务已停止");
     }
 
-    /**
-     * 将 SDK 的 MessageItem 转换为统一消息模型 WechatMessage
-     */
+    /** Worker 处理单条消息 */
+    private void processMessage(WechatMessage wechatMsg) {
+        String userId = wechatMsg.getUserId();
+        try {
+            // 1. 保存用户消息
+            saveMessageToContext(wechatMsg);
+
+            // 2. 显示正在输入
+            wechatClient.startTyping(userId);
+
+            // 3. Agent 处理
+            WechatReply reply = messageRouter.route(wechatMsg);
+            if (reply != null && reply.hasContent()) {
+                // 4. 发送回复
+                sendReply(userId, reply);
+            }
+        } catch (Exception e) {
+            log.error("处理消息异常 | userId={} | error={}", userId, e.getMessage(), e);
+        }
+    }
+
+    // ==================== buildWechatMessage / saveMessageToContext / sendReply 保持不变 ====================
+
     private WechatMessage buildWechatMessage(
             com.github.wechat.ilink.sdk.core.model.MessageItem item,
             String fromUserId, String contextToken) {
@@ -149,7 +147,6 @@ public class WechatMessageService {
         wechatMsg.setUserId(fromUserId);
         wechatMsg.setContextToken(contextToken);
 
-        // 文本消息
         if (item.getText_item() != null && item.getText_item().getText() != null
                 && !item.getText_item().getText().isEmpty()) {
             wechatMsg.setType(MessageType.TEXT);
@@ -158,7 +155,6 @@ public class WechatMessageService {
             return wechatMsg;
         }
 
-        // 图片消息
         if (item.getImage_item() != null) {
             var img = item.getImage_item();
             wechatMsg.setType(MessageType.IMAGE);
@@ -171,7 +167,6 @@ public class WechatMessageService {
             return wechatMsg;
         }
 
-        // 语音消息
         if (item.getVoice_item() != null) {
             var voice = item.getVoice_item();
             wechatMsg.setType(MessageType.VOICE);
@@ -188,7 +183,6 @@ public class WechatMessageService {
             return wechatMsg;
         }
 
-        // 文件消息
         if (item.getFile_item() != null) {
             var fileItem = item.getFile_item();
             wechatMsg.setType(MessageType.FILE);
@@ -207,9 +201,6 @@ public class WechatMessageService {
         return null;
     }
 
-    /**
-     * 统一上下文存储：发一条存一条，文字/语音/图片全部进入对话历史
-     */
     private void saveMessageToContext(WechatMessage msg) {
         String userId = msg.getUserId();
         switch (msg.getType()) {
@@ -240,22 +231,16 @@ public class WechatMessageService {
         }
     }
 
-    /**
-     * 根据 WechatReply 类型发送回复
-     */
     private void sendReply(String toUserId, WechatReply reply) {
         switch (reply.getType()) {
-            case IMAGE -> {
+            case IMAGE ->
                 wechatClient.sendImageMessage(toUserId, reply.getImageBytes(),
-                        "抱歉，图片发送失败，请稍后再试。");
-            }
-            case FILE -> {
+                    "抱歉，图片发送失败，请稍后再试。");
+            case FILE ->
                 wechatClient.sendFileMessage(toUserId, reply.getFileBytes(),
-                        reply.getFileName(), reply.getFileDescription());
-            }
-            default -> {
+                    reply.getFileName(), reply.getFileDescription());
+            default ->
                 wechatClient.sendTextMessage(toUserId, reply.getText());
-            }
         }
     }
 
@@ -265,6 +250,15 @@ public class WechatMessageService {
         running.set(false);
         if (pollThread != null) {
             pollThread.interrupt();
+        }
+        workers.shutdown();
+        try {
+            if (!workers.awaitTermination(5, TimeUnit.SECONDS)) {
+                workers.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            workers.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 }
