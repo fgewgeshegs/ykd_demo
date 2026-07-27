@@ -9,11 +9,12 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Bot 实例管理器。
@@ -43,8 +44,13 @@ public class BotManager {
                 try {
                     ResumeContext ctx = deserializeResumeContext(row.resumeContextJson());
                     BotInstance bot = new BotInstance(ctx);
-                    bots.add(bot);
-                    log.info("Bot 会话恢复成功 | botId={}", row.botId());
+                    if (bot.isLoggedIn()) {
+                        bots.add(bot);
+                        log.info("Bot 会话恢复成功 | botId={}", row.botId());
+                    } else {
+                        log.warn("Bot 会话已过期，已禁用 | botId={}", row.botId());
+                        sqliteDataStore.disableBotSession(row.botId());
+                    }
                 } catch (Exception e) {
                     log.error("Bot 会话恢复失败 | botId={}", row.botId(), e);
                     sqliteDataStore.disableBotSession(row.botId());
@@ -128,12 +134,26 @@ public class BotManager {
 
     @PreDestroy
     public void destroy() {
+        CountDownLatch latch = new CountDownLatch(bots.size());
         for (BotInstance bot : bots) {
-            try {
-                bot.close();
-            } catch (Exception e) {
-                log.warn("关闭 BotInstance 异常 | botId={}", bot.getBotId(), e);
+            Thread t = new Thread(() -> {
+                try {
+                    bot.close();
+                } catch (Exception e) {
+                    log.warn("关闭 BotInstance 异常 | botId={}", bot.getBotId(), e);
+                } finally {
+                    latch.countDown();
+                }
+            }, "close-bot-" + bot.getBotId());
+            t.setDaemon(true);
+            t.start();
+        }
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                log.warn("Bot 关闭超时，强制退出 | remaining={}", latch.getCount());
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         bots.clear();
     }
