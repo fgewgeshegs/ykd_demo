@@ -5,6 +5,7 @@ import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.wechat.MessageRouter;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
+import com.youkeda.exercise.claw.wechat.login.BotManager;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -35,6 +36,7 @@ public class WechatMessageService {
     private final WechatProperties wechatProperties;
     private final MessageRouter messageRouter;
     private final ContextStore contextStore;
+    private final BotManager botManager;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
@@ -45,11 +47,13 @@ public class WechatMessageService {
     public WechatMessageService(WechatILinkClient wechatClient,
                                 WechatProperties wechatProperties,
                                 MessageRouter messageRouter,
-                                ContextStore contextStore) {
+                                ContextStore contextStore,
+                                BotManager botManager) {
         this.wechatClient = wechatClient;
         this.wechatProperties = wechatProperties;
         this.messageRouter = messageRouter;
         this.contextStore = contextStore;
+        this.botManager = botManager;
     }
 
     @PostConstruct
@@ -62,15 +66,19 @@ public class WechatMessageService {
         // 等待 BotManager 加载完成
         long deadline = System.currentTimeMillis() + 60_000;
         while (System.currentTimeMillis() < deadline) {
-            var msgs = wechatClient.receiveMessages();
-            if (msgs != null) {
-                break;  // client 就绪
+            if (botManager.hasActiveBot()) {
+                break;
             }
             try { Thread.sleep(1000); } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
             }
         }
+
+        if (!botManager.hasActiveBot()) {
+            log.warn("BotManager 就绪超时，60s 内无活跃 bot session");
+        }
+
 
         log.info("微信消息服务启动，开始监听消息（worker={}）", WORKER_COUNT);
         running.set(true);
