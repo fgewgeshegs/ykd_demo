@@ -6,13 +6,19 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class TeamTripPlanServiceTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final InMemoryTeamTripPlanStateStore store = new InMemoryTeamTripPlanStateStore();
+    private final TeamTripPlanStateStore store = new TeamTripPlanStateStore() {
+        private final ConcurrentHashMap<String, TeamTripPlanDraft> store = new ConcurrentHashMap<>();
+        @Override public TeamTripPlanDraft get(String userId) { return store.get(userId); }
+        @Override public void save(String userId, TeamTripPlanDraft draft) { store.put(userId, draft); }
+        @Override public void clear(String userId) { store.remove(userId); }
+    };
     private final TeamTripPlanService service = new TeamTripPlanService(store, objectMapper);
 
     @Test
