@@ -130,7 +130,7 @@ public class SqliteDataStore implements ContextStore {
     // ==================== 写锁 ====================
 
     private Object lockFor(String botId, String wxUserId) {
-        int idx = Math.abs((botId + ":" + wxUserId).hashCode() % SEGMENTS);
+        int idx = Math.floorMod((botId + ":" + wxUserId).hashCode(), SEGMENTS);
         return writeLocks[idx];
     }
 

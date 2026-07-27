@@ -82,3 +82,12 @@ place-image.provider=pexels
 # ============================================
 # Pexels åè´¹ API Key æ³¨åå°å: https://www.pexels.com/api/
 pexels.api-key=
+
+# ============================================
+# SQLite Persistence (replacing Redis)
+# ============================================
+context.sqlite.enabled=true
+context.sqlite.db-path=data/claw_assistant.db
+context.sqlite.max-messages=50
+context.sqlite.ttl-days=7
+context.sqlite.busy-timeout-ms=5000
