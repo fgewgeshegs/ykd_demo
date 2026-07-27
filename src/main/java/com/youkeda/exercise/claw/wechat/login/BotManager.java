@@ -16,14 +16,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Bot 实例管理器。
- * 负责从 SQLite 恢复登录、首次扫码登录、生命周期管理。
- * 当前仅支持单 bot（列表中一个元素），预留多 bot 扩展。
+ * Bot 实例管理器（单 bot 模式）。
+ * 启动时从 SQLite 恢复 session 使机器人立即工作，同时在后台弹二维码供换号用。
  */
 @Component
 public class BotManager {
@@ -32,7 +28,7 @@ public class BotManager {
 
     private final SqliteDataStore sqliteDataStore;
     private final ObjectMapper objectMapper;
-    private final List<BotInstance> bots = new CopyOnWriteArrayList<>();
+    private BotInstance bot;
 
     public BotManager(SqliteDataStore sqliteDataStore, ObjectMapper objectMapper) {
         this.sqliteDataStore = sqliteDataStore;
@@ -41,106 +37,113 @@ public class BotManager {
 
     @PostConstruct
     public void init() {
-        // 尝试从 SQLite 恢复已有 session
+        // 1. 恢复旧 session，机器人立即开始工作
         List<SqliteDataStore.BotSessionRow> sessions = sqliteDataStore.getActiveBotSessions();
-        if (!sessions.isEmpty()) {
-            for (SqliteDataStore.BotSessionRow row : sessions) {
-                try {
-                    ResumeContext ctx = deserializeResumeContext(row.resumeContextJson());
-                    BotInstance bot = new BotInstance(ctx);
-                    if (bot.isLoggedIn()) {
-                        bots.add(bot);
-                        log.info("Bot 会话恢复成功 | botId={}", row.botId());
-                        return;
-                    } else {
-                        log.warn("Bot 会话已过期，已禁用 | botId={}", row.botId());
-                        sqliteDataStore.disableBotSession(row.botId());
-                    }
-                } catch (Exception e) {
-                    log.error("Bot 会话恢复失败 | botId={}", row.botId(), e);
+        for (SqliteDataStore.BotSessionRow row : sessions) {
+            try {
+                ResumeContext ctx = deserializeResumeContext(row.resumeContextJson());
+                BotInstance instance = new BotInstance(ctx);
+                if (instance.isLoggedIn()) {
+                    bot = instance;
+                    log.info("Bot 会话恢复成功 | botId={}", row.botId());
+                } else {
+                    log.warn("Bot 会话已过期 | botId={}", row.botId());
                     sqliteDataStore.disableBotSession(row.botId());
                 }
+            } catch (Exception e) {
+                log.error("Bot 会话恢复失败 | botId={}", row.botId(), e);
+                sqliteDataStore.disableBotSession(row.botId());
             }
         }
 
-        // 无有效 session，发起首次扫码登录
-        log.info("无已保存的 Bot 会话，发起扫码登录");
+        // 2. 后台弹二维码供换号用（不阻塞启动，超时不影响旧 session）
+        log.info("后台弹出二维码（扫码可切换微信账号）");
         startLoginFlow();
     }
 
     /**
-     * 发起首次扫码登录流程：创建 BotInstance → 获取二维码 → 展示 → 等待扫码 → 保存 session
+     * 后台线程获取二维码并等待扫码。
+     * 扫码成功则替换当前 bot；超时不影响现有会话。
      */
     private void startLoginFlow() {
-        BotInstance bot = new BotInstance();
-        LoginPageServer pageServer = null;
-        String qrResult;
-        try {
-            qrResult = bot.executeLogin();
-        } catch (Exception e) {
-            log.error("获取二维码失败", e);
-            return;
-        }
+        Thread t = new Thread(() -> {
+            BotInstance qrBot = new BotInstance();
+            LoginPageServer pageServer = null;
+            String qrResult;
+            try {
+                qrResult = qrBot.executeLogin();
+            } catch (Exception e) {
+                log.error("获取二维码失败", e);
+                return;
+            }
 
-        try {
-            if (qrResult.startsWith("http")) {
-                // URL 格式：走本地登录页面
-                LoginStateManager stateManager = new LoginStateManager();
-                stateManager.updateQrUrl(qrResult);
-                stateManager.updateStatus(LoginStatus.WAITING_SCAN);
+            try {
+                if (qrResult.startsWith("http")) {
+                    LoginStateManager stateManager = new LoginStateManager();
+                    stateManager.updateQrUrl(qrResult);
+                    stateManager.updateStatus(LoginStatus.WAITING_SCAN);
 
-                pageServer = new LoginPageServer(stateManager);
-                int port = pageServer.start();
-                openBrowser("http://127.0.0.1:" + port + "/login");
+                    pageServer = new LoginPageServer(stateManager);
+                    int port = pageServer.start();
+                    openBrowser("http://127.0.0.1:" + port + "/login");
 
-                // 轮询登录状态
-                long deadline = System.currentTimeMillis() + 120_000;
-                while (!bot.isLoggedIn() && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(1000);
-                }
-                if (bot.isLoggedIn()) {
-                    stateManager.updateStatus(LoginStatus.SUCCESS);
-                    log.info("微信登录成功");
-                    saveSession(bot, null);
-                    Thread.sleep(3000);
+                    long deadline = System.currentTimeMillis() + 120_000;
+                    while (!qrBot.isLoggedIn() && System.currentTimeMillis() < deadline) {
+                        Thread.sleep(1000);
+                    }
+                    if (qrBot.isLoggedIn()) {
+                        stateManager.updateStatus(LoginStatus.SUCCESS);
+                        log.info("扫码成功，切换账号");
+                        replaceSession(qrBot);
+                        Thread.sleep(3000);
+                    } else {
+                        stateManager.updateStatus(LoginStatus.TIMEOUT);
+                        log.info("扫码超时，保持当前 session");
+                        Thread.sleep(10000);
+                    }
                 } else {
-                    stateManager.updateStatus(LoginStatus.TIMEOUT);
-                    log.error("微信登录超时");
-                    Thread.sleep(10000);
-                }
-            } else {
-                // base64 格式：写文件兜底
-                String qrBase64 = qrResult.contains(",")
-                        ? qrResult.substring(qrResult.indexOf(",") + 1)
-                        : qrResult;
-                byte[] qrBytes = Base64.getDecoder().decode(qrBase64);
-                Path qrFile = Path.of("qrcode.png");
-                Files.write(qrFile, qrBytes);
-                log.info("请扫码登录 → {}", qrFile.toAbsolutePath());
+                    String qrBase64 = qrResult.contains(",")
+                            ? qrResult.substring(qrResult.indexOf(",") + 1)
+                            : qrResult;
+                    byte[] qrBytes = Base64.getDecoder().decode(qrBase64);
+                    Path qrFile = Path.of("qrcode.png");
+                    Files.write(qrFile, qrBytes);
+                    log.info("请扫码登录 → {}", qrFile.toAbsolutePath());
 
-                long deadline = System.currentTimeMillis() + 120_000;
-                while (!bot.isLoggedIn() && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(1000);
+                    long deadline = System.currentTimeMillis() + 120_000;
+                    while (!qrBot.isLoggedIn() && System.currentTimeMillis() < deadline) {
+                        Thread.sleep(1000);
+                    }
+                    if (qrBot.isLoggedIn()) {
+                        log.info("扫码成功，切换账号");
+                        replaceSession(qrBot);
+                    } else {
+                        log.info("扫码超时");
+                    }
                 }
-                if (bot.isLoggedIn()) {
-                    log.info("微信登录成功");
-                    saveSession(bot, null);
-                } else {
-                    log.error("微信登录超时");
+            } catch (Exception e) {
+                log.error("扫码流程异常", e);
+            } finally {
+                if (pageServer != null) {
+                    pageServer.stop();
                 }
             }
-        } catch (Exception e) {
-            log.error("微信登录异常", e);
-        } finally {
-            if (pageServer != null) {
-                pageServer.stop();
-            }
-        }
+        }, "qr-login");
+        t.setDaemon(true);
+        t.start();
     }
 
-    /**
-     * 打开系统默认浏览器
-     */
+    /** 用新扫码的 bot 替换当前 session，旧 bot 关闭并禁用 */
+    private void replaceSession(BotInstance newBot) {
+        if (bot != null) {
+            sqliteDataStore.disableBotSession(bot.getBotId());
+            bot.close();
+        }
+        bot = null;
+        saveSession(newBot, null);
+    }
+
+    /** 打开系统默认浏览器 */
     private static void openBrowser(String url) {
         try {
             String os = System.getProperty("os.name").toLowerCase();
@@ -157,38 +160,25 @@ public class BotManager {
         }
     }
 
-    /** 获取当前活跃的 BotInstance（第一个） */
+    /** 获取当前 BotInstance */
     public BotInstance getPrimaryBot() {
-        if (bots.isEmpty()) return null;
-        return bots.get(0);
+        return bot;
     }
 
     /** 登录成功后保存 session */
-    public void saveSession(BotInstance bot, String wxNickname) {
-        ResumeContext ctx = bot.exportResumeContext();
+    public void saveSession(BotInstance instance, String wxNickname) {
+        ResumeContext ctx = instance.exportResumeContext();
         String json = serializeResumeContext(ctx);
-        sqliteDataStore.saveBotSession(bot.getBotId(), json, wxNickname);
-        if (!bots.contains(bot)) {
-            bots.add(bot);
-        }
-    }
-
-    /** 登录失败时清理 */
-    public void disableBot(String botId) {
-        sqliteDataStore.disableBotSession(botId);
-        bots.removeIf(b -> b.getBotId().equals(botId));
+        sqliteDataStore.saveBotSession(instance.getBotId(), json, wxNickname);
+        bot = instance;
     }
 
     public boolean hasActiveBot() {
-        return bots.stream().anyMatch(BotInstance::isLoggedIn);
+        return bot != null && bot.isLoggedIn();
     }
 
     // ==================== 序列化 / 反序列化 ====================
 
-    /**
-     * 将 ResumeContext 序列化为 JSON。
-     * ResumeContext 包含 LoginContext(botToken, userId, botId, baseUrl) + updatesCursor。
-     */
     private String serializeResumeContext(ResumeContext ctx) {
         try {
             LoginContext lc = ctx.getLoginContext();
@@ -204,9 +194,6 @@ public class BotManager {
         }
     }
 
-    /**
-     * 从 JSON 反序列化 ResumeContext。
-     */
     @SuppressWarnings("unchecked")
     private ResumeContext deserializeResumeContext(String json) {
         try {
@@ -230,27 +217,8 @@ public class BotManager {
 
     @PreDestroy
     public void destroy() {
-        CountDownLatch latch = new CountDownLatch(bots.size());
-        for (BotInstance bot : bots) {
-            Thread t = new Thread(() -> {
-                try {
-                    bot.close();
-                } catch (Exception e) {
-                    log.warn("关闭 BotInstance 异常 | botId={}", bot.getBotId(), e);
-                } finally {
-                    latch.countDown();
-                }
-            }, "close-bot-" + bot.getBotId());
-            t.setDaemon(true);
-            t.start();
+        if (bot != null) {
+            bot.close();
         }
-        try {
-            if (!latch.await(10, TimeUnit.SECONDS)) {
-                log.warn("Bot 关闭超时，强制退出 | remaining={}", latch.getCount());
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        bots.clear();
     }
 }
