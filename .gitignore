@@ -57,6 +57,10 @@ com/lth/
 CLAUDE.md
 AGENTS.md
 memory/
+!src/main/java/com/youkeda/exercise/claw/agent/memory/
+!src/main/java/com/youkeda/exercise/claw/agent/memory/**
+!src/test/java/com/youkeda/exercise/claw/agent/memory/
+!src/test/java/com/youkeda/exercise/claw/agent/memory/**
 
 # 忽略设计文档（仅供 AI 参考，不应提交）
 docs/

@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.model.PlanTask;
 import com.youkeda.exercise.claw.agent.plan.DefaultPlanStore;
@@ -155,9 +156,11 @@ class ReActAgentExecutorTest {
         DefaultPlanStore planStore = new DefaultPlanStore();
         PlanValidator planValidator = new PlanValidator();
         SafetyPolicy safetyPolicy = new SafetyPolicy();
+        LongTermMemoryService longTermMemoryService = mock(LongTermMemoryService.class);
+        when(longTermMemoryService.recall(anyString(), anyString())).thenReturn(List.of());
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
-                planStore, planValidator, safetyPolicy);
+                planStore, planValidator, safetyPolicy, longTermMemoryService);
         return new Fixture(llmClient, executor, contextStore);
     }
 
