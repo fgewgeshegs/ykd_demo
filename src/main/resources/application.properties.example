@@ -74,3 +74,11 @@ file.parse.max-analyzed-embedded-images=3
 # ============================================
 # 腾讯位置服务（lbs.qq.com）API 密钥
 tencent.key=
+
+place-image.provider=pexels
+
+# ============================================
+# Pexels API Configuration
+# ============================================
+# Pexels åè´¹ API Key æ³¨åå°å: https://www.pexels.com/api/
+pexels.api-key=

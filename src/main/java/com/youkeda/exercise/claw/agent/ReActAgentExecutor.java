@@ -3,17 +3,21 @@ package com.youkeda.exercise.claw.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.agent.model.*;
+import com.youkeda.exercise.claw.agent.plan.PlanStore;
+import com.youkeda.exercise.claw.agent.plan.PlanValidator;
+import com.youkeda.exercise.claw.agent.plan.ValidationResult;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
+import com.youkeda.exercise.claw.ai.llm.PlanDecision;
+import com.youkeda.exercise.claw.ai.llm.TaskDefinition;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
-import com.youkeda.exercise.claw.teamtrip.TeamTripPlanDraft;
-import com.youkeda.exercise.claw.teamtrip.TeamTripPlanService;
-import com.youkeda.exercise.claw.teamtrip.TeamTripToolCallPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -27,16 +31,22 @@ import java.util.Set;
  * ReAct 模式 Agent 执行器
  *
  * <p>核心调度器：接收用户消息，通过 LLM + Function Calling 的循环自主决定调用哪些工具，
- * 最终给出回复。
+ * 最终给出回复。支持三路 LLM 输出：文本回复、工具调用、结构化计划。
  *
  * <p>执行流程：
  * <ol>
  *   <li>取对话历史 + 当前用户消息</li>
+ *   <li>加载当前会话的 PlanState（如果有）</li>
  *   <li>快速判断：明显不需要工具的闲聊直接 LLM 回复（不含工具定义），跳过后续循环</li>
- *   <li>调 LLM（带已注册的 {@link LLMFunction} 定义）</li>
- *   <li>LLM 返回文本 → 结束，保存回复到上下文</li>
- *   <li>LLM 返回 tool_calls → 逐个执行 → 结果追加到消息列表 → 回到步骤 3</li>
- *   <li>达到最大轮次 → 返回超时提示</li>
+ *   <li>调 LLM（带所有已注册的 {@link LLMFunction} 定义）</li>
+ *   <li>LLM 返回
+ *     <ul>
+ *       <li>文本 → 结束，保存回复到上下文</li>
+ *       <li>tool_calls → 逐个执行 → 更新 TaskResult → 结果追加到消息列表 → 回到步骤 3</li>
+ *       <li>plan → PlanValidator 校验 → PlanStore.save → 回到步骤 3</li>
+ *     </ul>
+ *   </li>
+ *   <li>达到最大轮次 → 返回当前可用结果</li>
  * </ol>
  */
 @Component
@@ -47,50 +57,36 @@ public class ReActAgentExecutor implements AgentExecutor {
     /** 每次请求携带的最大历史消息条数 */
     private static final int MAX_HISTORY = 20;
 
-    /**
-     * 工具调用循环最大轮次。
-     * 搜索轮次和工具总数另有独立硬限制，这里给保存方案与预算核算预留自动收尾空间。
-     */
-    private static final int MAX_ROUNDS = 20;
+    /** 工具调用循环最大轮次 */
+    private static final int MAX_ROUNDS = 15;
 
-    /** 单次请求允许执行的最大工具数，防止模型陷入循环 */
+    /** 单次请求允许执行的最大工具数 */
     private static final int MAX_TOOL_CALLS = 16;
 
-    /** 完整方案最多进行两轮网页研究，且总搜索调用不超过 5 次。 */
-    private static final int MAX_WEB_SEARCH_ROUNDS = 2;
-    private static final int MAX_WEB_SEARCH_CALLS = 5;
-
-    /**
-     * 不受团建阶段限制的通用工具名称。
-     * 即使用户处于等待选择/确认等阶段，这些工具也始终对 LLM 可见，
-     * 保证用户可以随时要求生成文件、图片或语音。
-     */
-    private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
-            Set.of("file_generate", "image_generate", "text_to_speech", "plan_proposal", "place_image_search");
-
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
-    private static final String LIMIT_REPLY =
-            "已根据当前可用信息整理方案；尚未完成核实的费用会标记为“待确认”。";
 
     private final LLMClient llmClient;
     private final LLMFunctionRegistry functionRegistry;
     private final ContextStore contextStore;
     private final ObjectMapper objectMapper;
-    private final TeamTripToolCallPolicy toolCallPolicy;
-    private final TeamTripPlanService teamTripPlanService;
+    private final PlanStore planStore;
+    private final PlanValidator planValidator;
+    private final SafetyPolicy safetyPolicy;
 
     public ReActAgentExecutor(LLMClient llmClient,
                                LLMFunctionRegistry functionRegistry,
                                ContextStore contextStore,
                                ObjectMapper objectMapper,
-                               TeamTripToolCallPolicy toolCallPolicy,
-                               TeamTripPlanService teamTripPlanService) {
+                               PlanStore planStore,
+                               PlanValidator planValidator,
+                               SafetyPolicy safetyPolicy) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
         this.objectMapper = objectMapper;
-        this.toolCallPolicy = toolCallPolicy;
-        this.teamTripPlanService = teamTripPlanService;
+        this.planStore = planStore;
+        this.planValidator = planValidator;
+        this.safetyPolicy = safetyPolicy;
     }
 
     @Override
@@ -98,9 +94,15 @@ public class ReActAgentExecutor implements AgentExecutor {
         String userId = context.getUserId();
         String userMessage = context.getMessage();
 
-        log.info("ReActAgentExecutor 执行 | user={} | message={}", userId, userMessage);
+        log.info("AgentExecutor 执行 | user={} | message={}", userId, userMessage);
 
-        // 1. 历史 + 当前消息
+        // 1. 加载 PlanState
+        PlanState planState = context.getPlanState() != null
+                ? context.getPlanState()
+                : planStore.get(userId);
+        context.setPlanState(planState);
+
+        // 2. 历史 + 当前消息
         List<Message> history = contextStore.getHistory(userId, MAX_HISTORY);
         boolean continuationRequest = isContinuationRequest(userMessage);
         List<Message> messages = new ArrayList<>();
@@ -111,15 +113,8 @@ public class ReActAgentExecutor implements AgentExecutor {
         if (!historyContainsCurrentMessage(history, userMessage)) {
             messages.add(new Message("user", userMessage));
         }
-        if (continuationRequest) {
-            messages.add(new Message("system",
-                    "用户是在要求系统继续完成尚未结束的方案流程。"
-                            + "必须从已保存的团建草稿阶段继续，只执行后续必要步骤；"
-                            + "不得复述“处理步骤达到上限”或再次要求用户回复“继续生成”；"
-                            + "不得重新收集或覆盖用户已经确认的出发地、人数、日期、天数、目的地和预算。"));
-        }
 
-        // 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
+        // 3. 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
         if (!continuationRequest && isSimpleChat(userMessage)) {
             log.debug("快速通道：用户消息不需工具，走纯对话 | user={}", userId);
             LLMResponse quickResponse = llmClient.chatWithTools(messages, List.of());
@@ -131,26 +126,21 @@ public class ReActAgentExecutor implements AgentExecutor {
                 contextStore.append(userId, "assistant", reply);
                 return reply;
             }
-            // 快速路径异常（LLM 无返回或仍调工具），回退到完整工具循环
             log.warn("快速对话路径异常，回退到工具循环 | user={}", userId);
         }
 
-        // 2. 所有可用工具定义
+        // 4. 所有可用工具定义（不再按 stage 筛选）
         List<ToolDefinition> tools = functionRegistry.getAllDefinitions();
         log.debug("可用工具: {}", tools.stream().map(ToolDefinition::name).toList());
 
-        // 3. tool-calling 循环
+        // 5. tool-calling 循环
         Set<String> executedCalls = new HashSet<>();
         int toolCallCount = 0;
-        int webSearchRounds = 0;
-        int webSearchCallCount = 0;
         boolean forceTextResponse = false;
         for (int round = 0; round < MAX_ROUNDS; round++) {
             log.info("工具调用循环第 {} 轮 | user={} | messages={}", round + 1, userId, messages.size());
 
-            List<ToolDefinition> roundTools = forceTextResponse
-                    ? List.of()
-                    : selectToolsForStage(userId, tools, webSearchRounds);
+            List<ToolDefinition> roundTools = forceTextResponse ? List.of() : tools;
             LLMResponse response = llmClient.chatWithTools(messages, roundTools);
             forceTextResponse = false;
             if (response == null) {
@@ -158,74 +148,116 @@ public class ReActAgentExecutor implements AgentExecutor {
                 return handleError(userId);
             }
 
+            // === 分支 1：结构化计划 ===
+            if (response.isPlan()) {
+                PlanDecision plan = response.getPlan();
+                log.info("LLM 返回计划 | user={} | goal={} | tasks={}",
+                        userId, plan.getGoal(),
+                        plan.getTasks().stream().map(TaskDefinition::getId).toList());
+
+                PlanState newPlan = planDecisionToState(plan);
+                ValidationResult vr = planValidator.validate(newPlan);
+                if (!vr.valid()) {
+                    log.warn("计划校验失败 | user={} | errors={}", userId, vr.errors());
+                    String errorMsg = "你生成的计划存在结构问题："
+                            + String.join("；", vr.errors())
+                            + "。请修正后重新生成。";
+                    messages.add(new Message("system", errorMsg));
+                    continue;
+                }
+                if (!vr.warnings().isEmpty()) {
+                    log.info("计划警告 | user={} | warnings={}", userId, vr.warnings());
+                }
+
+                newPlan.setVersion(planState != null ? planState.getVersion() + 1 : 1);
+                planStore.save(userId, newPlan);
+                context.setPlanState(newPlan);
+                planState = newPlan;
+
+                // 所有任务都已完成 → 结束循环
+                if (newPlan.getTasks().stream()
+                        .allMatch(t -> t.getExecutionStatus() == ExecutionStatus.DONE
+                                || t.getEvaluationState() == EvaluationState.SUPERSEDED)) {
+                    log.info("所有计划任务已完成，进入最终回复 | user={}", userId);
+                    forceTextResponse = true;
+                    continue;
+                }
+                // 有任务未完成，继续让 LLM 执行
+                injectPlanContext(messages, newPlan);
+                continue;
+            }
+
+            // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
-                // LLM 直接回复文本 → 结束
                 String reply = response.getContent();
                 log.info("LLM 直接回复 | user={} | reply={}", userId, reply);
                 contextStore.append(userId, "assistant", reply);
                 return reply;
             }
 
-            // Step 1: 先执行本轮所有工具，收集结果
+            // === 分支 3：工具调用 ===
             List<LLMResponse.ToolCall> toolCalls = response.getToolCalls();
             List<String> batchToolNames = toolCalls.stream().map(LLMResponse.ToolCall::name).toList();
-            Set<String> allowedToolNames = roundTools.stream()
-                    .map(ToolDefinition::name)
-                    .collect(java.util.stream.Collectors.toSet());
             List<String> toolResults = new ArrayList<>();
             boolean executedInBatch = false;
-            boolean executedWebSearchInBatch = false;
-            boolean requestedUnavailableTool = false;
+
             for (LLMResponse.ToolCall tc : toolCalls) {
-                String toolName = resolveToolName(tc, allowedToolNames);
-                log.info("工具调用 | name={} | resolvedName={} | args={} | id={}",
-                        tc.name(), toolName, tc.arguments(), tc.id());
+                String toolName = tc.name();
+                log.info("工具调用 | name={} | args={} | id={}", toolName, tc.arguments(), tc.id());
 
                 LLMFunction fn = functionRegistry.find(toolName);
                 String result;
-                String blockedReason = toolCallPolicy.validate(userId, toolName, batchToolNames);
                 String callSignature = toolName + "|" + tc.arguments();
-                if (!allowedToolNames.contains(toolName)) {
-                    requestedUnavailableTool = teamTripPlanService.getDraft(userId) != null;
-                    result = policyBlocked("当前阶段不允许调用 " + toolName
-                            + "，请只使用本轮提供的工具：" + allowedToolNames);
-                } else if (blockedReason != null) {
+
+                // Phase 1: 安全检查（CanExecute）
+                String blockedReason = safetyPolicy.canExecute(toolName, tc.arguments());
+
+                // 工具不存在
+                if (fn == null) {
+                    log.warn("未找到工具: {}", toolName);
+                    result = "{\"error\":\"未知工具: " + toolName + "\"}";
+                }
+                // 安全检查阻止
+                else if (blockedReason != null) {
                     result = policyBlocked(blockedReason);
-                } else if ("web_search".equals(toolName)
-                        && webSearchCallCount >= MAX_WEB_SEARCH_CALLS) {
-                    result = policyBlocked("网页搜索已达到本次方案研究上限，请使用已有结果保存候选方案并核算费用。");
-                } else if (toolCallCount >= MAX_TOOL_CALLS) {
+                }
+                // 工具调用数量上限
+                else if (toolCallCount >= MAX_TOOL_CALLS) {
                     result = policyBlocked("本次请求工具调用数量已达上限，请使用已有结果生成答复。");
-                } else if (!executedCalls.add(callSignature)) {
+                }
+                // 去重（相同工具 + 相同参数）
+                else if (!executedCalls.add(callSignature)) {
                     result = policyBlocked("相同工具和参数已经执行过，请使用已有结果，不要重复调用。");
-                } else if (fn == null) {
-                    log.warn("未找到函数: {}", tc.name());
-                    result = "{\"error\":\"未知工具: " + tc.name() + "\"}";
-                } else {
+                }
+                // 执行
+                else {
                     toolCallCount++;
                     executedInBatch = true;
-                    if ("web_search".equals(toolName)) {
-                        webSearchCallCount++;
-                        executedWebSearchInBatch = true;
-                    }
                     result = fn.execute(tc.arguments(), new FunctionExecutionContext(userId, userMessage));
-                    if (!"team_trip_plan".equals(toolName)) {
-                        teamTripPlanService.recordToolResult(userId, toolName, result);
-                    }
                     log.info("工具执行完成 | name={} | result={}", toolName, truncate(result, 200));
+
+                    // 更新 PlanState（如果有）
+                    if (planState != null) {
+                        PlanTask matchingTask = findTaskByToolName(planState, toolName);
+                        if (matchingTask != null) {
+                            matchingTask.setExecutionStatus(ExecutionStatus.DONE);
+                            TaskResult taskResult = new TaskResult(
+                                    matchingTask.getId(), toolName,
+                                    parseResultStatus(result), result, System.currentTimeMillis());
+                            matchingTask.setResult(taskResult);
+                            planStore.save(userId, planState);
+                        }
+                    }
                 }
                 toolResults.add(result);
             }
-            if (executedWebSearchInBatch) webSearchRounds++;
 
-            // Step 2: 添加 ONE 条 assistant 消息（含本轮所有 tool_calls）
+            // 添加 assistant 消息（合并本轮所有 tool_calls）
             if (toolCalls.size() == 1) {
-                // 单 tool_call — 原有格式
                 LLMResponse.ToolCall tc = toolCalls.get(0);
                 messages.add(new Message("assistant", tc.arguments(),
                         null, null, null, tc.id(), tc.name(), response.getReasoningContent()));
             } else {
-                // 多 tool_call — 合并为一条 assistant 消息，符合 OpenAI 并行调用规范
                 StringBuilder ids = new StringBuilder();
                 StringBuilder names = new StringBuilder();
                 ArrayNode argsArray = objectMapper.createArrayNode();
@@ -244,7 +276,6 @@ public class ReActAgentExecutor implements AgentExecutor {
                 try {
                     combinedArgs = objectMapper.writeValueAsString(argsArray);
                 } catch (Exception e) {
-                    // 序列化失败时用法 fallback
                     combinedArgs = "[]";
                     log.warn("多 tool_call 参数序列化失败", e);
                 }
@@ -255,58 +286,38 @@ public class ReActAgentExecutor implements AgentExecutor {
                         toolCalls.size(), ids, names);
             }
 
-            // Step 3: 添加所有 tool 结果消息
+            // 添加 tool 结果消息
             for (int i = 0; i < toolCalls.size(); i++) {
                 messages.add(new Message("tool", toolResults.get(i),
                         null, null, null, toolCalls.get(i).id(), null));
             }
-            // 已进入必须等待用户输入的阶段时，只用精简快照生成原有展示结构。
-            // 不携带搜索原文和完整工具历史，也不再开放任何工具。
-            // 但若本轮执行了始终可用的旁路工具（图片/文件/语音），应让 LLM 基于工具结果
-            // 自然回应，不要用方案快照覆盖工具执行效果。
-            if (toolCallPolicy.shouldReplyWithoutTools(userId)) {
-                boolean justUsedAlwaysAvailable = toolCalls.stream()
-                        .anyMatch(tc -> ALWAYS_AVAILABLE_TOOLS.contains(
-                                resolveToolName(tc, allowedToolNames)));
-                if (!justUsedAlwaysAvailable) {
-                    String waitingReply = renderWaitingWithOriginalStructure(userId);
-                    if (waitingReply != null && !waitingReply.isBlank()) {
-                        TeamTripPlanDraft draft = teamTripPlanService.getDraft(userId);
-                        log.info("等待用户输入，返回原方案展示结构 | user={} | stage={}",
-                                userId, draft != null ? draft.getStage() : "UNKNOWN");
-                        contextStore.append(userId, "assistant", waitingReply);
-                        return waitingReply;
-                    }
-                }
+
+            // 本轮没有任何工具实际执行 → 下一轮强制文本回复
+            if (!executedInBatch) {
+                forceTextResponse = true;
             }
-            // 已进入等待用户阶段，或本轮所有调用都被策略/去重阻止时，
-            // 下一轮不再提供工具，只允许模型使用已有结果回复用户。
-            forceTextResponse = (!executedInBatch && !requestedUnavailableTool)
-                    || toolCallPolicy.shouldReplyWithoutTools(userId);
-            // 继续下一轮，让 LLM 基于工具结果生成最终回复
         }
 
+        // 6. 达到局部上限，兜底回复
         log.warn("工具调用循环达到上限 {} 轮 | user={}", MAX_ROUNDS, userId);
         return synthesizeWithExistingResults(userId, messages);
     }
 
-    /**
-     * 异常处理：保存错误回复到上下文并返回
-     */
+    // ==================== 错误与兜底 ====================
+
     private String handleError(String userId) {
         contextStore.append(userId, "assistant", ERROR_REPLY);
         return ERROR_REPLY;
     }
 
     /**
-     * 工具轮次达到上限时停止提供工具，让模型使用已有结果给出最佳可用回复，
-     * 避免已经完成查询后仍向用户返回统一超时提示。
+     * 达到局部上限时让 LLM 基于已有结果生成最终回复。
      */
     private String synthesizeWithExistingResults(String userId, List<Message> messages) {
         List<Message> finalMessages = new ArrayList<>(messages);
         finalMessages.add(new Message("system",
-                "工具调用轮次已结束。禁止继续调用工具。请仅根据已有工具结果回复："
-                        + "若信息不足或正在等待选择/预算决定，提出一个明确问题；"
+                "工具调用轮次已结束。请仅根据已有结果回复："
+                        + "若信息不足，提出一个明确问题让用户补充；"
                         + "若信息已齐全，给出当前结果；缺失信息标记待确认，不得编造。"));
         LLMResponse response = llmClient.chatWithTools(finalMessages, List.of());
         if (response != null && response.getContent() != null
@@ -315,22 +326,100 @@ public class ReActAgentExecutor implements AgentExecutor {
             contextStore.append(userId, "assistant", reply);
             return reply;
         }
-        if (response != null && response.isToolCall()) {
-            // 内部轮次上限不是用户决策节点，不能要求用户回复“继续生成”。
-            log.warn("最终汇总仍返回工具调用，直接输出当前最佳可用方案 | user={} | tools={}",
-                    userId, response.getToolCalls().stream().map(LLMResponse.ToolCall::name).toList());
-            String bestAvailable = teamTripPlanService.renderBestAvailableReply(userId);
-            String reply = bestAvailable != null && !bestAvailable.isBlank()
-                    ? bestAvailable : LIMIT_REPLY;
-            contextStore.append(userId, "assistant", reply);
-            return reply;
+        log.warn("最终汇总仍返回工具调用，使用兜底消息 | user={}", userId);
+        String fallback = "已根据当前可用信息整理方案。尚未核实的信息标记为待确认。";
+        contextStore.append(userId, "assistant", fallback);
+        return fallback;
+    }
+
+    // ==================== Plan 辅助方法 ====================
+
+    /**
+     * 将 LLM 产出的 {@link PlanDecision} 转为 {@link PlanState}。
+     */
+    private PlanState planDecisionToState(PlanDecision decision) {
+        List<PlanTask> tasks = new ArrayList<>();
+        if (decision.getTasks() != null) {
+            for (TaskDefinition td : decision.getTasks()) {
+                tasks.add(new PlanTask(td.getId(), td.getDescription(), td.getDependencies()));
+            }
         }
-        return handleError(userId);
+        return new PlanState(decision.getGoal(), tasks);
     }
 
     /**
-     * 截断字符串（日志用）
+     * 将 PlanState 摘要注入 messages，代替 TeamTrip 阶段的上下文注入。
      */
+    private void injectPlanContext(List<Message> messages, PlanState plan) {
+        StringBuilder planSummary = new StringBuilder();
+        planSummary.append("【当前计划】\n目标：").append(plan.getGoal()).append("\n\n任务进度：\n");
+        for (PlanTask task : plan.getTasks()) {
+            planSummary.append("  - ").append(task.getId()).append(": ").append(task.getDescription());
+            planSummary.append(" [").append(task.getExecutionStatus()).append("]");
+            if (task.getResult() != null && task.getResult().getSummary() != null) {
+                planSummary.append(" → ").append(task.getResult().getSummary());
+            }
+            planSummary.append("\n");
+        }
+        messages.add(new Message("system", planSummary.toString().strip()));
+    }
+
+    /**
+     * 根据工具名模糊匹配 PlanState 中的 PENDING 任务。
+     * 优先匹配 description 包含工具名的任务；无匹配时返回第一个 PENDING 任务。
+     */
+    private PlanTask findTaskByToolName(PlanState planState, String toolName) {
+        if (planState == null || planState.getTasks() == null) return null;
+        // 优先匹配 description 包含工具名的 PENDING 任务
+        for (PlanTask task : planState.getTasks()) {
+            if (task.getExecutionStatus() == ExecutionStatus.PENDING
+                    && task.getDescription() != null
+                    && task.getDescription().toLowerCase().contains(toolName.toLowerCase())) {
+                return task;
+            }
+        }
+        // 回退：任意 PENDING 任务
+        for (PlanTask task : planState.getTasks()) {
+            if (task.getExecutionStatus() == ExecutionStatus.PENDING) {
+                return task;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从工具返回的 JSON 字符串中解析 ResultStatus。
+     */
+    private ResultStatus parseResultStatus(String resultJson) {
+        if (resultJson == null || resultJson.isBlank()) return ResultStatus.FAILED;
+        try {
+            JsonNode node = objectMapper.readTree(resultJson);
+            if (node.has("error")) return ResultStatus.FAILED;
+            String status = node.path("status").asText("SUCCESS").toUpperCase();
+            return switch (status) {
+                case "SUCCESS" -> ResultStatus.SUCCESS;
+                case "PARTIAL" -> ResultStatus.PARTIAL;
+                case "BLOCKED" -> ResultStatus.BLOCKED;
+                default -> ResultStatus.FAILED;
+            };
+        } catch (Exception e) {
+            return ResultStatus.SUCCESS; // 非 JSON 工具输出视为成功
+        }
+    }
+
+    // ==================== 工具方法 ====================
+
+    private String policyBlocked(String reason) {
+        try {
+            var node = objectMapper.createObjectNode();
+            node.put("status", "BLOCKED");
+            node.put("reason", reason);
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            return "{\"status\":\"BLOCKED\"}";
+        }
+    }
+
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
@@ -354,14 +443,12 @@ public class ReActAgentExecutor implements AgentExecutor {
             return false;
         }
         return message.content().contains("本轮处理步骤已达到上限")
-                || message.content().contains("请回复“继续生成”")
-                || message.content().contains("请回复\"继续生成\"");
+                || message.content().contains("请回复\"继续生成\"")
+                || message.content().contains("请回复“继续生成”");
     }
 
     /**
      * 快速判断用户消息是否需要调用工具。
-     * <p>超短消息可能是对计划提议的回应，保守地返回 false 进入工具循环。
-     * 实际判断由一次不带工具的 LLM 调用完成，只有 LLM 明确判断为 CHAT_ONLY 时才跳过。
      */
     private boolean isSimpleChat(String userMessage) {
         if (userMessage == null || userMessage.trim().length() <= 3) return false;
@@ -377,153 +464,5 @@ public class ReActAgentExecutor implements AgentExecutor {
 
         String result = llmClient.chatWithSystemPrompt(prompt, userMessage);
         return "CHAT_ONLY".equals(result != null ? result.trim() : "");
-    }
-
-    private String policyBlocked(String reason) {
-        try {
-            var node = objectMapper.createObjectNode();
-            node.put("status", "BLOCKED");
-            node.put("reason", reason);
-            return objectMapper.writeValueAsString(node);
-        } catch (Exception e) {
-            return "{\"status\":\"BLOCKED\"}";
-        }
-    }
-
-    private String renderWaitingWithOriginalStructure(String userId) {
-        String fallback = teamTripPlanService.renderWaitingReply(userId);
-        String snapshot = teamTripPlanService.buildPresentationSnapshot(userId);
-        List<Message> presentationMessages = List.of(
-                new Message("system",
-                        "这是方案展示阶段，不得调用任何工具。保持原来的自然方案展示结构和友好语气，"
-                                + "不要输出 JSON、DSML 或内部状态字段。"
-                                + "沿用加入预算功能前的旅游规划风格：自然介绍后，分别按天展示每个方案的"
-                                + "方案亮点、行程、活动、交通、住宿、餐饮、美食推荐和注意事项。"
-                                + "美食推荐需给出当地特色菜、适合团队的餐厅类型或特色用餐体验，"
-                                + "不能只写早餐、午餐、晚餐等泛化安排。"
-                                + "不要先做大型预算对比表，也不要输出十段式固定报告。"
-                                + "预算只作为每个方案末尾的补充，写预计总费用、人均、预算差额和待确认价格。"
-                                + "全部方案展示完后再询问用户选择；不要擅自替用户选择。"),
-                new Message("user", "请根据以下已核算快照生成面向用户的回复：\n" + snapshot));
-        LLMResponse response = llmClient.chatWithTools(presentationMessages, List.of());
-        if (response != null && !response.isToolCall()
-                && response.getContent() != null && !response.getContent().isBlank()) {
-            return response.getContent();
-        }
-        log.warn("原结构展示生成失败，使用固定格式兜底 | user={}", userId);
-        return fallback;
-    }
-
-    /**
-     * 团建流程按阶段只暴露下一步需要的工具，避免模型在证据已经够用后继续搜索。
-     * 普通聊天或尚未建立团建草稿时仍保留全部工具。
-     */
-    private List<ToolDefinition> selectToolsForStage(String userId,
-                                                     List<ToolDefinition> allTools,
-                                                     int webSearchRounds) {
-        TeamTripPlanDraft draft = teamTripPlanService.getDraft(userId);
-        if (draft == null) return allTools;
-        if (toolCallPolicy.shouldReplyWithoutTools(userId)) {
-            return allTools.stream()
-                    .filter(t -> ALWAYS_AVAILABLE_TOOLS.contains(t.name()))
-                    .toList();
-        }
-
-        String stage = draft.getStage();
-        Set<String> exactNames = new HashSet<>();
-        boolean allowMapTools = false;
-
-        switch (stage) {
-            case "READY_FOR_DATE", "READY_FOR_DATE_CONTEXT" -> {
-                exactNames.add("time_query");
-                exactNames.add("team_trip_plan");
-                if ("NOT_CALLED".equals(draft.getMapStatus())) allowMapTools = true;
-            }
-            case "READY_FOR_CONTEXT", "READY_FOR_HOLIDAY" -> {
-                if ("NOT_CALLED".equals(draft.getHolidayStatus())) {
-                    exactNames.add("holiday_check");
-                }
-                if ("NOT_CALLED".equals(draft.getMapStatus())) allowMapTools = true;
-            }
-            case "READY_FOR_MAP" -> allowMapTools = true;
-            case "MAP_INSUFFICIENT" -> exactNames.add("web_search");
-            case "WEATHER_INSUFFICIENT" ->
-                    exactNames.add("web_search");
-            case "MAP_READY" -> {
-                allowMapTools = true;
-                exactNames.add("weather_query");
-            }
-            case "WEATHER_READY", "READY_FOR_TRANSPORT" ->
-                    exactNames.add("transport_recommend");
-            case "TRANSPORT_READY", "EVIDENCE_READY" -> {
-                exactNames.add("team_trip_plan");
-                if (webSearchRounds < MAX_WEB_SEARCH_ROUNDS) {
-                    exactNames.add("web_search");
-                }
-            }
-            case "OPTIONS_READY_FOR_COSTING" -> {
-                exactNames.add("team_trip_plan");
-                exactNames.add("budget_calculator");
-                if (webSearchRounds < MAX_WEB_SEARCH_ROUNDS) {
-                    exactNames.add("web_search");
-                }
-            }
-            case "COST_PARTIAL", "COST_ERROR", "OPTION_REVISION_REQUIRED" -> {
-                exactNames.add("team_trip_plan");
-                exactNames.add("budget_calculator");
-                if (webSearchRounds < MAX_WEB_SEARCH_ROUNDS) {
-                    exactNames.add("web_search");
-                }
-            }
-            default -> {
-                return allTools;
-            }
-        }
-
-        boolean finalAllowMapTools = allowMapTools;
-        List<ToolDefinition> selected = allTools.stream()
-                .filter(tool -> exactNames.contains(tool.name())
-                        || (finalAllowMapTools && tool.name().startsWith("map_"))
-                        || ALWAYS_AVAILABLE_TOOLS.contains(tool.name()))
-                .toList();
-        log.debug("按团建阶段筛选工具 | user={} | stage={} | tools={}",
-                userId, stage, selected.stream().map(ToolDefinition::name).toList());
-        return selected;
-    }
-
-    /**
-     * 兼容少数模型把 tool_call id 错放到 function.name 的情况。
-     * 仅根据参数结构推断已注册工具，且最终仍受当前阶段允许列表约束。
-     */
-    private String resolveToolName(LLMResponse.ToolCall call, Set<String> allowedToolNames) {
-        if (functionRegistry.find(call.name()) != null) return call.name();
-        if (call.name() == null || !call.name().startsWith("call_")) return call.name();
-
-        try {
-            JsonNode args = objectMapper.readTree(call.arguments());
-            String inferred = null;
-            if (args.has("action")) {
-                String action = args.path("action").asText();
-                if (Set.of("collect", "save_options", "select_option", "combine_options",
-                        "revise_option", "budget_decision", "revise", "reset").contains(action)) {
-                    inferred = "team_trip_plan";
-                } else if (Set.of("get_current_time", "date_calculate", "date_diff").contains(action)) {
-                    inferred = "time_query";
-                }
-            } else if (args.has("plans")) {
-                inferred = "budget_calculator";
-            } else if (args.has("query")) {
-                inferred = "web_search";
-            } else if (args.has("city") || args.has("location")) {
-                inferred = "weather_query";
-            }
-            if (inferred != null && functionRegistry.find(inferred) != null) {
-                log.warn("根据参数恢复异常工具名 | original={} | inferred={}", call.name(), inferred);
-                return inferred;
-            }
-        } catch (Exception e) {
-            log.debug("异常工具名参数无法解析 | name={}", call.name());
-        }
-        return call.name();
     }
 }

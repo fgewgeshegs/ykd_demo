@@ -6,28 +6,35 @@ import java.util.List;
 /**
  * LLM 调用返回结果
  *
- * <p>可能是文本回复（{@code content != null}），也可能是工具调用（{@link #isToolCall()} 为 true）。
- * 根据 {@code finishReason} 区分：
+ * <p>根据 {@code finishReason} 区分三种类型：
  * <ul>
  *   <li>{@code "stop"} — 文本回复，读取 {@link #getContent()}</li>
  *   <li>{@code "tool_calls"} — LLM 要求调用工具，读取 {@link #getToolCalls()}</li>
+ *   <li>{@code "plan"} — LLM 产出了结构化计划，读取 {@link #getPlan()}</li>
  * </ul>
  */
 public class LLMResponse {
 
     private final String content;
     private final List<ToolCall> toolCalls;
+    private final PlanDecision plan;
     private final String finishReason;
     private final String reasoningContent;
 
     public LLMResponse(String content, List<ToolCall> toolCalls, String finishReason) {
-        this(content, toolCalls, finishReason, null);
+        this(content, toolCalls, null, finishReason, null);
     }
 
     public LLMResponse(String content, List<ToolCall> toolCalls,
                        String finishReason, String reasoningContent) {
+        this(content, toolCalls, null, finishReason, reasoningContent);
+    }
+
+    public LLMResponse(String content, List<ToolCall> toolCalls, PlanDecision plan,
+                       String finishReason, String reasoningContent) {
         this.content = content;
         this.toolCalls = toolCalls != null ? toolCalls : List.of();
+        this.plan = plan;
         this.finishReason = finishReason;
         this.reasoningContent = reasoningContent;
     }
@@ -39,6 +46,13 @@ public class LLMResponse {
         return "tool_calls".equals(finishReason) && !toolCalls.isEmpty();
     }
 
+    /**
+     * LLM 是否产出了结构化计划
+     */
+    public boolean isPlan() {
+        return "plan".equals(finishReason) && plan != null;
+    }
+
     // ==================== Getters ====================
 
     public String getContent() {
@@ -47,6 +61,10 @@ public class LLMResponse {
 
     public List<ToolCall> getToolCalls() {
         return Collections.unmodifiableList(toolCalls);
+    }
+
+    public PlanDecision getPlan() {
+        return plan;
     }
 
     public String getFinishReason() {
