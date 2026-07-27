@@ -1,7 +1,5 @@
 package com.youkeda.exercise.claw.agent.memory;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.PostConstruct;
@@ -25,7 +23,6 @@ public class SqliteDataStore implements ContextStore {
     private static final Logger log = LoggerFactory.getLogger(SqliteDataStore.class);
 
     private final SqliteContextProperties props;
-    private final ObjectMapper objectMapper;
     private final DataSource dataSource;
 
     // 16 段写锁 — 同一用户写入串行化，不同用户无竞争
@@ -35,9 +32,8 @@ public class SqliteDataStore implements ContextStore {
     // 定时清理
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
-    public SqliteDataStore(SqliteContextProperties props, ObjectMapper objectMapper) {
+    public SqliteDataStore(SqliteContextProperties props) {
         this.props = props;
-        this.objectMapper = objectMapper;
         for (int i = 0; i < SEGMENTS; i++) writeLocks[i] = new Object();
 
         // 初始化 HikariCP 连接池
@@ -45,13 +41,13 @@ public class SqliteDataStore implements ContextStore {
         config.setJdbcUrl("jdbc:sqlite:" + props.getDbPath());
         config.setMaximumPoolSize(5);
         config.setMinimumIdle(1);
-        config.setConnectionInitSql(
-            "PRAGMA journal_mode=WAL;" +
-            "PRAGMA busy_timeout=" + props.getBusyTimeoutMs() + ";" +
-            "PRAGMA synchronous=NORMAL;" +
-            "PRAGMA cache_size=-64000;" +
+        config.setConnectionInitSqls(List.of(
+            "PRAGMA journal_mode=WAL;",
+            "PRAGMA busy_timeout=" + props.getBusyTimeoutMs() + ";",
+            "PRAGMA synchronous=NORMAL;",
+            "PRAGMA cache_size=-64000;",
             "PRAGMA foreign_keys=ON;"
-        );
+        ));
         config.setPoolName("claw-sqlite");
         this.dataSource = new HikariDataSource(config);
     }
@@ -375,15 +371,17 @@ public class SqliteDataStore implements ContextStore {
     @Override
     public void clear(String wxUserId) {
         String botId = resolveBotId();
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "DELETE FROM chat_messages WHERE bot_id = ? AND wx_user_id = ?")) {
-            ps.setString(1, botId);
-            ps.setString(2, wxUserId);
-            ps.executeUpdate();
-            log.debug("已清除用户对话历史 | wxUserId={}", wxUserId);
-        } catch (SQLException e) {
-            log.error("清除对话历史失败 | wxUserId={}", wxUserId, e);
+        synchronized (lockFor(botId, wxUserId)) {
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM chat_messages WHERE bot_id = ? AND wx_user_id = ?")) {
+                ps.setString(1, botId);
+                ps.setString(2, wxUserId);
+                ps.executeUpdate();
+                log.debug("已清除用户对话历史 | wxUserId={}", wxUserId);
+            } catch (SQLException e) {
+                log.error("清除对话历史失败 | wxUserId={}", wxUserId, e);
+            }
         }
     }
 }

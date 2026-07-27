@@ -53,6 +53,12 @@
             <version>3.46.1.0</version>
         </dependency>
 
+        <!-- HikariCP: connection pooling for SQLite -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+
         <!-- Apache Tika: document format detection and text extraction -->
         <dependency>
             <groupId>org.apache.tika</groupId>
