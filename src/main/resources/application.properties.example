@@ -29,6 +29,8 @@ websearch.api.timeout=15
 wechat.ilink.enabled=true
 wechat.ilink.poll-interval-ms=3000
 wechat.ilink.login-poll-interval-ms=3000
+# 机器人登录状态 + 用户数据持久化路径（默认 ./data/claw-bot.db）
+# bot.db-path=./data/claw-bot.db
 
 # ============================================
 # LLM Configuration
@@ -75,6 +77,14 @@ file.parse.max-analyzed-embedded-images=3
 # 腾讯位置服务（lbs.qq.com）API 密钥
 tencent.key=
 
+# ============================================
+# Context Memory Configuration
+# ============================================
+# 上下文存储类型：in-memory（重启丢失）| sqlite（文件持久化）
+# memory.type=sqlite
+# sqlite.path=./data/claw-memory.db
+# sqlite.max-messages=50
+
 place-image.provider=pexels
 
 # ============================================
@@ -82,6 +92,7 @@ place-image.provider=pexels
 # ============================================
 # Pexels åè´¹ API Key æ³¨åå°å: https://www.pexels.com/api/
 pexels.api-key=
+
 # ============================================
 # Long-Term Memory (Qdrant + BGE-M3)
 # ============================================
@@ -117,3 +128,13 @@ memory.embedding.base-url=http://localhost:11434
 memory.embedding.api-key=
 memory.embedding.model=bge-m3
 memory.embedding.dimension=1024
+
+# ============================================
+# Didi MCP Configuration
+# ============================================
+# 滴滴出行 MCP Server（JSON-RPC 2.0 协议）
+# 注册获取 API Key: https://mcp.didichuxing.com
+# 沙箱环境返回 Mock 数据，不影响真实账户
+didi.mcp.base-url=https://mcp.didichuxing.com/mcp-servers-sandbox
+didi.mcp.api-key=
+didi.mcp.timeout=15000

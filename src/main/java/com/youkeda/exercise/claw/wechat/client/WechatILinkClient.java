@@ -6,10 +6,12 @@ import com.github.wechat.ilink.sdk.core.model.CDNMedia;
 import com.github.wechat.ilink.sdk.core.model.MessageItem;
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
 import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import com.youkeda.exercise.claw.wechat.login.LoginPageServer;
 import com.youkeda.exercise.claw.wechat.login.LoginStateManager;
 import com.youkeda.exercise.claw.wechat.login.LoginStatus;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -45,6 +47,8 @@ public class WechatILinkClient {
 
     private final WechatProperties wechatProperties;
     private final ContextStore contextStore;
+    private final BotSessionManager botSessionManager;
+    private final WechatUserManager wechatUserManager;
 
     private ILinkClient client;
 
@@ -56,9 +60,13 @@ public class WechatILinkClient {
         return loggedIn;
     }
 
-    public WechatILinkClient(WechatProperties wechatProperties, ContextStore contextStore) {
+    public WechatILinkClient(WechatProperties wechatProperties, ContextStore contextStore,
+                              BotSessionManager botSessionManager,
+                              WechatUserManager wechatUserManager) {
         this.wechatProperties = wechatProperties;
         this.contextStore = contextStore;
+        this.botSessionManager = botSessionManager;
+        this.wechatUserManager = wechatUserManager;
     }
 
     @PostConstruct
@@ -69,6 +77,14 @@ public class WechatILinkClient {
         }
 
         log.info("微信 iLink 客户端初始化开始 (SDK v2.3.3)");
+
+        if (botSessionManager.wasPreviouslyConnected()) {
+            log.info("上次机器人登录成功: {}，正在尝试重新连接...", botSessionManager.getLastLoginTime());
+        } else if (botSessionManager.getLastStatus() != null) {
+            log.info("上次机器人状态: {} | error={}", botSessionManager.getLastStatus(), botSessionManager.getLastError());
+        } else {
+            log.info("首次启动，需要扫码登录");
+        }
 
         // 关闭 SDK 内置心跳（和 getUpdates 共用一个锁会冲突），自己轮询
         ILinkConfig config = ILinkConfig.builder()
@@ -92,7 +108,7 @@ public class WechatILinkClient {
                     stateManager.updateStatus(LoginStatus.WAITING_SCAN);
                     log.info("qrUrl.length={}", qrResult.length());
 
-                    pageServer = new LoginPageServer(stateManager);
+                    pageServer = new LoginPageServer(stateManager, botSessionManager, wechatUserManager);
                     int port = pageServer.start();
                     openBrowser("http://127.0.0.1:" + port + "/login");
 
@@ -105,10 +121,12 @@ public class WechatILinkClient {
                         loggedIn = true;
                         stateManager.updateStatus(LoginStatus.SUCCESS);
                         log.info("微信登录成功");
+                        botSessionManager.markConnected();
                         Thread.sleep(3000);
                     } else {
                         stateManager.updateStatus(LoginStatus.TIMEOUT);
                         log.error("微信登录超时");
+                        botSessionManager.markFailed("登录超时");
                         Thread.sleep(10000);
                     }
                 } else {
@@ -126,19 +144,20 @@ public class WechatILinkClient {
                     if (client.isLoggedIn()) {
                         loggedIn = true;
                         log.info("微信登录成功");
+                        botSessionManager.markConnected();
                     } else {
                         log.error("微信登录超时");
+                        botSessionManager.markFailed("登录超时");
                     }
                 }
             } catch (Exception e) {
                 log.error("微信登录异常", e);
+                botSessionManager.markFailed(e.getMessage());
                 if (pageServer != null) {
                     try { Thread.sleep(10000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                 }
             } finally {
-                if (pageServer != null) {
-                    pageServer.stop();
-                }
+                // 不再 stop server——它作为永久控制台持续运行
             }
         });
     }
