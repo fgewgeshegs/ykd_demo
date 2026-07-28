@@ -12,13 +12,16 @@ import com.youkeda.exercise.claw.campus.store.CampusNoticeStore;
 import com.youkeda.exercise.claw.campus.store.PendingAskStore;
 import com.youkeda.exercise.claw.scout.notifier.NotificationService;
 import com.youkeda.exercise.claw.scout.judge.Recommendation;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
+@ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
 public class CampusNoticeProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(CampusNoticeProcessor.class);
@@ -30,6 +33,7 @@ public class CampusNoticeProcessor {
     private final CampusNotificationPolicy policy;
     private final PendingAskStore pendingAskStore;
     private final NotificationService notificationService;
+    private final WechatUserManager userManager;
 
     public CampusNoticeProcessor(CampusNoticeCollector collector,
                                   CampusNoticeStore noticeStore,
@@ -37,7 +41,8 @@ public class CampusNoticeProcessor {
                                   ExamLLMClassifier llmClassifier,
                                   CampusNotificationPolicy policy,
                                   PendingAskStore pendingAskStore,
-                                  NotificationService notificationService) {
+                                  NotificationService notificationService,
+                                  WechatUserManager userManager) {
         this.collector = collector;
         this.noticeStore = noticeStore;
         this.ruleClassifier = ruleClassifier;
@@ -45,6 +50,7 @@ public class CampusNoticeProcessor {
         this.policy = policy;
         this.pendingAskStore = pendingAskStore;
         this.notificationService = notificationService;
+        this.userManager = userManager;
     }
 
     public void process(CampusConfig config) {
@@ -114,10 +120,11 @@ public class CampusNoticeProcessor {
     }
 
     private void notifyUser(NoticeItem notice, ExamClassification classification) {
+        String userId = userManager.getOwnerUserId();
         String richMessage = formatNotification(notice, classification);
-        notificationService.notify(null, List.of(new Recommendation(
+        notificationService.notify(userId, List.of(new Recommendation(
             "exam_" + classification.type().name(),
-            null,
+            userId,
             notice.getTitle(),
             typeDisplayName(classification.type()) + "考试提醒",
             classification.reason(),
@@ -130,12 +137,13 @@ public class CampusNoticeProcessor {
     }
 
     private void askUser(NoticeItem notice, ExamClassification classification) {
+        String userId = userManager.getOwnerUserId();
         String question = "检测到新的「" + typeDisplayName(classification.type()) + "」通知："
             + notice.getTitle() + "，\n需要提醒你吗？（回复 需要/不需要）";
 
-        notificationService.notify(null, List.of(new Recommendation(
+        notificationService.notify(userId, List.of(new Recommendation(
             "ask_" + classification.type().name(),
-            null,
+            userId,
             notice.getTitle() + " - 是否需要提醒",
             "需要用户确认",
             classification.reason(),

@@ -7,12 +7,15 @@ import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import com.youkeda.exercise.claw.campus.model.CampusConfig;
 import com.youkeda.exercise.claw.campus.store.CampusConfigStore;
+import com.youkeda.exercise.claw.campus.store.PendingAskStore;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -24,13 +27,16 @@ public class ExamReminderFunction implements LLMFunction {
     private final CampusConfigStore configStore;
     private final LLMFunctionRegistry functionRegistry;
     private final ObjectMapper objectMapper;
+    private final PendingAskStore pendingAskStore;
 
     public ExamReminderFunction(CampusConfigStore configStore,
                                  LLMFunctionRegistry functionRegistry,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 PendingAskStore pendingAskStore) {
         this.configStore = configStore;
         this.functionRegistry = functionRegistry;
         this.objectMapper = objectMapper;
+        this.pendingAskStore = pendingAskStore;
     }
 
     @PostConstruct
@@ -68,9 +74,17 @@ public class ExamReminderFunction implements LLMFunction {
 
         var actionProp = properties.putObject("action");
         actionProp.put("type", "string");
-        actionProp.put("description", "操作类型：setup=首次设置, modify=修改, query=查询, disable=关闭");
+        actionProp.put("description", "操作类型：setup=首次设置, modify=修改, query=查询, disable=关闭, answer=回答是否需要提醒");
         actionProp.set("enum", objectMapper.createArrayNode()
-            .add("setup").add("modify").add("query").add("disable"));
+            .add("setup").add("modify").add("query").add("disable").add("answer"));
+
+        var noticeTypeProp = properties.putObject("noticeType");
+        noticeTypeProp.put("type", "string");
+        noticeTypeProp.put("description", "考试通知类型，如 FINAL_EXAM、CET、RETAKE 等（action=answer 时需要）");
+
+        var answerProp = properties.putObject("answer");
+        answerProp.put("type", "string");
+        answerProp.put("description", "用户的回答：yes=需要提醒, no=不需要（action=answer 时需要）");
 
         root.set("required", objectMapper.createArrayNode().add("action"));
 
@@ -79,7 +93,7 @@ public class ExamReminderFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return "{\"status\":\"ERROR\",\"message\":\"需要用户上下文\"}";
+        return execute(argumentsJson, null);
     }
 
     @Override
@@ -92,6 +106,7 @@ public class ExamReminderFunction implements LLMFunction {
                 case "setup", "modify" -> handleSetup(args);
                 case "query" -> handleQuery();
                 case "disable" -> handleDisable();
+                case "answer" -> handleAnswer(args);
                 default -> "{\"status\":\"ERROR\",\"message\":\"未知操作: " + action + "\"}";
             };
 
@@ -147,5 +162,34 @@ public class ExamReminderFunction implements LLMFunction {
             configStore.save(config);
         }
         return "{\"status\":\"SUCCESS\",\"message\":\"已关闭考试提醒。再次发送'设置考试提醒'重新开启。\"}";
+    }
+
+    private String handleAnswer(JsonNode args) throws Exception {
+        String noticeType = args.path("noticeType").asText("");
+        String answer = args.path("answer").asText("");
+
+        if (noticeType.isBlank() || answer.isBlank()) {
+            return "{\"status\":\"ERROR\",\"message\":\"请提供 noticeType 和 answer 参数\"}";
+        }
+
+        pendingAskStore.updateAnswer(noticeType, answer);
+        log.info("用户回答了考试提醒询问 | noticeType={} | answer={}", noticeType, answer);
+
+        if ("yes".equals(answer)) {
+            CampusConfig config = configStore.get();
+            if (config != null) {
+                List<String> currentTypes = new ArrayList<>(config.getPreferences().getAutoPushTypes());
+                if (!currentTypes.contains(noticeType)) {
+                    currentTypes.add(noticeType);
+                    config.getPreferences().setAutoPushTypes(currentTypes);
+                    configStore.save(config);
+                }
+            }
+        }
+
+        return objectMapper.writeValueAsString(Map.of(
+            "status", "SUCCESS",
+            "message", "已记录你的回答"
+        ));
     }
 }

@@ -99,6 +99,11 @@ pexels.api-key=
 spring.datasource.url=jdbc:sqlite:data/claw.db
 spring.datasource.driver-class-name=org.sqlite.JDBC
 
+# ============================================
+# Campus Exam Reminder（考试提醒）
+# ============================================
+campus.enabled=true
+
 storage.enabled=true
 
 # ============================================
