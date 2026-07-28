@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
+import com.youkeda.exercise.claw.agent.memory.longterm.MemoryItem;
 import com.youkeda.exercise.claw.agent.model.*;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
@@ -72,6 +74,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final PlanStore planStore;
     private final PlanValidator planValidator;
     private final SafetyPolicy safetyPolicy;
+    private final LongTermMemoryService longTermMemoryService;
 
     public ReActAgentExecutor(LLMClient llmClient,
                                LLMFunctionRegistry functionRegistry,
@@ -79,7 +82,8 @@ public class ReActAgentExecutor implements AgentExecutor {
                                ObjectMapper objectMapper,
                                PlanStore planStore,
                                PlanValidator planValidator,
-                               SafetyPolicy safetyPolicy) {
+                               SafetyPolicy safetyPolicy,
+                               LongTermMemoryService longTermMemoryService) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
@@ -87,6 +91,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.planStore = planStore;
         this.planValidator = planValidator;
         this.safetyPolicy = safetyPolicy;
+        this.longTermMemoryService = longTermMemoryService;
     }
 
     @Override
@@ -114,6 +119,14 @@ public class ReActAgentExecutor implements AgentExecutor {
             messages.add(new Message("user", userMessage));
         }
 
+        // 2.5 长期记忆召回：根据当前消息语义检索相关记忆，注入消息列表
+        List<MemoryItem> recalledMemories = longTermMemoryService.recall(userId, userMessage);
+        if (!recalledMemories.isEmpty()) {
+            String memoryPrompt = longTermMemoryService.buildMemoryPrompt(recalledMemories);
+            messages.add(0, new Message("system", memoryPrompt));
+            log.debug("长期记忆已注入 | userId={} | count={}", userId, recalledMemories.size());
+        }
+
         // 3. 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
         if (!continuationRequest && isSimpleChat(userMessage)) {
             log.debug("快速通道：用户消息不需工具，走纯对话 | user={}", userId);
@@ -124,6 +137,10 @@ public class ReActAgentExecutor implements AgentExecutor {
                 String reply = quickResponse.getContent();
                 log.info("快速对话回复 | user={} | reply={}", userId, reply);
                 contextStore.append(userId, "assistant", reply);
+                // 异步提取长期记忆
+                final String fastUserMsg = userMessage;
+                final String fastReply = reply;
+                longTermMemoryService.processAndStoreAsync(userId, fastUserMsg, fastReply);
                 return reply;
             }
             log.warn("快速对话路径异常，回退到工具循环 | user={}", userId);
@@ -192,6 +209,10 @@ public class ReActAgentExecutor implements AgentExecutor {
                 String reply = response.getContent();
                 log.info("LLM 直接回复 | user={} | reply={}", userId, reply);
                 contextStore.append(userId, "assistant", reply);
+                // 异步提取长期记忆
+                final String directUserMsg = userMessage;
+                final String directReply = reply;
+                longTermMemoryService.processAndStoreAsync(userId, directUserMsg, directReply);
                 return reply;
             }
 
@@ -300,7 +321,12 @@ public class ReActAgentExecutor implements AgentExecutor {
 
         // 6. 达到局部上限，兜底回复
         log.warn("工具调用循环达到上限 {} 轮 | user={}", MAX_ROUNDS, userId);
-        return synthesizeWithExistingResults(userId, messages);
+        String synthesizedReply = synthesizeWithExistingResults(userId, messages);
+        // 异步提取长期记忆
+        final String synthUserMsg = userMessage;
+        final String synthReply = synthesizedReply;
+        longTermMemoryService.processAndStoreAsync(userId, synthUserMsg, synthReply);
+        return synthesizedReply;
     }
 
     // ==================== 错误与兜底 ====================
