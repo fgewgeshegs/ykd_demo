@@ -114,4 +114,14 @@ class WechatUserManagerTest {
         assertDoesNotThrow(() -> manager.recordInteraction("user_B", null));
         assertDoesNotThrow(() -> manager.recordInteraction("user_C", ""));
     }
+
+    @Test
+    void shouldReturnPersistedOwnerAfterRestart() {
+        manager.recordInteraction("owner");
+
+        WechatUserManager restarted = new WechatUserManager(dbPath);
+        restarted.init();
+
+        assertEquals("owner", restarted.getOwnerUserId());
+    }
 }
