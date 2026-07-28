@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 线程安全
  */
 @Component
-@ConditionalOnProperty(name = "context.redis.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "storage.enabled", havingValue = "false", matchIfMissing = true)
 public class InMemoryContextStore implements ContextStore {
 
     /** 单用户最大消息条数 */

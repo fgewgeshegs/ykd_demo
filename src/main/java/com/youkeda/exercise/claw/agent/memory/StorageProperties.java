@@ -4,13 +4,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Redis 上下文配置
+ * 存储配置（SQLite / 内存切换）
  */
 @Component
-@ConfigurationProperties(prefix = "context.redis")
-public class RedisContextProperties {
+@ConfigurationProperties(prefix = "storage")
+public class StorageProperties {
 
-    /** 是否启用 Redis 存储（false 时用内存存储） */
+    /** 是否启用 SQLite 存储（false 时用内存存储） */
     private boolean enabled = false;
 
     /** 消息过期天数 */

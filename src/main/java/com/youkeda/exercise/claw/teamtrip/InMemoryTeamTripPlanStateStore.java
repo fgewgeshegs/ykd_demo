@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** 内存版团建方案状态存储。 */
 @Component
-@ConditionalOnProperty(name = "context.redis.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "storage.enabled", havingValue = "false", matchIfMissing = true)
 public class InMemoryTeamTripPlanStateStore implements TeamTripPlanStateStore {
 
     private final ConcurrentHashMap<String, TeamTripPlanDraft> store = new ConcurrentHashMap<>();

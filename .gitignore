@@ -70,3 +70,6 @@ designs/
 io/
 grpc/
 META-INF/
+
+# SQLite 数据库文件
+data/
