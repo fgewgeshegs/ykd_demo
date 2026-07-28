@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.dao.EmptyResultDataAccessException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -31,18 +32,23 @@ public class CampusConfigStore {
     public CampusConfig get() {
         try {
             return jdbc.queryForObject("SELECT * FROM campus_config ORDER BY id DESC LIMIT 1", new ConfigRowMapper());
+        } catch (EmptyResultDataAccessException e) {
+            log.debug("尚无 campus_config 记录");
+            return null;
         } catch (Exception e) {
+            log.warn("查询 campus_config 失败", e);
             return null;
         }
     }
 
     public void save(CampusConfig config) {
-        String extraJson = "{}";
+        String extraJson;
         try {
             extraJson = objectMapper.writeValueAsString(
                 config.getPreferences() != null ? config.getPreferences() : new ExamPreferences());
         } catch (Exception e) {
-            log.warn("序列化 ExamPreferences 失败", e);
+            log.error("序列化 ExamPreferences 失败", e);
+            throw new RuntimeException("序列化 ExamPreferences 失败", e);
         }
 
         long now = System.currentTimeMillis() / 1000;

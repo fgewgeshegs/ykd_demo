@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.dao.EmptyResultDataAccessException;
 import java.util.Optional;
 
 @Repository
@@ -29,7 +30,11 @@ public class PendingAskStore {
                 ORDER BY asked_at DESC LIMIT 1
                 """, String.class, noticeType);
             return Optional.ofNullable(answer);
+        } catch (EmptyResultDataAccessException e) {
+            log.debug("尚无已回答的记录 | noticeType={}", noticeType);
+            return Optional.empty();
         } catch (Exception e) {
+            log.warn("查询最新回答失败 | noticeType={}", noticeType, e);
             return Optional.empty();
         }
     }
