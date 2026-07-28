@@ -114,14 +114,14 @@ public class CampusNoticeProcessor {
     }
 
     private void notifyUser(NoticeItem notice, ExamClassification classification) {
-        String message = formatNotification(notice, classification);
+        String richMessage = formatNotification(notice, classification);
         notificationService.notify(null, List.of(new Recommendation(
             "exam_" + classification.type().name(),
             null,
             notice.getTitle(),
             typeDisplayName(classification.type()) + "考试提醒",
             classification.reason(),
-            "请查看通知详情: " + notice.getUrl(),
+            richMessage,
             notice.getUrl(),
             1.0f,
             System.currentTimeMillis()
@@ -168,7 +168,7 @@ public class CampusNoticeProcessor {
             case COMPUTER_LEVEL -> "计算机等级考试";
             case PUTONGHUA -> "普通话测试";
             case OTHER_EXAM -> "其他考试";
-            default -> type.name();
+            default -> "未知类型";
         };
     }
 
