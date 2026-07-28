@@ -27,16 +27,11 @@ public class SqliteDataStore implements ContextStore {
     private final SqliteContextProperties props;
     private final DataSource dataSource;
 
-    // 16 段写锁 — 同一用户写入串行化，不同用户无竞争
-    private static final int SEGMENTS = 16;
-    private final Object[] writeLocks = new Object[SEGMENTS];
-
     // 定时清理
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     public SqliteDataStore(SqliteContextProperties props) {
         this.props = props;
-        for (int i = 0; i < SEGMENTS; i++) writeLocks[i] = new Object();
 
         // 确保数据库父目录存在
         try {
@@ -100,7 +95,6 @@ public class SqliteDataStore implements ContextStore {
                 CREATE TABLE IF NOT EXISTS chat_messages (
                     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
                     bot_id              TEXT    NOT NULL,
-                    wx_user_id          TEXT    NOT NULL,
                     role                TEXT    NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
                     content             TEXT,
                     media_encrypt_param TEXT,
@@ -110,12 +104,8 @@ public class SqliteDataStore implements ContextStore {
                 )
             """);
             stmt.execute("""
-                CREATE INDEX IF NOT EXISTS idx_msg_lookup
-                    ON chat_messages(bot_id, wx_user_id, created_at DESC)
-            """);
-            stmt.execute("""
-                CREATE INDEX IF NOT EXISTS idx_msg_prefix
-                    ON chat_messages(bot_id, wx_user_id, substr(content, 1, 200))
+                CREATE INDEX IF NOT EXISTS idx_msg_created_at
+                    ON chat_messages(created_at DESC)
             """);
         } catch (SQLException e) {
             throw new RuntimeException("初始化 SQLite 表结构失败", e);
@@ -139,13 +129,6 @@ public class SqliteDataStore implements ContextStore {
                 log.warn("TTL 清理失败", e);
             }
         }, 1, 1, TimeUnit.DAYS);
-    }
-
-    // ==================== 写锁 ====================
-
-    private Object lockFor(String botId, String wxUserId) {
-        int idx = Math.floorMod((botId + ":" + wxUserId).hashCode(), SEGMENTS);
-        return writeLocks[idx];
     }
 
     // ==================== BotSession 操作 ====================
@@ -231,19 +214,18 @@ public class SqliteDataStore implements ContextStore {
     }
 
     @Override
-    public List<Message> getHistory(String wxUserId, int maxMessages) {
+    public List<Message> getHistory(int maxMessages) {
         String botId = resolveBotId();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement("""
                 SELECT role, content, media_encrypt_param, media_aes_key, media_url
                 FROM chat_messages
-                WHERE bot_id = ? AND wx_user_id = ?
+                WHERE bot_id = ?
                 ORDER BY id DESC
                 LIMIT ?
             """)) {
             ps.setString(1, botId);
-            ps.setString(2, wxUserId);
-            ps.setInt(3, maxMessages);
+            ps.setInt(2, maxMessages);
             ResultSet rs = ps.executeQuery();
             List<Message> result = new ArrayList<>();
             while (rs.next()) {
@@ -258,84 +240,78 @@ public class SqliteDataStore implements ContextStore {
             Collections.reverse(result);
             return result;
         } catch (SQLException e) {
-            log.error("读取对话历史失败 | wxUserId={}", wxUserId, e);
+            log.error("读取对话历史失败", e);
             return List.of();
         }
     }
 
     @Override
-    public void append(String wxUserId, String role, String content) {
-        append(wxUserId, role, content, null, null, null);
+    public void append(String role, String content) {
+        append(role, content, null, null, null);
     }
 
     @Override
-    public void append(String wxUserId, String role, String content,
+    public void append(String role, String content,
                        String mediaEncryptParam, String mediaAesKey, String mediaUrl) {
         String botId = resolveBotId();
-        synchronized (lockFor(botId, wxUserId)) {
-            try (Connection conn = dataSource.getConnection()) {
-                conn.setAutoCommit(false);
-                try {
-                    // 插入新消息
-                    try (PreparedStatement ps = conn.prepareStatement("""
-                        INSERT INTO chat_messages(bot_id, wx_user_id, role, content,
-                            media_encrypt_param, media_aes_key, media_url, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """)) {
-                        ps.setString(1, botId);
-                        ps.setString(2, wxUserId);
-                        ps.setString(3, role);
-                        ps.setString(4, content);
-                        ps.setString(5, mediaEncryptParam);
-                        ps.setString(6, mediaAesKey);
-                        ps.setString(7, mediaUrl);
-                        ps.setLong(8, System.currentTimeMillis());
-                        ps.executeUpdate();
-                    }
-
-                    // 惰性淘汰：只保留最近 N 条
-                    try (PreparedStatement ps = conn.prepareStatement("""
-                        DELETE FROM chat_messages
-                        WHERE bot_id = ? AND wx_user_id = ? AND id NOT IN (
-                            SELECT id FROM chat_messages
-                            WHERE bot_id = ? AND wx_user_id = ?
-                            ORDER BY id DESC
-                            LIMIT ?
-                        )
-                    """)) {
-                        ps.setString(1, botId);
-                        ps.setString(2, wxUserId);
-                        ps.setString(3, botId);
-                        ps.setString(4, wxUserId);
-                        ps.setInt(5, props.getMaxMessages());
-                        ps.executeUpdate();
-                    }
-
-                    conn.commit();
-                } catch (SQLException e) {
-                    conn.rollback();
-                    throw e;
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                // 插入新消息
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    INSERT INTO chat_messages(bot_id, role, content,
+                        media_encrypt_param, media_aes_key, media_url, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """)) {
+                    ps.setString(1, botId);
+                    ps.setString(2, role);
+                    ps.setString(3, content);
+                    ps.setString(4, mediaEncryptParam);
+                    ps.setString(5, mediaAesKey);
+                    ps.setString(6, mediaUrl);
+                    ps.setLong(7, System.currentTimeMillis());
+                    ps.executeUpdate();
                 }
+
+                // 惰性淘汰：只保留最近 N 条
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    DELETE FROM chat_messages
+                    WHERE bot_id = ? AND id NOT IN (
+                        SELECT id FROM chat_messages
+                        WHERE bot_id = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                    )
+                """)) {
+                    ps.setString(1, botId);
+                    ps.setString(2, botId);
+                    ps.setInt(3, props.getMaxMessages());
+                    ps.executeUpdate();
+                }
+
+                conn.commit();
             } catch (SQLException e) {
-                log.error("追加消息失败 | wxUserId={}", wxUserId, e);
+                conn.rollback();
+                throw e;
             }
+        } catch (SQLException e) {
+            log.error("追加消息失败", e);
         }
     }
 
     @Override
-    public Message findLastByPrefix(String wxUserId, String contentPrefix) {
+    public Message findLastByPrefix(String contentPrefix) {
         String botId = resolveBotId();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement("""
                 SELECT role, content, media_encrypt_param, media_aes_key, media_url
                 FROM chat_messages
-                WHERE bot_id = ? AND wx_user_id = ? AND content LIKE ? || '%'
+                WHERE bot_id = ? AND content LIKE ? || '%'
                 ORDER BY id DESC
                 LIMIT 1
             """)) {
             ps.setString(1, botId);
-            ps.setString(2, wxUserId);
-            ps.setString(3, contentPrefix);
+            ps.setString(2, contentPrefix);
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 return new Message(
@@ -347,25 +323,24 @@ public class SqliteDataStore implements ContextStore {
                 );
             }
         } catch (SQLException e) {
-            log.error("findLastByPrefix 失败 | wxUserId={}", wxUserId, e);
+            log.error("findLastByPrefix 失败", e);
         }
         return null;
     }
 
     @Override
-    public List<Message> findAllByPrefix(String wxUserId, String contentPrefix) {
+    public List<Message> findAllByPrefix(String contentPrefix) {
         String botId = resolveBotId();
         List<Message> result = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement("""
                 SELECT role, content, media_encrypt_param, media_aes_key, media_url
                 FROM chat_messages
-                WHERE bot_id = ? AND wx_user_id = ? AND content LIKE ? || '%'
+                WHERE bot_id = ? AND content LIKE ? || '%'
                 ORDER BY id ASC
             """)) {
             ps.setString(1, botId);
-            ps.setString(2, wxUserId);
-            ps.setString(3, contentPrefix);
+            ps.setString(2, contentPrefix);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 result.add(new Message(
@@ -377,25 +352,22 @@ public class SqliteDataStore implements ContextStore {
                 ));
             }
         } catch (SQLException e) {
-            log.error("findAllByPrefix 失败 | wxUserId={}", wxUserId, e);
+            log.error("findAllByPrefix 失败", e);
         }
         return result;
     }
 
     @Override
-    public void clear(String wxUserId) {
+    public void clear() {
         String botId = resolveBotId();
-        synchronized (lockFor(botId, wxUserId)) {
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                     "DELETE FROM chat_messages WHERE bot_id = ? AND wx_user_id = ?")) {
-                ps.setString(1, botId);
-                ps.setString(2, wxUserId);
-                ps.executeUpdate();
-                log.debug("已清除用户对话历史 | wxUserId={}", wxUserId);
-            } catch (SQLException e) {
-                log.error("清除对话历史失败 | wxUserId={}", wxUserId, e);
-            }
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "DELETE FROM chat_messages WHERE bot_id = ?")) {
+            ps.setString(1, botId);
+            ps.executeUpdate();
+            log.debug("已清除对话历史");
+        } catch (SQLException e) {
+            log.error("清除对话历史失败", e);
         }
     }
 }

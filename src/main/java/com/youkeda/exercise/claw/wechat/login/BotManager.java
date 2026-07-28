@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wechat.ilink.sdk.core.context.ResumeContext;
 import com.github.wechat.ilink.sdk.core.login.LoginContext;
 import com.youkeda.exercise.claw.agent.memory.SqliteDataStore;
+import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -28,11 +29,14 @@ public class BotManager {
 
     private final SqliteDataStore sqliteDataStore;
     private final ObjectMapper objectMapper;
+    private final BotSessionManager botSessionManager;
     private BotInstance bot;
 
-    public BotManager(SqliteDataStore sqliteDataStore, ObjectMapper objectMapper) {
+    public BotManager(SqliteDataStore sqliteDataStore, ObjectMapper objectMapper,
+                      BotSessionManager botSessionManager) {
         this.sqliteDataStore = sqliteDataStore;
         this.objectMapper = objectMapper;
+        this.botSessionManager = botSessionManager;
     }
 
     @PostConstruct
@@ -83,7 +87,7 @@ public class BotManager {
                     stateManager.updateQrUrl(qrResult);
                     stateManager.updateStatus(LoginStatus.WAITING_SCAN);
 
-                    pageServer = new LoginPageServer(stateManager);
+                    pageServer = new LoginPageServer(stateManager, botSessionManager);
                     int port = pageServer.start();
                     openBrowser("http://127.0.0.1:" + port + "/login");
 

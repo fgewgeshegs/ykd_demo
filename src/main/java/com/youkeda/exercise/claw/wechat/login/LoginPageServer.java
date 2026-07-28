@@ -3,7 +3,6 @@ package com.youkeda.exercise.claw.wechat.login;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,21 +10,18 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 微信 ClawBot 控制台 Dashboard。
  *
  * <p>永久 HTTP 服务，不再随登录流程销毁。
- * 左侧显示二维码/连接状态，右侧显示机器人状态与用户列表。
+ * 左侧显示二维码/连接状态，右侧显示机器人状态。
  *
  * <p>API 端点：
  * <ul>
  *   <li>{@code GET /login} — 控制台 HTML 页面</li>
  *   <li>{@code GET /login/status} — 登录过程状态 {@code LoginStatus}（向后兼容）</li>
  *   <li>{@code GET /api/bot/status} — 机器人连接状态 JSON</li>
- *   <li>{@code GET /api/users} — 微信用户列表 JSON</li>
  * </ul>
  */
 public class LoginPageServer {
@@ -34,17 +30,14 @@ public class LoginPageServer {
 
     private final LoginStateManager stateManager;
     private final BotSessionManager botSessionManager;
-    private final WechatUserManager wechatUserManager;
 
     private HttpServer server;
     private volatile int port = -1;
 
     public LoginPageServer(LoginStateManager stateManager,
-                           BotSessionManager botSessionManager,
-                           WechatUserManager wechatUserManager) {
+                           BotSessionManager botSessionManager) {
         this.stateManager = stateManager;
         this.botSessionManager = botSessionManager;
-        this.wechatUserManager = wechatUserManager;
     }
 
     /** 启动 HTTP 服务，返回实际绑定端口 */
@@ -53,7 +46,6 @@ public class LoginPageServer {
         server.createContext("/login", this::handleLogin);
         server.createContext("/login/status", this::handleStatus);
         server.createContext("/api/bot/status", this::handleBotStatus);
-        server.createContext("/api/users", this::handleUsers);
         server.setExecutor(null);
         server.start();
         port = server.getAddress().getPort();
@@ -113,36 +105,6 @@ public class LoginPageServer {
             json.append(",\"error\":\"").append(jsonEscape(error)).append("\"");
         }
         json.append("}");
-
-        byte[] bytes = json.toString().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-        exchange.sendResponseHeaders(200, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-        }
-    }
-
-    /** GET /api/users — 微信用户列表 */
-    private void handleUsers(HttpExchange exchange) throws IOException {
-        List<WechatUserManager.UserRecord> users = wechatUserManager.getAllUsers();
-        int total = users.size();
-
-        StringBuilder json = new StringBuilder();
-        json.append("{\"total\":").append(total).append(",\"users\":[");
-        for (int i = 0; i < users.size(); i++) {
-            if (i > 0) json.append(",");
-            WechatUserManager.UserRecord u = users.get(i);
-            json.append("{");
-            json.append("\"userId\":\"").append(jsonEscape(u.userId())).append("\"");
-            json.append(",\"nickname\":").append(u.nickname() != null ? "\"" + jsonEscape(u.nickname()) + "\"" : "null");
-            json.append(",\"avatarUrl\":").append(u.avatarUrl() != null ? "\"" + jsonEscape(u.avatarUrl()) + "\"" : "null");
-            json.append(",\"lastActiveTime\":\"").append(jsonEscape(u.lastActiveTime())).append("\"");
-            json.append(",\"firstActiveTime\":\"").append(jsonEscape(u.firstActiveTime())).append("\"");
-            json.append(",\"interactionCount\":").append(u.interactionCount());
-            json.append("}");
-        }
-        json.append("]}");
 
         byte[] bytes = json.toString().getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
@@ -226,41 +188,6 @@ public class LoginPageServer {
             "          </div>\n" +
             "        </div>\n" +
             "      </div>\n" +
-            "\n" +
-            "      <!-- 用户统计卡片 -->\n" +
-            "      <div class=\"card card-users\">\n" +
-            "        <div class=\"card-header\">\n" +
-            "          <span class=\"card-icon\">" + ICON_USERS + "</span>\n" +
-            "          在线用户\n" +
-            "        </div>\n" +
-            "        <div class=\"card-body\">\n" +
-            "          <div class=\"user-count-wrap\">\n" +
-            "            <span class=\"user-count-num\" id=\"userCount\">0</span>\n" +
-            "            <span class=\"user-count-label\">位用户</span>\n" +
-            "          </div>\n" +
-            "        </div>\n" +
-            "      </div>\n" +
-            "\n" +
-            "      <!-- 用户列表卡片 -->\n" +
-            "      <div class=\"card card-list\">\n" +
-            "        <div class=\"card-header\">\n" +
-            "          <span class=\"card-icon\">" + ICON_LIST + "</span>\n" +
-            "          用户列表\n" +
-            "        </div>\n" +
-            "        <div class=\"card-body\">\n" +
-            "          <div class=\"user-table\" id=\"userTable\">\n" +
-            "            <div class=\"table-header\">\n" +
-            "              <span class=\"col-user\">用户</span>\n" +
-            "              <span class=\"col-id\">ID</span>\n" +
-            "              <span class=\"col-active\">最近活跃</span>\n" +
-            "              <span class=\"col-count\">消息</span>\n" +
-            "            </div>\n" +
-            "            <div class=\"table-body\" id=\"userTableBody\">\n" +
-            "              <div class=\"table-empty\">暂无用户数据</div>\n" +
-            "            </div>\n" +
-            "          </div>\n" +
-            "        </div>\n" +
-            "      </div>\n" +
             "    </section>\n" +
             "  </main>\n" +
             "</div>\n" +
@@ -297,22 +224,6 @@ public class LoginPageServer {
         "  <circle cx=\"7.5\" cy=\"10.5\" r=\"1.2\" fill=\"white\"/>" +
         "  <circle cx=\"12.5\" cy=\"10.5\" r=\"1.2\" fill=\"white\"/>" +
         "  <path d=\"M7 14a3 3 0 0 1 6 0\" stroke=\"white\" stroke-width=\".8\" stroke-linecap=\"round\"/>" +
-        "</svg>";
-
-    private static final String ICON_USERS =
-        "<svg viewBox=\"0 0 20 20\" width=\"18\" height=\"18\" fill=\"none\">" +
-        "  <circle cx=\"7\" cy=\"7\" r=\"3\" fill=\"#F59E0B\" opacity=\".15\"/>" +
-        "  <path d=\"M2 16c0-2.76 2.24-5 5-5s5 2.24 5 5\" stroke=\"#F59E0B\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>" +
-        "  <circle cx=\"7\" cy=\"7\" r=\"2.5\" fill=\"#F59E0B\"/>" +
-        "  <circle cx=\"14\" cy=\"8\" r=\"2\" fill=\"#6366F1\" opacity=\".15\"/>" +
-        "  <circle cx=\"14\" cy=\"8\" r=\"1.6\" fill=\"#6366F1\"/>" +
-        "  <path d=\"M11 17c0-2.2 1.34-4 3-4s3 1.8 3 4\" stroke=\"#6366F1\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>" +
-        "</svg>";
-
-    private static final String ICON_LIST =
-        "<svg viewBox=\"0 0 20 20\" width=\"18\" height=\"18\" fill=\"none\">" +
-        "  <rect x=\"4\" y=\"3\" width=\"12\" height=\"14\" rx=\"2\" fill=\"#10B981\" opacity=\".1\"/>" +
-        "  <path d=\"M4 7h12M4 10h12M4 13h8\" stroke=\"#10B981\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>" +
         "</svg>";
 
     // ==================== CSS ====================
@@ -474,92 +385,6 @@ public class LoginPageServer {
         .dot-gray { background: #94a3b8; }
         .error-text { color: #dc2626 !important; font-size: 12px; word-break: break-all; }
 
-        /* ===== 用户计数 ===== */
-        .user-count-wrap { text-align: center; padding: 12px 0; }
-        .user-count-num {
-            font-size: 42px; font-weight: 700;
-            color: #6366F1;
-            letter-spacing: -1px;
-            line-height: 1;
-            transition: all 0.3s ease;
-        }
-        .user-count-label {
-            display: block; font-size: 13px; color: #94a3b8;
-            margin-top: 6px;
-        }
-
-        /* ===== 用户列表 ===== */
-        .user-table { font-size: 13px; }
-        .table-header {
-            display: grid;
-            grid-template-columns: 1fr 1.2fr 1fr 60px;
-            gap: 8px;
-            padding: 8px 4px;
-            color: #94a3b8;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        .table-body { min-height: 60px; }
-        .table-row {
-            display: grid;
-            grid-template-columns: 1fr 1.2fr 1fr 60px;
-            gap: 8px;
-            padding: 10px 4px;
-            align-items: center;
-            border-bottom: 1px solid #f8fafc;
-            transition: background 0.15s;
-        }
-        .table-row:hover { background: #f8fafc; }
-        .table-row:last-child { border-bottom: none; }
-        .table-empty {
-            text-align: center; color: #cbd5e1; padding: 24px 0;
-            font-size: 13px;
-        }
-        .user-avatar {
-            width: 28px; height: 28px; border-radius: 50%;
-            background: #e2e8f0;
-            display: inline-flex; align-items: center; justify-content: center;
-            font-size: 12px; font-weight: 600; color: #94a3b8;
-            flex-shrink: 0;
-        }
-        .user-info { display: flex; align-items: center; gap: 8px; }
-        .user-name {
-            font-weight: 500; color: #334155;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            max-width: 90px;
-        }
-        .userId-text {
-            color: #94a3b8; font-size: 11px; font-family: monospace;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .active-time { color: #64748b; font-size: 12px; }
-        .msg-count {
-            font-weight: 600; color: #6366F1;
-            text-align: center;
-        }
-        .status-cell { display: flex; align-items: center; gap: 4px; }
-        .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-
-        /* ===== 动画: 新用户加入 ===== */
-        .table-row.new-user {
-            animation: highlightRow 1.5s ease-out;
-        }
-        @keyframes highlightRow {
-            0% { background: #eef2ff; }
-            100% { background: transparent; }
-        }
-
-        /* ===== 数字跳动 ===== */
-        .count-bump {
-            animation: countBump 0.3s ease-out;
-        }
-        @keyframes countBump {
-            0% { transform: scale(1.15); }
-            100% { transform: scale(1); }
-        }
-
         /* ===== 响应式 ===== */
         @media (max-width: 800px) {
             .main {
@@ -578,7 +403,6 @@ public class LoginPageServer {
         let pollTimer = null;
         let dashboardTimer = null;
         let scannedOnce = false;
-        let knownUserIds = new Set();
 
         // ===== 初始化 =====
         function initLogin(qrUrl) {
@@ -667,11 +491,9 @@ public class LoginPageServer {
         function startDashboardPolling() {
             dashboardTimer = setInterval(function() {
                 fetchBotStatus();
-                fetchUsers();
             }, 3000);
             // 立即执行一次
             fetchBotStatus();
-            fetchUsers();
         }
 
         // ===== 机器人状态 =====
@@ -709,102 +531,11 @@ public class LoginPageServer {
                 });
         }
 
-        // ===== 用户列表 =====
-        function fetchUsers() {
-            fetch('/api/users')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    var countEl = document.getElementById('userCount');
-                    var oldCount = parseInt(countEl.textContent);
-                    var newCount = data.total || 0;
-
-                    // 更新计数
-                    countEl.textContent = newCount;
-                    if (newCount > oldCount) {
-                        countEl.classList.remove('count-bump');
-                        void countEl.offsetWidth;
-                        countEl.classList.add('count-bump');
-                    }
-
-                    var tbody = document.getElementById('userTableBody');
-                    if (!data.users || data.users.length === 0) {
-                        tbody.innerHTML = '<div class="table-empty">暂无用户数据</div>';
-                        return;
-                    }
-
-                    var newIds = new Set();
-                    var html = '';
-                    for (var i = 0; i < data.users.length; i++) {
-                        var u = data.users[i];
-                        newIds.add(u.userId);
-                        var isNew = !knownUserIds.has(u.userId);
-                        var rowClass = 'table-row' + (isNew ? ' new-user' : '');
-
-                        var userIdShort = u.userId.length > 12
-                            ? u.userId.substring(0, 6) + '...' + u.userId.slice(-4)
-                            : u.userId;
-
-                        var displayName = u.nickname || '微信用户';
-                        var avatarLetter = displayName.charAt(0);
-
-                        // 计算活跃状态
-                        var activeLabel = formatActiveTime(u.lastActiveTime);
-                        var isActive = isRecentlyActive(u.lastActiveTime);
-
-                        html += '<div class="' + rowClass + '">';
-                        html += '  <div class="user-info">';
-                        html += '    <span class="user-avatar">' + escapeHtml(avatarLetter) + '</span>';
-                        html += '    <span class="user-name">' + escapeHtml(displayName) + '</span>';
-                        html += '  </div>';
-                        html += '  <span class="userId-text">' + escapeHtml(userIdShort) + '</span>';
-                        html += '  <span class="active-time"><span class="status-dot" style="background:' +
-                            (isActive ? '#22c55e' : '#94a3b8') + ';margin-right:4px;"></span>' +
-                            escapeHtml(activeLabel) + '</span>';
-                        html += '  <span class="msg-count">' + u.interactionCount + '</span>';
-                        html += '</div>';
-                    }
-                    knownUserIds = newIds;
-                    tbody.innerHTML = html;
-                });
-        }
-
         // ===== 工具函数 =====
-
-        function isRecentlyActive(timeStr) {
-            if (!timeStr) return false;
-            try {
-                var then = new Date(timeStr.replace(' ', 'T'));
-                var now = new Date();
-                return (now - then) < 30 * 60 * 1000; // 30分钟内算活跃
-            } catch(e) { return false; }
-        }
-
-        function formatActiveTime(timeStr) {
-            if (!timeStr) return '未知';
-            try {
-                var then = new Date(timeStr.replace(' ', 'T'));
-                var now = new Date();
-                var diffMs = now - then;
-                var diffMin = Math.floor(diffMs / 60000);
-                if (diffMin < 1) return '刚刚';
-                if (diffMin < 60) return diffMin + '分钟前';
-                var diffHour = Math.floor(diffMin / 60);
-                if (diffHour < 24) return diffHour + '小时前';
-                var diffDay = Math.floor(diffHour / 24);
-                if (diffDay < 7) return diffDay + '天前';
-                return timeStr.split(' ')[0];
-            } catch(e) { return timeStr; }
-        }
 
         function setBadge(el, cls, text) {
             el.className = 'badge ' + cls;
             el.textContent = text;
-        }
-
-        function escapeHtml(s) {
-            if (!s) return '';
-            return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;')
-                    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
 
         function showResult(type) {

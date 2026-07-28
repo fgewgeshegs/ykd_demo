@@ -38,8 +38,7 @@ import java.util.Map;
 /**
  * Qdrant 向量存储实现
  *
- * 所有用户共用一个 Collection，通过 payload.userId 过滤隔离。
- * 向量索引：HNSW（默认），payload 索引：userId（keyword）。
+ * 向量索引：HNSW（默认）。
  */
 @Component
 public class QdrantMemoryStore implements MemoryStore {
@@ -108,7 +107,7 @@ public class QdrantMemoryStore implements MemoryStore {
     @Override
     public boolean upsert(MemoryItem item, float[] vector) {
         if (client == null) {
-            log.warn("Qdrant 不可用，跳过写入 | userId={}", item.userId());
+            log.warn("Qdrant 不可用，跳过写入 | id={}", item.id());
             return false;
         }
         try {
@@ -121,7 +120,7 @@ public class QdrantMemoryStore implements MemoryStore {
                     .build();
 
             client.upsertAsync(props.getCollection(), List.of(point)).get();
-            log.debug("记忆写入成功 | id={} | userId={}", item.id(), item.userId());
+            log.debug("记忆写入成功 | id={}", item.id());
             return true;
         } catch (Exception e) {
             log.error("记忆写入失败 | id={}", item.id(), e);
@@ -132,37 +131,37 @@ public class QdrantMemoryStore implements MemoryStore {
     // ==================== 语义检索 ====================
 
     @Override
-    public List<MemoryItem> search(String userId, float[] queryVector, int topK) {
-        return toItems(searchScoredInternal(userId, queryVector, topK, null, null));
+    public List<MemoryItem> search(float[] queryVector, int topK) {
+        return toItems(searchScoredInternal(queryVector, topK, null, null));
     }
 
     @Override
-    public List<MemoryItem> search(String userId, float[] queryVector, int topK,
+    public List<MemoryItem> search(float[] queryVector, int topK,
                                    float minScore) {
-        return toItems(searchScored(userId, queryVector, topK, minScore));
+        return toItems(searchScored(queryVector, topK, minScore));
     }
 
     @Override
-    public List<MemorySearchResult> searchScored(String userId, float[] queryVector,
+    public List<MemorySearchResult> searchScored(float[] queryVector,
                                                  int topK, float minScore) {
-        return searchScoredInternal(userId, queryVector, topK, null, minScore);
+        return searchScoredInternal(queryVector, topK, null, minScore);
     }
 
     @Override
-    public List<MemoryItem> search(String userId, float[] queryVector, int topK,
+    public List<MemoryItem> search(float[] queryVector, int topK,
                                     MemoryCategory category) {
-        return toItems(searchScoredInternal(userId, queryVector, topK, category, null));
+        return toItems(searchScoredInternal(queryVector, topK, category, null));
     }
 
     private List<MemorySearchResult> searchScoredInternal(
-            String userId, float[] queryVector, int topK,
+            float[] queryVector, int topK,
             MemoryCategory category, Float minScore) {
         if (client == null) {
             log.warn("Qdrant 不可用，返回空结果");
             return List.of();
         }
         try {
-            Filter filter = buildUserFilter(userId, category);
+            Filter filter = buildCategoryFilter(category);
 
             SearchPoints.Builder requestBuilder = SearchPoints.newBuilder()
                     .setCollectionName(props.getCollection())
@@ -184,7 +183,7 @@ public class QdrantMemoryStore implements MemoryStore {
             }
             return items;
         } catch (Exception e) {
-            log.error("语义检索失败 | userId={}", userId, e);
+            log.error("语义检索失败", e);
             return List.of();
         }
     }
@@ -196,12 +195,11 @@ public class QdrantMemoryStore implements MemoryStore {
     // ==================== 全量查询 ====================
 
     @Override
-    public List<MemoryItem> getAll(String userId) {
+    public List<MemoryItem> getAll() {
         if (client == null) return List.of();
         try {
             ScrollPoints request = ScrollPoints.newBuilder()
                     .setCollectionName(props.getCollection())
-                    .setFilter(buildUserFilter(userId, null))
                     .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build())
                     .setLimit(1000)
                     .build();
@@ -214,18 +212,18 @@ public class QdrantMemoryStore implements MemoryStore {
             }
             return items;
         } catch (Exception e) {
-            log.error("全量查询失败 | userId={}", userId, e);
+            log.error("全量查询失败", e);
             return List.of();
         }
     }
 
     @Override
-    public MemoryItem findByTopicKey(String userId, String topicKey) {
+    public MemoryItem findByTopicKey(String topicKey) {
         if (client == null || topicKey == null || topicKey.isBlank()) return null;
         try {
             ScrollPoints request = ScrollPoints.newBuilder()
                     .setCollectionName(props.getCollection())
-                    .setFilter(buildUserTopicFilter(userId, topicKey))
+                    .setFilter(buildTopicFilter(topicKey))
                     .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build())
                     .setLimit(10)
                     .build();
@@ -236,7 +234,7 @@ public class QdrantMemoryStore implements MemoryStore {
                     .max(java.util.Comparator.comparing(MemoryItem::updatedAt))
                     .orElse(null);
         } catch (Exception e) {
-            log.error("按主题查询记忆失败 | userId={} | topicKey={}", userId, topicKey, e);
+            log.error("按主题查询记忆失败 | topicKey={}", topicKey, e);
             return null;
         }
     }
@@ -244,13 +242,13 @@ public class QdrantMemoryStore implements MemoryStore {
     // ==================== 删除 ====================
 
     @Override
-    public boolean delete(String userId, String memoryId) {
+    public boolean delete(String memoryId) {
         if (client == null) return false;
         try {
-            Filter filter = buildUserAndIdFilter(userId, memoryId);
+            Filter filter = buildIdFilter(memoryId);
             Long matches = client.countAsync(props.getCollection(), filter, true, null).get();
             if (matches == 0) {
-                log.warn("记忆不存在或不属于当前用户 | userId={} | id={}", userId, memoryId);
+                log.warn("记忆不存在 | id={}", memoryId);
                 return false;
             }
             client.deleteAsync(props.getCollection(), filter).get();
@@ -263,29 +261,31 @@ public class QdrantMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void clear(String userId) {
+    public void clear() {
         if (client == null) return;
         try {
-            client.deleteAsync(props.getCollection(), buildUserFilter(userId, null)).get();
-            log.info("用户记忆已清空 | userId={}", userId);
+            // 清空所有记忆
+            client.deleteAsync(props.getCollection(),
+                    Filter.newBuilder().build()).get();
+            log.info("所有记忆已清空");
         } catch (Exception e) {
-            log.error("清空用户记忆失败 | userId={}", userId, e);
+            log.error("清空记忆失败", e);
         }
     }
 
     @Override
-    public int count(String userId) {
+    public int count() {
         if (client == null) return 0;
         try {
             Long result = client.countAsync(
                     props.getCollection(),
-                    buildUserFilter(userId, null),
+                    Filter.newBuilder().build(),
                     true,
                     null
             ).get();
             return result.intValue();
         } catch (Exception e) {
-            log.error("统计记忆数量失败 | userId={}", userId, e);
+            log.error("统计记忆数量失败", e);
             return 0;
         }
     }
@@ -293,48 +293,39 @@ public class QdrantMemoryStore implements MemoryStore {
     // ==================== 内部方法 ====================
 
     /**
-     * 构建用户过滤条件（Condition 包装 FieldCondition）
+     * 构建分类过滤条件（Condition 包装 FieldCondition）
      */
-    private Filter buildUserFilter(String userId, MemoryCategory category) {
-        Filter.Builder filterBuilder = Filter.newBuilder();
-        filterBuilder.addMust(Condition.newBuilder()
-                .setField(FieldCondition.newBuilder()
-                        .setKey("userId")
-                        .setMatch(Match.newBuilder().setKeyword(userId).build())
+    private Filter buildCategoryFilter(MemoryCategory category) {
+        if (category == null) return Filter.newBuilder().build();
+        return Filter.newBuilder()
+                .addMust(Condition.newBuilder()
+                        .setField(FieldCondition.newBuilder()
+                                .setKey("category")
+                                .setMatch(Match.newBuilder().setKeyword(category.name()).build())
+                                .build())
                         .build())
-                .build());
-
-        if (category != null) {
-            filterBuilder.addMust(Condition.newBuilder()
-                    .setField(FieldCondition.newBuilder()
-                            .setKey("category")
-                            .setMatch(Match.newBuilder().setKeyword(category.name()).build())
-                            .build())
-                    .build());
-        }
-
-        return filterBuilder.build();
+                .build();
     }
 
-    private Filter buildUserAndIdFilter(String userId, String memoryId) {
-        Filter.Builder filterBuilder = buildUserFilter(userId, null).toBuilder();
-        filterBuilder.addMust(Condition.newBuilder()
-                .setHasId(HasIdCondition.newBuilder()
-                        .addHasId(PointId.newBuilder().setUuid(memoryId).build())
+    private Filter buildIdFilter(String memoryId) {
+        return Filter.newBuilder()
+                .addMust(Condition.newBuilder()
+                        .setHasId(HasIdCondition.newBuilder()
+                                .addHasId(PointId.newBuilder().setUuid(memoryId).build())
+                                .build())
                         .build())
-                .build());
-        return filterBuilder.build();
+                .build();
     }
 
-    private Filter buildUserTopicFilter(String userId, String topicKey) {
-        Filter.Builder filterBuilder = buildUserFilter(userId, null).toBuilder();
-        filterBuilder.addMust(Condition.newBuilder()
-                .setField(FieldCondition.newBuilder()
-                        .setKey("topicKey")
-                        .setMatch(Match.newBuilder().setKeyword(topicKey).build())
+    private Filter buildTopicFilter(String topicKey) {
+        return Filter.newBuilder()
+                .addMust(Condition.newBuilder()
+                        .setField(FieldCondition.newBuilder()
+                                .setKey("topicKey")
+                                .setMatch(Match.newBuilder().setKeyword(topicKey).build())
+                                .build())
                         .build())
-                .build());
-        return filterBuilder.build();
+                .build();
     }
 
     /**
@@ -342,7 +333,6 @@ public class QdrantMemoryStore implements MemoryStore {
      */
     private Map<String, Value> buildPayload(MemoryItem item) {
         Map<String, Value> payload = new HashMap<>();
-        payload.put("userId", value(item.userId()));
         payload.put("category", value(item.category().name()));
         payload.put("topicKey", value(item.topicKey()));
         payload.put("content", value(item.content()));
@@ -361,7 +351,6 @@ public class QdrantMemoryStore implements MemoryStore {
      */
     private MemoryItem payloadToMemoryItem(String pointId, Map<String, Value> payload) {
         try {
-            String userId = getString(payload, "userId");
             String categoryStr = getString(payload, "category");
             String topicKey = getString(payload, "topicKey");
             String content = getString(payload, "content");
@@ -375,7 +364,7 @@ public class QdrantMemoryStore implements MemoryStore {
             int hitCount = (int) getDouble(payload, "hitCount");
 
             return new MemoryItem(
-                    pointId, userId,
+                    pointId,
                     MemoryCategory.valueOf(categoryStr),
                     topicKey, content,
                     evidence.isBlank() ? content : evidence,

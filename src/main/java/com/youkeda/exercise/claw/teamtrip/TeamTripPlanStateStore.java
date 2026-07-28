@@ -3,9 +3,9 @@ package com.youkeda.exercise.claw.teamtrip;
 /** 团建方案状态存储。 */
 public interface TeamTripPlanStateStore {
 
-    TeamTripPlanDraft get(String userId);
+    TeamTripPlanDraft get();
 
-    void save(String userId, TeamTripPlanDraft draft);
+    void save(TeamTripPlanDraft draft);
 
-    void clear(String userId);
+    void clear();
 }

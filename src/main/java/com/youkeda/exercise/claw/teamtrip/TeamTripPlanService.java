@@ -42,18 +42,18 @@ public class TeamTripPlanService {
      *
      * @return 业务数据的结果描述，不包含编排指令（stage、next_tool、instruction、output_contract 均已移除）
      */
-    public ObjectNode handle(String userId, JsonNode args) {
+    public ObjectNode handle(JsonNode args) {
         normalizeAliases((ObjectNode) args);
         String action = text(args, "action");
         if ("reset".equals(action)) {
-            stateStore.clear(userId);
+            stateStore.clear();
             ObjectNode result = objectMapper.createObjectNode();
             result.put("status", "RESET");
             result.put("message", "旧方案已清除，请重新收集需求。");
             return result;
         }
 
-        TeamTripPlanDraft draft = stateStore.get(userId);
+        TeamTripPlanDraft draft = stateStore.get();
         if (draft == null) draft = new TeamTripPlanDraft();
         if (args.has("option_count") && args.get("option_count").canConvertToInt()) {
             int optionCount = args.get("option_count").asInt();
@@ -75,12 +75,12 @@ public class TeamTripPlanService {
             case "revise" -> handleRevision(draft, text(args, "feedback"));
             default -> collect(draft);
         };
-        stateStore.save(userId, draft);
+        stateStore.save(draft);
         return result;
     }
 
-    public TeamTripPlanDraft getDraft(String userId) {
-        return stateStore.get(userId);
+    public TeamTripPlanDraft getDraft() {
+        return stateStore.get();
     }
 
     // ==================== Action Handlers ====================

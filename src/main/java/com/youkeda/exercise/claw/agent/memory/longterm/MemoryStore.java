@@ -18,53 +18,52 @@ public interface MemoryStore {
     boolean upsert(MemoryItem item, float[] vector);
 
     /**
-     * 语义检索：给定查询向量，返回当前用户 Top-K 条最相关的记忆
+     * 语义检索：给定查询向量，返回 Top-K 条最相关的记忆
      *
-     * @param userId     用户标识（用于过滤）
      * @param queryVector 查询向量
      * @param topK       返回条数
      * @return 按相似度降序排列的记忆列表
      */
-    List<MemoryItem> search(String userId, float[] queryVector, int topK);
+    List<MemoryItem> search(float[] queryVector, int topK);
 
     /**
      * 语义检索，并过滤低于最低相关度的结果。
      */
-    List<MemoryItem> search(String userId, float[] queryVector, int topK,
+    List<MemoryItem> search(float[] queryVector, int topK,
                             float minScore);
 
     /**
      * 语义检索并保留底层相关度，供服务层结合重要性和时效性重排。
      */
-    List<MemorySearchResult> searchScored(String userId, float[] queryVector,
+    List<MemorySearchResult> searchScored(float[] queryVector,
                                           int topK, float minScore);
 
     /** 按稳定主题键查找最近更新的记忆。 */
-    MemoryItem findByTopicKey(String userId, String topicKey);
+    MemoryItem findByTopicKey(String topicKey);
 
     /**
      * 语义检索 + 分类过滤
      */
-    List<MemoryItem> search(String userId, float[] queryVector, int topK,
+    List<MemoryItem> search(float[] queryVector, int topK,
                             MemoryCategory category);
 
     /**
-     * 获取用户全部记忆（按更新时间降序）
+     * 获取全部记忆（按更新时间降序）
      */
-    List<MemoryItem> getAll(String userId);
+    List<MemoryItem> getAll();
 
     /**
      * 删除一条记忆
      */
-    boolean delete(String userId, String memoryId);
+    boolean delete(String memoryId);
 
     /**
-     * 清除用户全部记忆
+     * 清除全部记忆
      */
-    void clear(String userId);
+    void clear();
 
     /**
-     * 获取用户记忆总数
+     * 获取记忆总数
      */
-    int count(String userId);
+    int count();
 }

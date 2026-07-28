@@ -35,7 +35,7 @@ class ReActAgentExecutorTest {
                         new LLMResponse("请补充必要信息。", List.of(), "stop"));
 
         String reply = fixture.executor.execute(new AgentContext()
-                .setUserId("u1").setMessage("帮我做方案"));
+                .setMessage("帮我做方案"));
 
         assertEquals("请补充必要信息。", reply);
         ArgumentCaptor<List<ToolDefinition>> tools = ArgumentCaptor.forClass(List.class);
@@ -60,7 +60,7 @@ class ReActAgentExecutorTest {
         });
 
         String reply = fixture.executor.execute(new AgentContext()
-                .setUserId("u2").setMessage("生成完整方案"));
+                .setMessage("生成完整方案"));
 
         assertEquals("已根据现有结果整理回复。", reply);
         assertEquals(13, calls.get());
@@ -81,7 +81,7 @@ class ReActAgentExecutorTest {
         });
 
         String reply = fixture.executor.execute(new AgentContext()
-                .setUserId("u-limit").setMessage("生成完整方案"));
+                .setMessage("生成完整方案"));
 
         assertTrue(reply.contains("当前可用信息") || reply.contains("已有结果"));
         assertFalse(reply.contains("处理请求超时"));
@@ -101,7 +101,7 @@ class ReActAgentExecutorTest {
                 .thenReturn(new LLMResponse("继续完成方案。", List.of(), "stop"));
 
         fixture.executor.execute(new AgentContext()
-                .setUserId("u-continue").setMessage("继续生成"));
+                .setMessage("继续生成"));
 
         ArgumentCaptor<List<com.youkeda.exercise.claw.agent.memory.Message>> messages =
                 ArgumentCaptor.forClass(List.class);
@@ -118,7 +118,7 @@ class ReActAgentExecutorTest {
                 .thenReturn(new LLMResponse("你好！有什么可以帮你的？", List.of(), "stop"));
 
         AgentContext context = new AgentContext()
-                .setUserId("u-plan").setMessage("你好");
+                .setMessage("你好");
         String reply = fixture.executor.execute(context);
 
         assertEquals("你好！有什么可以帮你的？", reply);

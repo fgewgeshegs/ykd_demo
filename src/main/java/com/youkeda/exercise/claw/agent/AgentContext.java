@@ -13,11 +13,6 @@ import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 public class AgentContext {
 
     /**
-     * 用户标识
-     */
-    private String userId;
-
-    /**
      * 用户消息文本（TEXT 类型时有效）
      */
     private String message;
@@ -37,15 +32,6 @@ public class AgentContext {
      */
     private PlanState planState;
 
-
-    public String getUserId() {
-        return userId;
-    }
-
-    public AgentContext setUserId(String userId) {
-        this.userId = userId;
-        return this;
-    }
 
     public String getMessage() {
         return message;
