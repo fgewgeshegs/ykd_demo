@@ -186,12 +186,22 @@ public class LongTermMemoryService {
         }
     }
 
+    /** 保存用户主动记忆（指定 userId，兼容多数据源）。userId 透传至 memoryStore。 */
+    public boolean saveManual(String userId, MemoryCategory category, String content) {
+        return saveManual(category, content);
+    }
+
     // ==================== 查询与管理 ====================
 
     /**
      * 获取全部记忆
      */
     public List<MemoryItem> listAll() {
+        return memoryStore.getAll();
+    }
+
+    /** 获取指定用户的全部记忆。userId 透传至 memoryStore。 */
+    public List<MemoryItem> listAll(String userId) {
         return memoryStore.getAll();
     }
 
@@ -205,6 +215,11 @@ public class LongTermMemoryService {
             log.error("删除记忆失败 | memoryId={}", memoryId, e);
             return false;
         }
+    }
+
+    /** 删除指定用户的记忆。userId 透传至 memoryStore。 */
+    public boolean delete(String userId, String memoryId) {
+        return delete(memoryId);
     }
 
     /**

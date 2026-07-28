@@ -46,17 +46,17 @@
             <version>2.3.3</version>
         </dependency>
 
-        <!-- SQLite JDBC: local persistence (replacing Redis) -->
+        <!-- SQLite JDBC -->
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.46.1.0</version>
         </dependency>
 
-        <!-- HikariCP: connection pooling for SQLite -->
+        <!-- Spring Boot JDBC (DataSource + JdbcTemplate) -->
         <dependency>
-            <groupId>com.zaxxer</groupId>
-            <artifactId>HikariCP</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
 
         <!-- Apache Tika: document format detection and text extraction -->

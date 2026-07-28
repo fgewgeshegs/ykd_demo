@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wechat.ilink.sdk.core.context.ResumeContext;
 import com.github.wechat.ilink.sdk.core.login.LoginContext;
-import com.youkeda.exercise.claw.agent.memory.SqliteDataStore;
 import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -27,14 +26,14 @@ public class BotManager {
 
     private static final Logger log = LoggerFactory.getLogger(BotManager.class);
 
-    private final SqliteDataStore sqliteDataStore;
+    private final BotSessionStore botSessionStore;
     private final ObjectMapper objectMapper;
     private final BotSessionManager botSessionManager;
     private BotInstance bot;
 
-    public BotManager(SqliteDataStore sqliteDataStore, ObjectMapper objectMapper,
+    public BotManager(BotSessionStore botSessionStore, ObjectMapper objectMapper,
                       BotSessionManager botSessionManager) {
-        this.sqliteDataStore = sqliteDataStore;
+        this.botSessionStore = botSessionStore;
         this.objectMapper = objectMapper;
         this.botSessionManager = botSessionManager;
     }
@@ -42,8 +41,8 @@ public class BotManager {
     @PostConstruct
     public void init() {
         // 1. 恢复旧 session，机器人立即开始工作
-        List<SqliteDataStore.BotSessionRow> sessions = sqliteDataStore.getActiveBotSessions();
-        for (SqliteDataStore.BotSessionRow row : sessions) {
+        List<BotSessionStore.BotSessionRow> sessions = botSessionStore.getActiveBotSessions();
+        for (BotSessionStore.BotSessionRow row : sessions) {
             try {
                 ResumeContext ctx = deserializeResumeContext(row.resumeContextJson());
                 BotInstance instance = new BotInstance(ctx);
@@ -52,11 +51,11 @@ public class BotManager {
                     log.info("Bot 会话恢复成功 | botId={}", row.botId());
                 } else {
                     log.warn("Bot 会话已过期 | botId={}", row.botId());
-                    sqliteDataStore.disableBotSession(row.botId());
+                    botSessionStore.disableBotSession(row.botId());
                 }
             } catch (Exception e) {
                 log.error("Bot 会话恢复失败 | botId={}", row.botId(), e);
-                sqliteDataStore.disableBotSession(row.botId());
+                botSessionStore.disableBotSession(row.botId());
             }
         }
 
@@ -140,7 +139,7 @@ public class BotManager {
     /** 用新扫码的 bot 替换当前 session，旧 bot 关闭并禁用 */
     private void replaceSession(BotInstance newBot) {
         if (bot != null) {
-            sqliteDataStore.disableBotSession(bot.getBotId());
+            botSessionStore.disableBotSession(bot.getBotId());
             bot.close();
         }
         bot = null;
@@ -173,7 +172,7 @@ public class BotManager {
     public void saveSession(BotInstance instance, String wxNickname) {
         ResumeContext ctx = instance.exportResumeContext();
         String json = serializeResumeContext(ctx);
-        sqliteDataStore.saveBotSession(instance.getBotId(), json, wxNickname);
+        botSessionStore.saveBotSession(instance.getBotId(), json, wxNickname);
         bot = instance;
     }
 

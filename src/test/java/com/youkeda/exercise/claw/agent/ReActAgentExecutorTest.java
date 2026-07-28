@@ -92,7 +92,7 @@ class ReActAgentExecutorTest {
     @Test
     void shouldRemoveLegacyLimitReplyWhenUserContinuesGeneration() {
         Fixture fixture = fixture();
-        when(fixture.contextStore.getHistory(anyString(), anyInt())).thenReturn(List.of(
+        when(fixture.contextStore.getHistory(anyInt())).thenReturn(List.of(
                 new com.youkeda.exercise.claw.agent.memory.Message("user", "生成团建方案"),
                 new com.youkeda.exercise.claw.agent.memory.Message("assistant",
                         "本轮处理步骤已达到上限，请回复" + "“" + "继续生成" + "”" + "。"),
@@ -128,7 +128,7 @@ class ReActAgentExecutorTest {
         ObjectMapper objectMapper = new ObjectMapper();
         LLMClient llmClient = mock(LLMClient.class);
         ContextStore contextStore = mock(ContextStore.class);
-        when(contextStore.getHistory(anyString(), anyInt())).thenReturn(List.of());
+        when(contextStore.getHistory(anyInt())).thenReturn(List.of());
 
         LLMFunctionRegistry registry = new LLMFunctionRegistry();
         registry.register(new LLMFunction() {
@@ -157,7 +157,7 @@ class ReActAgentExecutorTest {
         PlanValidator planValidator = new PlanValidator();
         SafetyPolicy safetyPolicy = new SafetyPolicy();
         LongTermMemoryService longTermMemoryService = mock(LongTermMemoryService.class);
-        when(longTermMemoryService.recall(anyString(), anyString())).thenReturn(List.of());
+        when(longTermMemoryService.recall(anyString())).thenReturn(List.of());
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
                 planStore, planValidator, safetyPolicy, longTermMemoryService);

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -31,10 +32,18 @@ public class TeamTripPlanService {
 
     private final TeamTripPlanStateStore stateStore;
     private final ObjectMapper objectMapper;
+    private final WechatUserManager userManager;
 
-    public TeamTripPlanService(TeamTripPlanStateStore stateStore, ObjectMapper objectMapper) {
+    public TeamTripPlanService(TeamTripPlanStateStore stateStore, ObjectMapper objectMapper,
+                                WechatUserManager userManager) {
         this.stateStore = stateStore;
         this.objectMapper = objectMapper;
+        this.userManager = userManager;
+    }
+
+    private String resolveDefaultUserId() {
+        String id = userManager.getOwnerUserId();
+        return id != null ? id : "default";
     }
 
     /**
@@ -43,17 +52,24 @@ public class TeamTripPlanService {
      * @return 业务数据的结果描述，不包含编排指令（stage、next_tool、instruction、output_contract 均已移除）
      */
     public ObjectNode handle(JsonNode args) {
+        return handle(args, resolveDefaultUserId());
+    }
+
+    /**
+     * 处理团建方案工具调用（指定 userId）。
+     */
+    public ObjectNode handle(JsonNode args, String userId) {
         normalizeAliases((ObjectNode) args);
         String action = text(args, "action");
         if ("reset".equals(action)) {
-            stateStore.clear();
+            stateStore.clear(userId);
             ObjectNode result = objectMapper.createObjectNode();
             result.put("status", "RESET");
             result.put("message", "旧方案已清除，请重新收集需求。");
             return result;
         }
 
-        TeamTripPlanDraft draft = stateStore.get();
+        TeamTripPlanDraft draft = stateStore.get(userId);
         if (draft == null) draft = new TeamTripPlanDraft();
         if (args.has("option_count") && args.get("option_count").canConvertToInt()) {
             int optionCount = args.get("option_count").asInt();
@@ -75,12 +91,12 @@ public class TeamTripPlanService {
             case "revise" -> handleRevision(draft, text(args, "feedback"));
             default -> collect(draft);
         };
-        stateStore.save(draft);
+        stateStore.save(userId, draft);
         return result;
     }
 
     public TeamTripPlanDraft getDraft() {
-        return stateStore.get();
+        return stateStore.get(resolveDefaultUserId());
     }
 
     // ==================== Action Handlers ====================
