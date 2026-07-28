@@ -11,6 +11,8 @@ import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
+import com.youkeda.exercise.claw.memory.model.UserMemoryContext;
+import com.youkeda.exercise.claw.memory.retriever.MemoryRetriever;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -155,9 +157,11 @@ class ReActAgentExecutorTest {
         DefaultPlanStore planStore = new DefaultPlanStore();
         PlanValidator planValidator = new PlanValidator();
         SafetyPolicy safetyPolicy = new SafetyPolicy();
+        MemoryRetriever memoryRetriever = mock(MemoryRetriever.class);
+        when(memoryRetriever.retrieve(anyString(), anyString())).thenReturn(new UserMemoryContext());
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
-                planStore, planValidator, safetyPolicy);
+                planStore, planValidator, safetyPolicy, memoryRetriever);
         return new Fixture(llmClient, executor, contextStore);
     }
 

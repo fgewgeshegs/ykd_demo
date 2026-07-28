@@ -13,6 +13,8 @@ import com.youkeda.exercise.claw.agent.plan.ValidationResult;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.memory.model.UserMemoryContext;
+import com.youkeda.exercise.claw.memory.retriever.MemoryRetriever;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.PlanDecision;
@@ -72,6 +74,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final PlanStore planStore;
     private final PlanValidator planValidator;
     private final SafetyPolicy safetyPolicy;
+    private final MemoryRetriever memoryRetriever;
 
     public ReActAgentExecutor(LLMClient llmClient,
                                LLMFunctionRegistry functionRegistry,
@@ -79,7 +82,8 @@ public class ReActAgentExecutor implements AgentExecutor {
                                ObjectMapper objectMapper,
                                PlanStore planStore,
                                PlanValidator planValidator,
-                               SafetyPolicy safetyPolicy) {
+                               SafetyPolicy safetyPolicy,
+                               MemoryRetriever memoryRetriever) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
@@ -87,6 +91,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.planStore = planStore;
         this.planValidator = planValidator;
         this.safetyPolicy = safetyPolicy;
+        this.memoryRetriever = memoryRetriever;
     }
 
     @Override
@@ -112,6 +117,18 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
         if (!historyContainsCurrentMessage(history, userMessage)) {
             messages.add(new Message("user", userMessage));
+        }
+
+        // === 注入长期记忆上下文 ===
+        UserMemoryContext memoryCtx = memoryRetriever.retrieve(userId, userMessage);
+        if (memoryCtx != null && memoryCtx.hasContent()) {
+            context.setUserMemoryContext(memoryCtx);
+            String memoryStr = memoryCtx.formatForPrompt();
+            if (!memoryStr.isBlank()) {
+                messages.add(0, new Message("system", memoryStr));
+                log.info("注入长期记忆 | user={} | profiles={} | preferences={}",
+                        userId, memoryCtx.getProfiles().size(), memoryCtx.getPreferences().size());
+            }
         }
 
         // 3. 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
