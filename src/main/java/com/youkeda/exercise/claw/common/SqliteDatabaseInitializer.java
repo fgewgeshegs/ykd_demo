@@ -65,6 +65,55 @@ public class SqliteDatabaseInitializer {
             )
         """);
 
+        // 创建校园配置表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS campus_config (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                school      TEXT NOT NULL,
+                class_name  TEXT NOT NULL DEFAULT '',
+                enabled     INTEGER NOT NULL DEFAULT 1,
+                extra_config TEXT,
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+
+        // 创建校园通知表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS campus_notice (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                title             TEXT NOT NULL,
+                url               TEXT NOT NULL UNIQUE,
+                publish_at        TEXT,
+                content           TEXT DEFAULT '',
+                type              TEXT DEFAULT 'UNKNOWN',
+                confidence        REAL DEFAULT 0,
+                score_source      TEXT DEFAULT 'NONE',
+                classifier_reason TEXT DEFAULT '',
+                status            TEXT DEFAULT 'UNPROCESSED',
+                processed_at      INTEGER,
+                created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_url ON campus_notice(url)");
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_status ON campus_notice(status)");
+
+        // 创建待确认通知表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS campus_pending_ask (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                notice_type   TEXT NOT NULL,
+                question      TEXT NOT NULL,
+                answer        TEXT DEFAULT '',
+                status        TEXT DEFAULT 'PENDING',
+                asked_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                answered_at   INTEGER
+            )
+        """);
+        jdbcTemplate.execute("""
+            CREATE INDEX IF NOT EXISTS idx_pending_type ON campus_pending_ask(notice_type, status)
+        """);
+
         log.debug("数据库表结构创建完成");
     }
 
