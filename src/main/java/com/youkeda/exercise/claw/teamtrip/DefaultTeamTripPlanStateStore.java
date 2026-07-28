@@ -1,9 +1,11 @@
 package com.youkeda.exercise.claw.teamtrip;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
-/** 默认团建方案状态存储（基于内存）。单用户场景忽略 userId。 */
+/** 默认团建方案状态存储（基于内存）。单用户场景忽略 userId。当没有其他 TeamTripPlanStateStore 时生效。 */
 @Component
+@ConditionalOnMissingBean(TeamTripPlanStateStore.class)
 public class DefaultTeamTripPlanStateStore implements TeamTripPlanStateStore {
 
     private volatile TeamTripPlanDraft store;
