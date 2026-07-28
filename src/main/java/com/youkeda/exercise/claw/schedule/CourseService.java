@@ -38,14 +38,26 @@ public class CourseService {
     // ==================== 导入 ====================
 
     /**
-     * 从 LLM 返回的 JSON 文本导入课表（解析 + 持久化一步完成）
+     * 从 LLM 返回的 JSON 文本导入课表（解析 + 持久化一步完成），返回冲突信息
      *
      * @param userId  用户标识
      * @param jsonStr LLM 提取的结构化 JSON
-     * @return 导入后的课程列表
+     * @return 导入结果，包含导入数量和冲突列表
      */
-    public List<CourseEntity> importFromJson(String userId, String jsonStr) {
-        return courseParser.parseAndSave(userId, jsonStr, courseRepository);
+    public ImportResult importFromJson(String userId, String jsonStr) {
+        List<CourseEntity> courses = courseParser.parseFromJson(jsonStr);
+        courses.forEach(c -> c.setUserId(userId));
+
+        // 冲突检测（在持久化之前）
+        List<ConflictInfo> conflicts = detectConflicts(userId, courses);
+
+        // replaceAll 覆盖写入
+        courseRepository.replaceAll(userId, courses);
+
+        log.info("课表导入完成 | userId={} | count={} | conflicts={}",
+                userId, courses.size(), conflicts.size());
+
+        return new ImportResult(courses.size(), conflicts);
     }
 
     /**
@@ -204,6 +216,27 @@ public class CourseService {
     // ==================== 内部类 ====================
 
     /**
+     * 课程冲突信息
+     *
+     * @param existingCourse 数据库中已有的课程
+     * @param newCourse      待导入的新课程
+     * @param description    冲突描述文本，如"高等数学(1-2节) 与 数据结构(1-2节) 在周一冲突"
+     */
+    public record ConflictInfo(
+            CourseEntity existingCourse,
+            CourseEntity newCourse,
+            String description
+    ) {}
+
+    /**
+     * 导入结果
+     *
+     * @param count     导入的课程数量
+     * @param conflicts 冲突列表（可能为空）
+     */
+    public record ImportResult(int count, List<ConflictInfo> conflicts) {}
+
+    /**
      * 空闲时间段
      *
      * @param startPeriod 开始节次
@@ -224,5 +257,81 @@ public class CourseService {
             String timeRange = (startTime.isEmpty() ? "" : (" (" + startTime + "-" + endTime + ")"));
             return "第" + startPeriod + "-" + endPeriod + "节" + timeRange;
         }
+    }
+
+    // ==================== 冲突检测 ====================
+
+    /**
+     * 检测新课程列表与数据库中已有课程的时间冲突
+     *
+     * @param userId     用户 ID
+     * @param newCourses 待导入的新课程列表（尚未持久化）
+     * @return 冲突列表，按冲突严重程度（时间段重合度）降序排列
+     */
+    public List<ConflictInfo> detectConflicts(String userId, List<CourseEntity> newCourses) {
+        if (newCourses == null || newCourses.isEmpty()) {
+            return List.of();
+        }
+
+        List<CourseEntity> existingCourses = courseRepository.findByUserId(userId);
+        if (existingCourses.isEmpty()) {
+            return List.of();
+        }
+
+        List<ConflictInfo> conflicts = new ArrayList<>();
+
+        for (CourseEntity newCourse : newCourses) {
+            for (CourseEntity existing : existingCourses) {
+                if (isTimeConflict(existing, newCourse)) {
+                    String desc = String.format("%s(第%s节) 与 %s(第%s节) 在%s",
+                            existing.getCourseName(), existing.getPeriodDisplay(),
+                            newCourse.getCourseName(), newCourse.getPeriodDisplay(),
+                            existing.getDayDisplay());
+                    conflicts.add(new ConflictInfo(existing, newCourse, desc));
+                }
+            }
+        }
+
+        return conflicts;
+    }
+
+    /**
+     * 判断两门课是否存在时间冲突
+     *
+     * <p>必须同时满足：
+     * <ol>
+     *   <li>同一星期几</li>
+     *   <li>时间段有重叠（含端点）</li>
+     *   <li>周次有交集，且在交集内至少有一周两门课都激活</li>
+     * </ol>
+     */
+    private boolean isTimeConflict(CourseEntity a, CourseEntity b) {
+        // 1. 同一天
+        if (a.getDayOfWeek() != b.getDayOfWeek()) {
+            return false;
+        }
+
+        // 2. 时间段重叠：[a.start, a.end] ∩ [b.start, b.end] ≠ ∅
+        boolean periodOverlap = a.getStartPeriod() <= b.getEndPeriod()
+                && b.getStartPeriod() <= a.getEndPeriod();
+        if (!periodOverlap) {
+            return false;
+        }
+
+        // 3. 周次有交集
+        int maxStart = Math.max(a.getStartWeek(), b.getStartWeek());
+        int minEnd = Math.min(a.getEndWeek(), b.getEndWeek());
+        if (maxStart > minEnd) {
+            return false;
+        }
+
+        // 4. 在共同周次范围内，找至少一周两门课都激活
+        for (int week = maxStart; week <= minEnd; week++) {
+            if (a.isActiveInWeek(week) && b.isActiveInWeek(week)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

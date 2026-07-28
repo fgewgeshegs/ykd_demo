@@ -10,6 +10,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -40,8 +41,9 @@ public class TaskSchedulerService {
     private static final int DEFAULT_INTERVAL_SECONDS = 5;
     private static final int INITIAL_DELAY_SECONDS = 10;
 
-    /** 课程提醒扫描间隔计数（每 12 次 = 约 60 秒触发一次提醒扫描） */
-    private static final int REMINDER_SCAN_INTERVAL = 12;
+    /** 课程提醒扫描间隔计数（默认每 12 次 = 约 60 秒触发一次提醒扫描） */
+    @Value("${schedule.reminder.scan-interval:12}")
+    private int reminderScanInterval;
 
     private final ScheduledTaskRepository taskRepository;
     private final WechatILinkClient wechatClient;
@@ -103,7 +105,7 @@ public class TaskSchedulerService {
 
             // 2. 定期触发课前提醒扫描（每 12 次 / 约 60 秒一次，避免过于频繁）
             scanCounter++;
-            if (scanCounter >= REMINDER_SCAN_INTERVAL) {
+            if (scanCounter >= reminderScanInterval) {
                 scanCounter = 0;
                 scheduleReminderService.checkReminders();
             }

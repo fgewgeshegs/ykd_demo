@@ -1,8 +1,10 @@
 package com.youkeda.exercise.claw.schedule;
 
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -32,11 +34,13 @@ public class ScheduleReminderService {
 
     private static final Logger log = LoggerFactory.getLogger(ScheduleReminderService.class);
 
-    /** 提醒提前量：30 分钟 */
-    private static final int REMINDER_ADVANCE_MINUTES = 30;
+    /** 提醒提前量：30 分钟（可通过 schedule.reminder.advance-minutes 配置） */
+    @Value("${schedule.reminder.advance-minutes:30}")
+    private int reminderAdvanceMinutes;
 
-    /** 提醒窗口容差（秒）：允许提前或滞后 30 秒触发 */
-    private static final int REMINDER_TOLERANCE_SECONDS = 30;
+    /** 提醒窗口容差（秒）：允许提前或滞后触发（可通过 schedule.reminder.tolerance-seconds 配置） */
+    @Value("${schedule.reminder.tolerance-seconds:30}")
+    private int reminderToleranceSeconds;
 
     // 典型节次时间表（第几节 ~ 开始时间）
     private static final int[] PERIOD_START_HOUR = {
@@ -59,6 +63,12 @@ public class ScheduleReminderService {
         this.courseRepository = courseRepository;
         this.semesterConfig = semesterConfig;
         this.wechatClient = wechatClient;
+    }
+
+    @PostConstruct
+    public void init() {
+        log.info("课前提醒服务已启动 | advance={}min | tolerance={}s",
+                reminderAdvanceMinutes, reminderToleranceSeconds);
     }
 
     /**
@@ -122,10 +132,10 @@ public class ScheduleReminderService {
         if (courseStartTime == null) return false;
 
         // 4. 计算提醒时间窗口
-        LocalDateTime reminderTarget = courseStartTime.minusMinutes(REMINDER_ADVANCE_MINUTES);
+        LocalDateTime reminderTarget = courseStartTime.minusMinutes(reminderAdvanceMinutes);
         long diffSeconds = Duration.between(now, reminderTarget).abs().getSeconds();
 
-        if (diffSeconds > REMINDER_TOLERANCE_SECONDS) return false;
+        if (diffSeconds > reminderToleranceSeconds) return false;
 
         // 5. 检查是否已发送过（同一天同一门课不重复）
         String cacheKey = course.getUserId() + ":" + course.getId() + ":"
@@ -159,19 +169,24 @@ public class ScheduleReminderService {
      */
     private String buildReminderMessage(CourseEntity course, String timeStr, int currentWeek) {
         StringBuilder sb = new StringBuilder();
-        sb.append("⏰ 课前提醒\n\n");
-        sb.append("📚 ").append(course.getCourseName()).append("\n");
+        sb.append("⏰ **课前提醒**\n");
+        sb.append("────────────────\n\n");
+        sb.append("📖 ").append(course.getCourseName()).append("\n");
+        sb.append("🕐 ").append(timeStr).append("  (").append(course.getPeriodDisplay()).append("节)\n");
         if (!course.getClassroom().isBlank()) {
-            sb.append("📍 ").append(course.getClassroom()).append("\n");
+            sb.append("🏫 ").append(course.getClassroom()).append("\n");
         }
         if (!course.getTeacher().isBlank()) {
             sb.append("👨‍🏫 ").append(course.getTeacher()).append("\n");
         }
-        sb.append("⏱ ").append(timeStr).append("  (").append(course.getPeriodDisplay()).append("节)\n");
-        sb.append("📅 第 ").append(currentWeek).append(" 周");
+        sb.append("\n📆 第").append(currentWeek).append("周");
         if (!CourseEntity.WEEK_ALL.equals(course.getWeekType())) {
-            sb.append("（").append(CourseEntity.WEEK_ODD.equals(course.getWeekType()) ? "单周" : "双周").append("）");
+            sb.append(" (").append(
+                CourseEntity.WEEK_ODD.equals(course.getWeekType()) ? "单周" : "双周"
+            ).append(")");
         }
+        sb.append("\n────────────────\n");
+        sb.append("💡 别迟到哦！");
         return sb.toString();
     }
 

@@ -398,8 +398,14 @@ public class LLMClient {
                 content = null;
                 finishReason = "tool_calls";
             } else {
-                log.warn("检测到 DSML 工具标记，但未能解析出有效调用");
-                return null;
+                // DSML 标记存在但解析失败：清理标记后降级为文本回复
+                log.warn("DSML 工具标记解析失败，降级为文本回复");
+                if (content != null) {
+                    content = content.replaceAll("<" + "｜｜DSML｜｜" + "[^>]*>", "")
+                                     .replaceAll("</" + "｜｜DSML｜｜" + "[^>]*>", "")
+                                     .trim();
+                }
+                finishReason = "stop";
             }
         }
 

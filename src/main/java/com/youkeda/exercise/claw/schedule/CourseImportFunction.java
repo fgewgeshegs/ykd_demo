@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.schedule;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
@@ -72,22 +73,15 @@ public class CourseImportFunction implements LLMFunction {
 
     @Override
     public String getDescription() {
-        return "课程表管理。支持以下操作：\n"
-                + "1. import — 开始导入课表。当用户说「导入课表」「上传课表」时调用。\n"
-                + "   调用后系统进入等待文件状态，请告诉用户发送课表截图、PDF或Excel文件。\n"
-                + "   注意：只设置状态，不要传 courses 参数。\n"
-                + "2. parse — 解析并预览课表（import 后调用）。当用户上传了课表文件/截图后，\n"
-                + "   从对话上下文中的文件分析结果里提取课程信息，传入 courses 参数调用此函数。\n"
-                + "   系统返回课程预览列表，你需要展示给用户并询问「确认导入吗？」。\n"
-                + "3. confirm — 确认导入（parse 后调用）。用户确认后调用，保存课程到数据库。\n"
-                + "4. cancel — 取消导入。丢弃本次导入的所有数据。\n"
-                + "5. query_today — 查询今日课程。当用户问「今天有什么课」「今天的课表」时调用。\n"
-                + "6. query_free_time — 查询空闲时间段。当用户问「今天什么时候有空」时调用。\n"
-                + "7. query_all — 查询全部课程。当用户问「我的全部课表」「有哪些课」时调用。\n"
-                + "8. query_weekday — 查询指定星期几的课程。参数 day_of_week（1=周一~7=周日）。\n"
-                + "9. delete — 删除某门课程。参数 course_id（必填）。\n"
-                + "10. update — 修改某门课程。参数 course_id 和要修改的字段。\n"
-                + "11. clear — 清空全部课表。需要用户二次确认。";
+        return "课程表管理。管理用户的个人课程表数据（以userId隔离持久化到SQLite）。\n"
+                + "支持操作：\n"
+                + "- 导入：使用 import -> parse -> confirm 三步流程导入课表（图片/PDF/Excel/直接JSON）\n"
+                + "- 查询：query_today（今日课程，自动过滤学期周次和单双周）\n"
+                + "         query_weekday（指定星期几的课程，如\"周一\"->day_of_week=1）\n"
+                + "         query_all（全部课程列表）\n"
+                + "         query_free_time（今日空闲时间段）\n"
+                + "- 管理：delete（单条删除，需id）、update（修改）、clear（清空全部）\n"
+                + "适用于：用户问\"今天有什么课\"\"明天课表\"\"导入课表\"\"帮我加一门课\"\"删除高数\"等场景。";
     }
 
     @Override
@@ -99,7 +93,9 @@ public class CourseImportFunction implements LLMFunction {
 
         ObjectNode action = properties.putObject("action");
         action.put("type", "string");
-        action.put("description", "操作类型");
+        action.put("description", "操作类型：import(开始导入), parse(解析并预览), confirm(确认保存), "
+                + "cancel(取消), query_today(今日课程), query_free_time(空闲时间), "
+                + "query_all(全部课程), query_weekday(指定星期), delete(删除), update(修改), clear(清空)");
         action.putArray("enum").add("import").add("parse").add("confirm").add("cancel")
                 .add("query_today").add("query_free_time").add("query_all").add("query_weekday")
                 .add("delete").add("update").add("clear");
@@ -211,6 +207,9 @@ public class CourseImportFunction implements LLMFunction {
                     + "\"message\":\"无法从提供的数据中识别出有效的课程信息，请检查格式或重新上传课表。\"}";
         }
 
+        // 冲突检测
+        List<CourseService.ConflictInfo> conflicts = courseService.detectConflicts(userId, courses);
+
         importStateManager.setWaitingConfirm(userId, jsonStr);
         importStateManager.setPendingCourses(userId, courses);
 
@@ -234,8 +233,24 @@ public class CourseImportFunction implements LLMFunction {
             if (!c.getTeacher().isBlank()) item.put("teacher", c.getTeacher());
         }
 
-        result.put("message", "已识别出以下 " + courses.size() + " 门课程，请确认是否导入？"
-                + "（回复「确认」或「取消」）");
+        // 冲突信息
+        if (!conflicts.isEmpty()) {
+            ArrayNode conflictArray = result.putArray("conflicts");
+            for (CourseService.ConflictInfo cf : conflicts) {
+                ObjectNode item = conflictArray.addObject();
+                item.put("existing_course", cf.existingCourse().getCourseName());
+                item.put("new_course", cf.newCourse().getCourseName());
+                item.put("description", cf.description());
+            }
+            result.put("warning", "检测到 " + conflicts.size() + " 个时间冲突，确认后冲突课程将被覆盖");
+        }
+
+        result.put("formatted_preview",
+                CourseMessageFormatter.formatImportPreview(courses, conflicts, currentWeek));
+
+        String conflictSuffix = conflicts.isEmpty() ? "" : "，" + conflicts.size() + " 个时间冲突";
+        result.put("message", "已识别出以下 " + courses.size() + " 门课程" + conflictSuffix
+                + "，请确认是否导入？（回复「确认」或「取消」）");
         return result.toString();
     }
 
@@ -391,6 +406,7 @@ public class CourseImportFunction implements LLMFunction {
             array.add(slot.display());
         }
         result.put("message", "今日空闲时间段共 " + freeSlots.size() + " 段");
+        result.put("formatted", CourseMessageFormatter.formatFreeTimeSlots(freeSlots));
         return result.toString();
     }
 
@@ -441,6 +457,15 @@ public class CourseImportFunction implements LLMFunction {
 
         result.put("count", courses.size());
         result.put("message", message);
+
+        // 嵌入预格式化的微信消息文本
+        String formatted = switch (action) {
+            case "query_today" -> CourseMessageFormatter.formatTodayCourses(courses, currentWeek);
+            case "query_all" -> CourseMessageFormatter.formatWeekOverview(courses, currentWeek);
+            default -> message;
+        };
+        result.put("formatted", formatted);
+
         return result.toString();
     }
 
