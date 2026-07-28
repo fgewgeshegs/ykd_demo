@@ -107,7 +107,7 @@ public class CampusNoticeCollector {
         if (href.startsWith("/")) {
             base = baseUri.replaceAll("^(https?://[^/]+).*$", "$1");
         }
-        return base + (href.startsWith("/") ? href.substring(1) : href);
+        return base + (href.startsWith("/") ? "/" + href.substring(1) : href);
     }
 
     private String findDate(Element entry) {

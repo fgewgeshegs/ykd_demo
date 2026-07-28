@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.campus.fetcher;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -47,8 +48,8 @@ public class NoticeContentFetcher {
 
     private String trySelectText(Document doc, String cssQuery) {
         try {
-            return doc.selectFirst(cssQuery) != null
-                    ? doc.selectFirst(cssQuery).text().trim() : "";
+            Element el = doc.selectFirst(cssQuery);
+            return el != null ? el.text().trim() : "";
         } catch (Exception e) {
             return "";
         }
