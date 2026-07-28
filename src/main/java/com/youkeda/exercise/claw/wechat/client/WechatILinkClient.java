@@ -34,6 +34,11 @@ public class WechatILinkClient {
         return bot;
     }
 
+    public boolean isLoggedIn() {
+        BotInstance bot = botManager.getPrimaryBot();
+        return bot != null && bot.isLoggedIn();
+    }
+
     // ==================== 消息发送 ====================
 
     public void sendTextMessage(String toUserId, String text) {

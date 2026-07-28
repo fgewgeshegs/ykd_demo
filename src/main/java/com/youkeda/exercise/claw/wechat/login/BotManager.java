@@ -173,10 +173,6 @@ public class BotManager {
         bot = instance;
     }
 
-    public boolean hasActiveBot() {
-        return bot != null && bot.isLoggedIn();
-    }
-
     // ==================== 序列化 / 反序列化 ====================
 
     private String serializeResumeContext(ResumeContext ctx) {
