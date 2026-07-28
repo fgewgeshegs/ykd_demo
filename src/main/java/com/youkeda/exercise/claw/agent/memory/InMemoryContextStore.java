@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.agent.memory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
@@ -17,9 +17,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * 所有消息（文字/语音/图片）统一存入一个队列，CDN 参数嵌入 Message 记录。
  * - 单用户最多保留 50 条消息，超出自动淘汰最早的消息
  * - 线程安全
+ *
+ * <p>通过 {@code memory.type=in-memory} 或默认启用（与 {@code context.redis.enabled=true} 互斥）。
  */
 @Component
-@ConditionalOnProperty(name = "context.redis.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnExpression("!${context.redis.enabled:false} and '${memory.type:in-memory}'.equals('in-memory')")
 public class InMemoryContextStore implements ContextStore {
 
     /** 单用户最大消息条数 */

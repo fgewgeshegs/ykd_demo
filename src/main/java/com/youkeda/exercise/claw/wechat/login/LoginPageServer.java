@@ -2,6 +2,8 @@ package com.youkeda.exercise.claw.wechat.login;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,66 +11,81 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * 登录状态可视化 HTTP 服务（临时，非 Spring Bean）。
+ * 微信 ClawBot 控制台 Dashboard。
  *
- * 仅绑定 127.0.0.1，生命周期由 WechatILinkClient 控制。
- * 零外部依赖，JDK 内置 HttpServer。
+ * <p>永久 HTTP 服务，不再随登录流程销毁。
+ * 左侧显示二维码/连接状态，右侧显示机器人状态与用户列表。
+ *
+ * <p>API 端点：
+ * <ul>
+ *   <li>{@code GET /login} — 控制台 HTML 页面</li>
+ *   <li>{@code GET /login/status} — 登录过程状态 {@code LoginStatus}（向后兼容）</li>
+ *   <li>{@code GET /api/bot/status} — 机器人连接状态 JSON</li>
+ *   <li>{@code GET /api/users} — 微信用户列表 JSON</li>
+ * </ul>
  */
 public class LoginPageServer {
 
     private static final Logger log = LoggerFactory.getLogger(LoginPageServer.class);
 
     private final LoginStateManager stateManager;
-    private HttpServer server;
-    private int port;
+    private final BotSessionManager botSessionManager;
+    private final WechatUserManager wechatUserManager;
 
-    public LoginPageServer(LoginStateManager stateManager) {
+    private HttpServer server;
+    private volatile int port = -1;
+
+    public LoginPageServer(LoginStateManager stateManager,
+                           BotSessionManager botSessionManager,
+                           WechatUserManager wechatUserManager) {
         this.stateManager = stateManager;
+        this.botSessionManager = botSessionManager;
+        this.wechatUserManager = wechatUserManager;
     }
 
-    /** 启动 HTTP 服务，返回实际绑定的端口 */
+    /** 启动 HTTP 服务，返回实际绑定端口 */
     public int start() throws IOException {
-        // InetSocketAddress 不指定 port=0，操作系统自动分配空闲端口
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/login", this::handleLogin);
         server.createContext("/login/status", this::handleStatus);
-        server.setExecutor(null); // 使用默认单线程 executor
+        server.createContext("/api/bot/status", this::handleBotStatus);
+        server.createContext("/api/users", this::handleUsers);
+        server.setExecutor(null);
         server.start();
         port = server.getAddress().getPort();
-        log.info("登录页面服务已启动 → http://127.0.0.1:{}/login", port);
+        log.info("ClawBot 控制台已启动 → http://127.0.0.1:{}/login", port);
         return port;
     }
 
-    /** 获取端口（start 之前返回 -1） */
-    public int getPort() {
-        return port;
-    }
+    public int getPort() { return port; }
 
-    /** 关闭 HTTP 服务 */
     public void stop() {
         if (server != null) {
             server.stop(0);
-            log.info("登录页面服务已关闭");
+            log.info("控制台服务已关闭");
         }
     }
 
     // ==================== 路由处理 ====================
 
-    /** GET /login — 返回自包含 HTML 页面 */
+    /** GET /login — 控制台 HTML */
     private void handleLogin(HttpExchange exchange) throws IOException {
         String qrUrl = stateManager.getQrUrl();
-        String html = buildHtml(qrUrl);
+        String html = buildDashboardHtml(qrUrl);
         byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
         exchange.sendResponseHeaders(200, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
         }
     }
 
-    /** GET /login/status — 返回当前状态 JSON（不含 qrUrl） */
+    /** GET /login/status — 登录过程状态（向后兼容） */
     private void handleStatus(HttpExchange exchange) throws IOException {
         LoginStatus status = stateManager.getStatus();
         String json = "{\"status\":\"" + (status != null ? status.name() : "WAITING_SCAN") + "\"}";
@@ -80,100 +97,754 @@ public class LoginPageServer {
         }
     }
 
-    // ==================== HTML 模板 ====================
+    /** GET /api/bot/status — 机器人连接状态 */
+    private void handleBotStatus(HttpExchange exchange) throws IOException {
+        String status = botSessionManager.getLastStatus();
+        if (status == null) status = "NOT_STARTED";
+        String loginTime = botSessionManager.getLastLoginTime();
+        String error = botSessionManager.getLastError();
 
-    /**
-     * 构建自包含 HTML 页面。
-     * qrUrl 使用 HTML 实体转义注入，防止 XSS。
-     */
-    private String buildHtml(String qrUrl) {
-        // 注意：不使用 escapeHtml，避免 & -> &amp; 破坏二维码 URL
-        // qrUrl 通过 JSON 字符串编码注入 <script> 标签，安全且不改变原始内容
+        StringBuilder json = new StringBuilder();
+        json.append("{\"status\":\"").append(jsonEscape(status)).append("\"");
+        if (loginTime != null) {
+            json.append(",\"loginTime\":\"").append(jsonEscape(loginTime)).append("\"");
+        }
+        if (error != null) {
+            json.append(",\"error\":\"").append(jsonEscape(error)).append("\"");
+        }
+        json.append("}");
+
+        byte[] bytes = json.toString().getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+
+    /** GET /api/users — 微信用户列表 */
+    private void handleUsers(HttpExchange exchange) throws IOException {
+        List<WechatUserManager.UserRecord> users = wechatUserManager.getAllUsers();
+        int total = users.size();
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"total\":").append(total).append(",\"users\":[");
+        for (int i = 0; i < users.size(); i++) {
+            if (i > 0) json.append(",");
+            WechatUserManager.UserRecord u = users.get(i);
+            json.append("{");
+            json.append("\"userId\":\"").append(jsonEscape(u.userId())).append("\"");
+            json.append(",\"nickname\":").append(u.nickname() != null ? "\"" + jsonEscape(u.nickname()) + "\"" : "null");
+            json.append(",\"avatarUrl\":").append(u.avatarUrl() != null ? "\"" + jsonEscape(u.avatarUrl()) + "\"" : "null");
+            json.append(",\"lastActiveTime\":\"").append(jsonEscape(u.lastActiveTime())).append("\"");
+            json.append(",\"firstActiveTime\":\"").append(jsonEscape(u.firstActiveTime())).append("\"");
+            json.append(",\"interactionCount\":").append(u.interactionCount());
+            json.append("}");
+        }
+        json.append("]}");
+
+        byte[] bytes = json.toString().getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+
+    // ==================== HTML ====================
+
+    private String buildDashboardHtml(String qrUrl) {
         String rawQrUrl = qrUrl != null ? qrUrl : "";
         return "<!DOCTYPE html>\n" +
             "<html lang=\"zh-CN\">\n" +
             "<head>\n" +
             "<meta charset=\"UTF-8\">\n" +
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-            "<title>Claw 助手 · AI 团建规划</title>\n" +
+            "<title>ClawBot 控制台</title>\n" +
             "<style>\n" +
             CSS +
             "</style>\n" +
             "</head>\n" +
             "<body>\n" +
-            "<div class=\"dot-grid\"></div>\n" +
-            "<div class=\"travel-decor\">\n" +
-            "  <div class=\"decor-flag\"></div>\n" +
-            "  <div class=\"decor-trail\"></div>\n" +
-            "  <div class=\"decor-dot1\"></div>\n" +
-            "  <div class=\"decor-dot2\"></div>\n" +
-            "  <div class=\"decor-peak\"></div>\n" +
-            "</div>\n" +
-            "<div class=\"wrapper\">\n" +
-            "\n" +
-            "  <!-- 品牌头部 -->\n" +
-            "  <div class=\"brand\">\n" +
-            "    <div class=\"brand-icon\">" + LOGO_SVG + "</div>\n" +
-            "    <div class=\"brand-name\">Claw 助手</div>\n" +
-            "    <div class=\"brand-sub\">让团建规划，从一个想法开始</div>\n" +
-            "  </div>\n" +
-            "\n" +
-            "  <!-- 二维码卡片 -->\n" +
-            "  <div class=\"card\">\n" +
-            "    <div id=\"scanArea\">\n" +
-            "      <div id=\"qrcode\" class=\"qrcode-box\"></div>\n" +
-            "      <div class=\"spinner\" id=\"spinner\"></div>\n" +
-            "      <p class=\"hint\">微信扫码连接</p>\n" +
-            "      <p class=\"sub-hint\" id=\"statusHint\">等待扫码中...</p>\n" +
+            "<div class=\"app\">\n" +
+            "  <!-- 顶部导航 -->\n" +
+            "  <header class=\"topbar\">\n" +
+            "    <div class=\"topbar-left\">\n" +
+            "      <span class=\"logo\">" + LOGO_SVG + "</span>\n" +
+            "      <span class=\"title\">ClawBot 控制台</span>\n" +
+            "      <span class=\"badge\" id=\"botBadge\">等待连接</span>\n" +
             "    </div>\n" +
-            "    <!-- 结果区域 -->\n" +
-            "    <div id=\"resultArea\" class=\"result-area\" style=\"display:none;\">\n" +
-            "      <div id=\"resultIcon\" class=\"result-icon\"></div>\n" +
-            "      <p id=\"resultText\" class=\"result-text\"></p>\n" +
-            "      <button id=\"retryBtn\" class=\"retry-btn\" style=\"display:none;\" onclick=\"retry()\">重新扫码</button>\n" +
+            "    <div class=\"topbar-right\">\n" +
+            "      <span class=\"update-time\" id=\"updateTime\">—</span>\n" +
             "    </div>\n" +
-            "  </div>\n" +
+            "  </header>\n" +
             "\n" +
-            "  <!-- 功能卡 -->\n" +
-            "  <div class=\"features\" id=\"features\">\n" +
-            "    <div class=\"feature-item\">\n" +
-            "      <div class=\"feature-icon\">" + ICON_LOCATION + "</div>\n" +
-            "      <div class=\"feature-title\">智能地点推荐</div>\n" +
-            "      <div class=\"feature-desc\">AI 寻找团建好去处</div>\n" +
-            "    </div>\n" +
-            "    <div class=\"feature-item\">\n" +
-            "      <div class=\"feature-icon\">" + ICON_ROUTE + "</div>\n" +
-            "      <div class=\"feature-title\">路线规划</div>\n" +
-            "      <div class=\"feature-desc\">自动规划交通方案</div>\n" +
-            "    </div>\n" +
-            "    <div class=\"feature-item\">\n" +
-            "      <div class=\"feature-icon\">" + ICON_ITINERARY + "</div>\n" +
-            "      <div class=\"feature-title\">行程生成</div>\n" +
-            "      <div class=\"feature-desc\">生成完整团建计划</div>\n" +
-            "    </div>\n" +
-            "  </div>\n" +
+            "  <main class=\"main\">\n" +
+            "    <!-- 左侧面板：扫码/连接 -->\n" +
+            "    <section class=\"panel panel-left\" id=\"scanPanel\">\n" +
+            "      <div class=\"panel-title\">\n" +
+            "        <span class=\"panel-icon\">" + ICON_WECHAT + "</span>\n" +
+            "        微信连接\n" +
+            "      </div>\n" +
+            "      <div class=\"scan-area\" id=\"scanArea\">\n" +
+            "        <div class=\"qrcode-box\" id=\"qrcode\"></div>\n" +
+            "        <div class=\"spinner\" id=\"spinner\"></div>\n" +
+            "        <p class=\"state-hint\" id=\"stateHint\">等待扫码中...</p>\n" +
+            "        <p class=\"state-sub\" id=\"stateSub\">请使用微信扫描二维码连接机器人</p>\n" +
+            "      </div>\n" +
+            "      <!-- 登录结果 -->\n" +
+            "      <div class=\"result-area\" id=\"resultArea\" style=\"display:none;\">\n" +
+            "        <div class=\"result-icon\" id=\"resultIcon\"></div>\n" +
+            "        <p class=\"result-text\" id=\"resultText\"></p>\n" +
+            "      </div>\n" +
+            "    </section>\n" +
             "\n" +
-            "  <!-- 底部 -->\n" +
-            "  <div class=\"footer\">\n" +
-            "    <div class=\"footer-line\">⚡ 由 AI 驱动 · 微信原生体验</div>\n" +
-            "  </div>\n" +
+            "    <!-- 右侧面板：控制台数据 -->\n" +
+            "    <section class=\"panel panel-right\">\n" +
+            "      <!-- 机器人状态卡片 -->\n" +
+            "      <div class=\"card card-status\">\n" +
+            "        <div class=\"card-header\">\n" +
+            "          <span class=\"card-icon\">" + ICON_BOT + "</span>\n" +
+            "          机器人状态\n" +
+            "        </div>\n" +
+            "        <div class=\"card-body\">\n" +
+            "          <div class=\"status-row\">\n" +
+            "            <span class=\"label\">状态</span>\n" +
+            "            <span class=\"status-indicator\" id=\"botStatusIndicator\">\n" +
+            "              <span class=\"dot dot-gray\"></span> 未启动\n" +
+            "            </span>\n" +
+            "          </div>\n" +
+            "          <div class=\"status-row\">\n" +
+            "            <span class=\"label\">最近登录</span>\n" +
+            "            <span class=\"value\" id=\"botLoginTime\">—</span>\n" +
+            "          </div>\n" +
+            "          <div class=\"status-row\" id=\"botErrorRow\" style=\"display:none;\">\n" +
+            "            <span class=\"label\">错误信息</span>\n" +
+            "            <span class=\"value error-text\" id=\"botError\"></span>\n" +
+            "          </div>\n" +
+            "        </div>\n" +
+            "      </div>\n" +
             "\n" +
+            "      <!-- 用户统计卡片 -->\n" +
+            "      <div class=\"card card-users\">\n" +
+            "        <div class=\"card-header\">\n" +
+            "          <span class=\"card-icon\">" + ICON_USERS + "</span>\n" +
+            "          在线用户\n" +
+            "        </div>\n" +
+            "        <div class=\"card-body\">\n" +
+            "          <div class=\"user-count-wrap\">\n" +
+            "            <span class=\"user-count-num\" id=\"userCount\">0</span>\n" +
+            "            <span class=\"user-count-label\">位用户</span>\n" +
+            "          </div>\n" +
+            "        </div>\n" +
+            "      </div>\n" +
+            "\n" +
+            "      <!-- 用户列表卡片 -->\n" +
+            "      <div class=\"card card-list\">\n" +
+            "        <div class=\"card-header\">\n" +
+            "          <span class=\"card-icon\">" + ICON_LIST + "</span>\n" +
+            "          用户列表\n" +
+            "        </div>\n" +
+            "        <div class=\"card-body\">\n" +
+            "          <div class=\"user-table\" id=\"userTable\">\n" +
+            "            <div class=\"table-header\">\n" +
+            "              <span class=\"col-user\">用户</span>\n" +
+            "              <span class=\"col-id\">ID</span>\n" +
+            "              <span class=\"col-active\">最近活跃</span>\n" +
+            "              <span class=\"col-count\">消息</span>\n" +
+            "            </div>\n" +
+            "            <div class=\"table-body\" id=\"userTableBody\">\n" +
+            "              <div class=\"table-empty\">暂无用户数据</div>\n" +
+            "            </div>\n" +
+            "          </div>\n" +
+            "        </div>\n" +
+            "      </div>\n" +
+            "    </section>\n" +
+            "  </main>\n" +
             "</div>\n" +
             "\n" +
             "<script>\n" +
+            "const QR_URL = " + jsonString(qrUrl) + ";\n" +
             JS +
-            "</script>\n" +
-            // JSON 字符串编码注入 — 不会改变 & / ? / = 等 URL 关键字符
-            "<script>\n" +
-            "  const QR_URL = " + jsonString(qrUrl) + ";\n" +
-            "  initLogin(QR_URL);\n" +
             "</script>\n" +
             "</body>\n" +
             "</html>";
     }
 
-    /** JSON 字符串编码：仅转义 JSON 特殊字符，不改 URL 结构字符（&、=、?） */
+    // ==================== SVG 图标 ====================
+
+    private static final String LOGO_SVG =
+        "<svg viewBox=\"0 0 28 28\" width=\"28\" height=\"28\" fill=\"none\">" +
+        "  <rect width=\"28\" height=\"28\" rx=\"8\" fill=\"#07C160\"/>" +
+        "  <path d=\"M7 14c0-3.86 3.13-7 7-7s7 3.14 7 7-3.13 7-7 7a6.96 6.96 0 0 1-3.4-.9L7 20l1.1-3.2A6.9 6.9 0 0 1 7 14z\" fill=\"white\" opacity=\".95\"/>" +
+        "  <circle cx=\"14\" cy=\"14\" r=\"2\" fill=\"#07C160\"/>" +
+        "</svg>";
+
+    private static final String ICON_WECHAT =
+        "<svg viewBox=\"0 0 20 20\" width=\"18\" height=\"18\" fill=\"none\">" +
+        "  <path d=\"M5.5 8a5.5 5.5 0 0 1 9.9-3.3A6 6 0 0 1 18 10.5c0 1.3-.4 2.5-1.1 3.5l.6 1.8-2-.7a6.5 6.5 0 0 1-2 .4c-.3 0-.6 0-.9-.1A5.5 5.5 0 0 1 5.5 8z\" fill=\"#07C160\" opacity=\".15\"/>" +
+        "  <path d=\"M4 9.5a4.5 4.5 0 0 1 8.2-2.7 5 5 0 0 1 2.3 4.2c0 1-.3 2-.8 2.8l.5 1.5-1.7-.6a5.3 5.3 0 0 1-1.6.3c-.2 0-.5 0-.7-.1A4.5 4.5 0 0 1 4 9.5z\" fill=\"#07C160\"/>" +
+        "  <circle cx=\"7\" cy=\"9.5\" r=\"1\" fill=\"white\"/>" +
+        "  <circle cx=\"11\" cy=\"9.5\" r=\"1\" fill=\"white\"/>" +
+        "</svg>";
+
+    private static final String ICON_BOT =
+        "<svg viewBox=\"0 0 20 20\" width=\"18\" height=\"18\" fill=\"none\">" +
+        "  <rect x=\"3\" y=\"5\" width=\"14\" height=\"11\" rx=\"3\" fill=\"#6366F1\" opacity=\".15\"/>" +
+        "  <rect x=\"4\" y=\"6\" width=\"12\" height=\"9\" rx=\"2\" fill=\"#6366F1\"/>" +
+        "  <circle cx=\"7.5\" cy=\"10.5\" r=\"1.2\" fill=\"white\"/>" +
+        "  <circle cx=\"12.5\" cy=\"10.5\" r=\"1.2\" fill=\"white\"/>" +
+        "  <path d=\"M7 14a3 3 0 0 1 6 0\" stroke=\"white\" stroke-width=\".8\" stroke-linecap=\"round\"/>" +
+        "</svg>";
+
+    private static final String ICON_USERS =
+        "<svg viewBox=\"0 0 20 20\" width=\"18\" height=\"18\" fill=\"none\">" +
+        "  <circle cx=\"7\" cy=\"7\" r=\"3\" fill=\"#F59E0B\" opacity=\".15\"/>" +
+        "  <path d=\"M2 16c0-2.76 2.24-5 5-5s5 2.24 5 5\" stroke=\"#F59E0B\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>" +
+        "  <circle cx=\"7\" cy=\"7\" r=\"2.5\" fill=\"#F59E0B\"/>" +
+        "  <circle cx=\"14\" cy=\"8\" r=\"2\" fill=\"#6366F1\" opacity=\".15\"/>" +
+        "  <circle cx=\"14\" cy=\"8\" r=\"1.6\" fill=\"#6366F1\"/>" +
+        "  <path d=\"M11 17c0-2.2 1.34-4 3-4s3 1.8 3 4\" stroke=\"#6366F1\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>" +
+        "</svg>";
+
+    private static final String ICON_LIST =
+        "<svg viewBox=\"0 0 20 20\" width=\"18\" height=\"18\" fill=\"none\">" +
+        "  <rect x=\"4\" y=\"3\" width=\"12\" height=\"14\" rx=\"2\" fill=\"#10B981\" opacity=\".1\"/>" +
+        "  <path d=\"M4 7h12M4 10h12M4 13h8\" stroke=\"#10B981\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>" +
+        "</svg>";
+
+    // ==================== CSS ====================
+
+    private static final String CSS = """
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                         "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #f0f4ff 0%, #f5f0ff 50%, #ecfdf5 100%);
+            min-height: 100vh;
+            color: #1e293b;
+        }
+
+        /* ===== 顶部栏 ===== */
+        .topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 28px;
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(226,232,240,0.8);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 12px; }
+        .topbar-left .logo { display: flex; align-items: center; }
+        .topbar-left .title {
+            font-size: 17px; font-weight: 600; color: #0f172a;
+            letter-spacing: -0.2px;
+        }
+        .badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 12px; font-weight: 500;
+            background: #f1f5f9; color: #64748b;
+            border: 1px solid #e2e8f0;
+        }
+        .badge:before {
+            content: ''; width: 6px; height: 6px;
+            border-radius: 50%; display: inline-block;
+            background: #94a3b8;
+        }
+        .badge.connected { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
+        .badge.connected:before { background: #22c55e; }
+        .badge.waiting { background: #fffbeb; color: #d97706; border-color: #fde68a; }
+        .badge.waiting:before { background: #f59e0b; }
+        .badge.failed { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+        .badge.failed:before { background: #ef4444; }
+        .topbar-right { font-size: 12px; color: #94a3b8; }
+
+        /* ===== 主布局 ===== */
+        .main {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 24px;
+            padding: 24px 28px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* ===== 面板 ===== */
+        .panel {
+            background: rgba(255,255,255,0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(226,232,240,0.7);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+        }
+        .panel-title {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 14px; font-weight: 600; color: #334155;
+            margin-bottom: 20px;
+        }
+        .panel-icon { display: flex; }
+
+        /* ===== 左侧扫码区 ===== */
+        .scan-area { text-align: center; padding: 8px 0; }
+        .qrcode-box {
+            display: inline-block; padding: 12px;
+            background: #fff; border: 2px solid #eef2f6;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 16px;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .qrcode-box canvas, .qrcode-box img {
+            display: block; width: 200px; height: 200px;
+        }
+        .qrcode-box.fade-out {
+            opacity: 0; transform: scale(0.95);
+        }
+        .spinner {
+            width: 24px; height: 24px; margin: 0 auto 14px;
+            border: 3px solid #e8ecf1; border-top-color: #6366F1;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .state-hint { font-size: 15px; color: #1e293b; font-weight: 500; margin-bottom: 4px; }
+        .state-sub { font-size: 12px; color: #94a3b8; }
+
+        /* ===== 登录结果 ===== */
+        .result-area { text-align: center; padding: 40px 0; }
+        .result-icon {
+            width: 72px; height: 72px; margin: 0 auto 20px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            animation: popIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .result-icon.success { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .result-icon.fail { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .result-icon svg { width: 36px; height: 36px; }
+        .result-text { font-size: 16px; color: #1e293b; font-weight: 500; }
+
+        /* ===== 右侧卡片 ===== */
+        .panel-right { display: flex; flex-direction: column; gap: 16px; }
+        .card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            transition: box-shadow 0.2s;
+        }
+        .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .card-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 14px 18px;
+            font-size: 13px; font-weight: 600; color: #475569;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .card-icon { display: flex; }
+        .card-body { padding: 18px; }
+
+        /* ===== 状态行 ===== */
+        .status-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0;
+            font-size: 13px;
+        }
+        .status-row + .status-row { border-top: 1px solid #f1f5f9; }
+        .status-row .label { color: #94a3b8; }
+        .status-row .value { color: #334155; font-weight: 500; }
+        .status-indicator { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+        .dot {
+            width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+            transition: background 0.3s;
+        }
+        .dot-green { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+        .dot-yellow { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.4); }
+        .dot-red { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+        .dot-gray { background: #94a3b8; }
+        .error-text { color: #dc2626 !important; font-size: 12px; word-break: break-all; }
+
+        /* ===== 用户计数 ===== */
+        .user-count-wrap { text-align: center; padding: 12px 0; }
+        .user-count-num {
+            font-size: 42px; font-weight: 700;
+            color: #6366F1;
+            letter-spacing: -1px;
+            line-height: 1;
+            transition: all 0.3s ease;
+        }
+        .user-count-label {
+            display: block; font-size: 13px; color: #94a3b8;
+            margin-top: 6px;
+        }
+
+        /* ===== 用户列表 ===== */
+        .user-table { font-size: 13px; }
+        .table-header {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr 60px;
+            gap: 8px;
+            padding: 8px 4px;
+            color: #94a3b8;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .table-body { min-height: 60px; }
+        .table-row {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr 60px;
+            gap: 8px;
+            padding: 10px 4px;
+            align-items: center;
+            border-bottom: 1px solid #f8fafc;
+            transition: background 0.15s;
+        }
+        .table-row:hover { background: #f8fafc; }
+        .table-row:last-child { border-bottom: none; }
+        .table-empty {
+            text-align: center; color: #cbd5e1; padding: 24px 0;
+            font-size: 13px;
+        }
+        .user-avatar {
+            width: 28px; height: 28px; border-radius: 50%;
+            background: #e2e8f0;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 600; color: #94a3b8;
+            flex-shrink: 0;
+        }
+        .user-info { display: flex; align-items: center; gap: 8px; }
+        .user-name {
+            font-weight: 500; color: #334155;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            max-width: 90px;
+        }
+        .userId-text {
+            color: #94a3b8; font-size: 11px; font-family: monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .active-time { color: #64748b; font-size: 12px; }
+        .msg-count {
+            font-weight: 600; color: #6366F1;
+            text-align: center;
+        }
+        .status-cell { display: flex; align-items: center; gap: 4px; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+        /* ===== 动画: 新用户加入 ===== */
+        .table-row.new-user {
+            animation: highlightRow 1.5s ease-out;
+        }
+        @keyframes highlightRow {
+            0% { background: #eef2ff; }
+            100% { background: transparent; }
+        }
+
+        /* ===== 数字跳动 ===== */
+        .count-bump {
+            animation: countBump 0.3s ease-out;
+        }
+        @keyframes countBump {
+            0% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 800px) {
+            .main {
+                grid-template-columns: 1fr;
+                padding: 16px;
+            }
+            .topbar { padding: 10px 16px; }
+            .panel-left { order: 1; }
+            .panel-right { order: 2; }
+        }
+        """;
+
+    // ==================== JavaScript ====================
+
+    private static final String JS = """
+        let pollTimer = null;
+        let dashboardTimer = null;
+        let scannedOnce = false;
+        let knownUserIds = new Set();
+
+        // ===== 初始化 =====
+        function initLogin(qrUrl) {
+            if (qrUrl && qrUrl.length > 0) {
+                generateQR(qrUrl);
+            }
+            // 登录状态轮询
+            startPolling();
+            // 控制台数据轮询
+            startDashboardPolling();
+        }
+
+        // ===== 二维码 =====
+        function generateQR(qrUrl) {
+            var box = document.getElementById('qrcode');
+            box.classList.remove('fade-out');
+            var script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
+            script.onload = function() {
+                box.innerHTML = '';
+                new QRCode(box, {
+                    text: qrUrl,
+                    width: 200,
+                    height: 200,
+                    colorDark: '#1e293b',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            };
+            script.onerror = function() {
+                box.innerHTML = '<p style="color:#94a3b8;padding:50px 0;">二维码加载失败</p>';
+            };
+            document.head.appendChild(script);
+        }
+
+        // ===== 登录状态轮询 =====
+        function startPolling() {
+            pollTimer = setInterval(function() {
+                fetch('/login/status')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var hint = document.getElementById('stateHint');
+                        var sub = document.getElementById('stateSub');
+                        var spinner = document.getElementById('spinner');
+                        var badge = document.getElementById('botBadge');
+
+                        if (data.status === 'SUCCESS') {
+                            hint.textContent = '登录成功';
+                            sub.textContent = '机器人已连接';
+                            if (spinner) spinner.style.display = 'none';
+                            setBadge(badge, 'connected', '已连接');
+                            showResult('success');
+
+                            // 3秒后重置扫码区域（显示已连接状态）
+                            setTimeout(function() {
+                                var area = document.getElementById('scanArea');
+                                var result = document.getElementById('resultArea');
+                                // 保留二维码位置显示"已连接"
+                                result.style.display = 'block';
+                                area.style.display = 'block';
+                                var qrBox = document.getElementById('qrcode');
+                                qrBox.classList.add('fade-out');
+                                hint.textContent = '\\u2713 已连接';
+                                sub.textContent = '机器人正常运行中';
+                                if (spinner) spinner.style.display = 'none';
+                            }, 3000);
+                        } else if (data.status === 'FAILED' || data.status === 'TIMEOUT') {
+                            hint.textContent = '登录失败';
+                            sub.textContent = '请检查网络后重启';
+                            if (spinner) spinner.style.display = 'none';
+                            setBadge(badge, 'failed', '连接失败');
+                            showResult('fail');
+                        } else if (data.status === 'SCANNED' && !scannedOnce) {
+                            scannedOnce = true;
+                            hint.textContent = '正在验证身份...';
+                            sub.textContent = '请稍候';
+                            setBadge(badge, 'waiting', '验证中');
+                        } else if (data.status === 'WAITING_SCAN') {
+                            setBadge(badge, 'waiting', '等待扫码');
+                        }
+                    });
+            }, 2000);
+        }
+
+        // ===== 控制台数据轮询（每 3 秒） =====
+        function startDashboardPolling() {
+            dashboardTimer = setInterval(function() {
+                fetchBotStatus();
+                fetchUsers();
+            }, 3000);
+            // 立即执行一次
+            fetchBotStatus();
+            fetchUsers();
+        }
+
+        // ===== 机器人状态 =====
+        function fetchBotStatus() {
+            fetch('/api/bot/status')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var indicator = document.getElementById('botStatusIndicator');
+                    var timeEl = document.getElementById('botLoginTime');
+                    var errorRow = document.getElementById('botErrorRow');
+                    var errorEl = document.getElementById('botError');
+                    var badge = document.getElementById('botBadge');
+
+                    if (data.status === 'CONNECTED') {
+                        indicator.innerHTML = '<span class="dot dot-green"></span> \\u2713 已连接';
+                        timeEl.textContent = data.loginTime || '—';
+                        errorRow.style.display = 'none';
+                        setBadge(badge, 'connected', '已连接');
+                    } else if (data.status === 'FAILED') {
+                        indicator.innerHTML = '<span class="dot dot-red"></span> \\u2716 登录失败';
+                        timeEl.textContent = data.loginTime || '—';
+                        if (data.error) {
+                            errorRow.style.display = 'flex';
+                            errorEl.textContent = data.error;
+                        }
+                        setBadge(badge, 'failed', '连接失败');
+                    } else {
+                        indicator.innerHTML = '<span class="dot dot-gray"></span> \\u25CB 未启动';
+                        timeEl.textContent = '—';
+                        errorRow.style.display = 'none';
+                        setBadge(badge, 'waiting', '等待连接');
+                    }
+                    document.getElementById('updateTime').textContent =
+                        new Date().toLocaleTimeString();
+                });
+        }
+
+        // ===== 用户列表 =====
+        function fetchUsers() {
+            fetch('/api/users')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var countEl = document.getElementById('userCount');
+                    var oldCount = parseInt(countEl.textContent);
+                    var newCount = data.total || 0;
+
+                    // 更新计数
+                    countEl.textContent = newCount;
+                    if (newCount > oldCount) {
+                        countEl.classList.remove('count-bump');
+                        void countEl.offsetWidth;
+                        countEl.classList.add('count-bump');
+                    }
+
+                    var tbody = document.getElementById('userTableBody');
+                    if (!data.users || data.users.length === 0) {
+                        tbody.innerHTML = '<div class="table-empty">暂无用户数据</div>';
+                        return;
+                    }
+
+                    var newIds = new Set();
+                    var html = '';
+                    for (var i = 0; i < data.users.length; i++) {
+                        var u = data.users[i];
+                        newIds.add(u.userId);
+                        var isNew = !knownUserIds.has(u.userId);
+                        var rowClass = 'table-row' + (isNew ? ' new-user' : '');
+
+                        var userIdShort = u.userId.length > 12
+                            ? u.userId.substring(0, 6) + '...' + u.userId.slice(-4)
+                            : u.userId;
+
+                        var displayName = u.nickname || '微信用户';
+                        var avatarLetter = displayName.charAt(0);
+
+                        // 计算活跃状态
+                        var activeLabel = formatActiveTime(u.lastActiveTime);
+                        var isActive = isRecentlyActive(u.lastActiveTime);
+
+                        html += '<div class="' + rowClass + '">';
+                        html += '  <div class="user-info">';
+                        html += '    <span class="user-avatar">' + escapeHtml(avatarLetter) + '</span>';
+                        html += '    <span class="user-name">' + escapeHtml(displayName) + '</span>';
+                        html += '  </div>';
+                        html += '  <span class="userId-text">' + escapeHtml(userIdShort) + '</span>';
+                        html += '  <span class="active-time"><span class="status-dot" style="background:' +
+                            (isActive ? '#22c55e' : '#94a3b8') + ';margin-right:4px;"></span>' +
+                            escapeHtml(activeLabel) + '</span>';
+                        html += '  <span class="msg-count">' + u.interactionCount + '</span>';
+                        html += '</div>';
+                    }
+                    knownUserIds = newIds;
+                    tbody.innerHTML = html;
+                });
+        }
+
+        // ===== 工具函数 =====
+
+        function isRecentlyActive(timeStr) {
+            if (!timeStr) return false;
+            try {
+                var then = new Date(timeStr.replace(' ', 'T'));
+                var now = new Date();
+                return (now - then) < 30 * 60 * 1000; // 30分钟内算活跃
+            } catch(e) { return false; }
+        }
+
+        function formatActiveTime(timeStr) {
+            if (!timeStr) return '未知';
+            try {
+                var then = new Date(timeStr.replace(' ', 'T'));
+                var now = new Date();
+                var diffMs = now - then;
+                var diffMin = Math.floor(diffMs / 60000);
+                if (diffMin < 1) return '刚刚';
+                if (diffMin < 60) return diffMin + '分钟前';
+                var diffHour = Math.floor(diffMin / 60);
+                if (diffHour < 24) return diffHour + '小时前';
+                var diffDay = Math.floor(diffHour / 24);
+                if (diffDay < 7) return diffDay + '天前';
+                return timeStr.split(' ')[0];
+            } catch(e) { return timeStr; }
+        }
+
+        function setBadge(el, cls, text) {
+            el.className = 'badge ' + cls;
+            el.textContent = text;
+        }
+
+        function escapeHtml(s) {
+            if (!s) return '';
+            return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+                    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function showResult(type) {
+            var scanArea = document.getElementById('scanArea');
+            var resultArea = document.getElementById('resultArea');
+            resultArea.style.display = 'block';
+
+            var icon = document.getElementById('resultIcon');
+            var text = document.getElementById('resultText');
+
+            if (type === 'success') {
+                icon.className = 'result-icon success';
+                icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="white" ' +
+                    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+                    '<polyline points="20 6 9 17 4 12"></polyline></svg>';
+                text.textContent = '连接成功';
+            } else {
+                icon.className = 'result-icon fail';
+                icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="white" ' +
+                    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+                    '<line x1="18" y1="6" x2="6" y2="18"></line>' +
+                    '<line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+                text.textContent = '连接失败，请重启应用';
+            }
+            stopPolling();
+        }
+
+        // ===== 清理 =====
+        function stopPolling() {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        }
+
+        // 启动
+        initLogin(QR_URL);
+        """;
+
+    // ==================== 工具方法 ====================
+
     private static String jsonString(String s) {
+        if (s == null) return "null";
         StringBuilder sb = new StringBuilder(s.length() + 16);
         sb.append('"');
         for (int i = 0; i < s.length(); i++) {
@@ -196,412 +867,7 @@ public class LoginPageServer {
         return sb.toString();
     }
 
-    // ==================== 图标 SVG（团建主题手绘风插画） ====================
-
-    /** 智能地点推荐 — 山水旗标，暖色调 */
-    private static final String ICON_LOCATION =
-        "<svg viewBox=\"0 0 44 44\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">" +
-        "  <circle cx=\"30\" cy=\"14\" r=\"10\" fill=\"#FDE68A\" opacity=\".7\"/>" +
-        "  <rect x=\"7\" y=\"22\" width=\"30\" height=\"16\" rx=\"5\" fill=\"#E0E7FF\"/>" +
-        "  <path d=\"M7 24 C7 22,37 22,37 24\" fill=\"#93C5FD\"/>" +
-        "  <path d=\"M18 28 L18 38 M22 27 L22 37 M26 28 L26 38\" stroke=\"#93C5FD\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>" +
-        "  <path d=\"M8 20 L14 16 L22 22 L30 10\" stroke=\"#6366F1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/>" +
-        "  <circle cx=\"30\" cy=\"10\" r=\"2\" fill=\"#6366F1\"/>" +
-        "  <path d=\"M8 20 L14 16 L22 22 L30 10\" stroke=\"#818CF8\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\" opacity=\".5\"/>" +
-        "  <path d=\"M36 13 L39 10 L36 7\" stroke=\"#F59E0B\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/>" +
-        "  <rect x=\"37\" y=\"5\" width=\"6\" height=\"8\" rx=\"1.5\" fill=\"#F59E0B\"/>" +
-        "</svg>";
-
-    /** 路线规划 — 蜿蜒路线 + 小巴车，年轻轻快 */
-    private static final String ICON_ROUTE =
-        "<svg viewBox=\"0 0 44 44\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">" +
-        "  <circle cx=\"12\" cy=\"34\" r=\"6\" fill=\"#D1FAE5\" opacity=\".8\"/>" +
-        "  <circle cx=\"34\" cy=\"14\" r=\"6\" fill=\"#FEE2E2\" opacity=\".8\"/>" +
-        "  <path d=\"M12 34 C18 30,26 22,34 14\" stroke=\"#10B981\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-dasharray=\"3 3\"/>" +
-        "  <path d=\"M12 34 C18 30,26 22,34 14\" stroke=\"#34D399\" stroke-width=\"2.5\" stroke-linecap=\"round\" fill=\"none\" opacity=\".4\"/>" +
-        "  <rect x=\"18\" y=\"18\" width=\"12\" height=\"8\" rx=\"3\" fill=\"#EEF2FF\" stroke=\"#6366F1\" stroke-width=\"1.5\"/>" +
-        "  <rect x=\"22\" y=\"20\" width=\"4\" height=\"4\" rx=\"1.5\" fill=\"#A5B4FC\"/>" +
-        "  <circle cx=\"19.5\" cy=\"27.5\" r=\"2\" fill=\"#818CF8\" stroke=\"#6366F1\" stroke-width=\".8\"/>" +
-        "  <circle cx=\"28.5\" cy=\"27.5\" r=\"2\" fill=\"#818CF8\" stroke=\"#6366F1\" stroke-width=\".8\"/>" +
-        "  <path d=\"M8 33 L5 32 L7 28\" stroke=\"#F59E0B\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/>" +
-        "</svg>";
-
-    /** 行程生成 — 计划卡片叠层，有序温暖 */
-    private static final String ICON_ITINERARY =
-        "<svg viewBox=\"0 0 44 44\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">" +
-        "  <rect x=\"10\" y=\"26\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#FEF3C7\" stroke=\"#FCD34D\" stroke-width=\"1.2\" transform=\"rotate(-4 22 32)\"/>" +
-        "  <line x1=\"14\" y1=\"29\" x2=\"28\" y2=\"28\" stroke=\"#F59E0B\" stroke-width=\"1\" stroke-linecap=\"round\"/>" +
-        "  <line x1=\"14\" y1=\"32\" x2=\"24\" y2=\"31\" stroke=\"#FBBF24\" stroke-width=\"1\" stroke-linecap=\"round\"/>" +
-        "  <line x1=\"14\" y1=\"35\" x2=\"22\" y2=\"34\" stroke=\"#FCD34D\" stroke-width=\"1\" stroke-linecap=\"round\"/>" +
-        "  <rect x=\"8\" y=\"24\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#E0E7FF\" stroke=\"#818CF8\" stroke-width=\"1.2\"/>" +
-        "  <line x1=\"12\" y1=\"27\" x2=\"28\" y2=\"27\" stroke=\"#6366F1\" stroke-width=\"1\" stroke-linecap=\"round\"/>" +
-        "  <line x1=\"12\" y1=\"30\" x2=\"26\" y2=\"30\" stroke=\"#818CF8\" stroke-width=\"1\" stroke-linecap=\"round\"/>" +
-        "  <line x1=\"12\" y1=\"33\" x2=\"20\" y2=\"33\" stroke=\"#A5B4FC\" stroke-width=\"1\" stroke-linecap=\"round\"/>" +
-        "  <circle cx=\"6\" cy=\"25\" r=\"2.5\" fill=\"#F9A8D4\"/>" +
-        "  <rect x=\"4\" y=\"6\" width=\"20\" height=\"13\" rx=\"3\" fill=\"#FCE7F3\" stroke=\"#F9A8D4\" stroke-width=\"1.2\" transform=\"rotate(3 14 13)\"/>" +
-        "  <line x1=\"7\" y1=\"10\" x2=\"19\" y2=\"9\" stroke=\"#EC4899\" stroke-width=\".8\" stroke-linecap=\"round\"/>" +
-        "  <line x1=\"7\" y1=\"13\" x2=\"17\" y2=\"12\" stroke=\"#F472B6\" stroke-width=\".8\" stroke-linecap=\"round\"/>" +
-        "  <line x1=\"7\" y1=\"16\" x2=\"14\" y2=\"15\" stroke=\"#F9A8D4\" stroke-width=\".8\" stroke-linecap=\"round\"/>" +
-        "  <circle cx=\"18\" cy=\"7\" r=\"1.2\" fill=\"#EC4899\"/>" +
-        "</svg>";
-
-    // ==================== 品牌 Logo SVG ====================
-
-    /** Claw 助手品牌 Logo — 团队人物 + 路线旗标，团建出游意象 */
-    private static final String LOGO_SVG =
-        "<svg viewBox=\"0 0 56 56\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">" +
-        "  <rect width=\"56\" height=\"56\" rx=\"16\" fill=\"url(#logo-grad)\"/>" +
-        "  <defs>" +
-        "    <linearGradient id=\"logo-grad\" x1=\"0\" y1=\"0\" x2=\"56\" y2=\"56\">" +
-        "      <stop offset=\"0%\" stop-color=\"#667EEA\"/>" +
-        "      <stop offset=\"100%\" stop-color=\"#764BA2\"/>" +
-        "    </linearGradient>" +
-        "  </defs>" +
-        /* 小山/丘陵 — 团建户外 */
-        "  <ellipse cx=\"20\" cy=\"40\" rx=\"8\" ry=\"5\" fill=\"#C4B5FD\" opacity=\".6\"/>" +
-        "  <ellipse cx=\"38\" cy=\"38\" rx=\"6\" ry=\"4\" fill=\"#A78BFA\" opacity=\".5\"/>" +
-        /* 旗标 — 目的地 */
-        "  <line x1=\"28\" y1=\"18\" x2=\"28\" y2=\"34\" stroke=\"#FDE68A\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>" +
-        "  <path d=\"M28 18 L37 22 L28 26\" fill=\"#F59E0B\" stroke=\"#FDE68A\" stroke-width=\".8\" stroke-linejoin=\"round\"/>" +
-        /* 三个人物剪影 — 团队 */
-        "  <circle cx=\"20\" cy=\"26\" r=\"3.5\" fill=\"#FDE68A\"/>" +
-        "  <path d=\"M14 33 C14 28,26 28,26 33\" fill=\"#FDE68A\" opacity=\".9\"/>" +
-        "  <circle cx=\"32\" cy=\"24\" r=\"3\" fill=\"#E0E7FF\"/>" +
-        "  <path d=\"M27 31 C27 26.5,37 26.5,37 31\" fill=\"#E0E7FF\" opacity=\".9\"/>" +
-        "  <circle cx=\"24\" cy=\"20\" r=\"2.5\" fill=\"#C4B5FD\"/>" +
-        "  <path d=\"M19 27 C19 23,29 23,29 27\" fill=\"#C4B5FD\" opacity=\".9\"/>" +
-        /* 蜿蜒路线 */
-        "  <path d=\"M12 40 C18 36,22 38,28 34 C32 31,36 32,40 38\" stroke=\"#FDE68A\" stroke-width=\"1.2\" " +
-        "    stroke-linecap=\"round\" fill=\"none\" opacity=\".7\"/>" +
-        "</svg>";
-
-    // ==================== CSS（内联） ====================
-
-    private static final String CSS = """
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-                         "Microsoft YaHei", sans-serif;
-            background: linear-gradient(135deg, #f5f0ff 0%, #e8f4fd 50%, #f0f7ff 100%);
-            display: flex; justify-content: center; align-items: center;
-            min-height: 100vh;
-            position: relative;
-            overflow-x: hidden;
-        }
-        /* 背景光晕 */
-        body::before {
-            content: '';
-            position: fixed; top: -50%; left: -30%;
-            width: 80%; height: 100%;
-            background: radial-gradient(ellipse, rgba(139,92,246,0.06) 0%, transparent 70%);
-            pointer-events: none; z-index: 0;
-        }
-        body::after {
-            content: '';
-            position: fixed; bottom: -40%; right: -20%;
-            width: 70%; height: 80%;
-            background: radial-gradient(ellipse, rgba(59,130,246,0.05) 0%, transparent 70%);
-            pointer-events: none; z-index: 0;
-        }
-        /* 团建出游装饰元素 */
-        .travel-decor {
-            position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
-        }
-        .travel-decor .decor-flag {
-            position: absolute; top: 12%; left: 8%;
-            width: 18px; height: 32px; opacity: 0.08;
-            border-left: 2px solid #667eea;
-        }
-        .travel-decor .decor-flag::after {
-            content: '';
-            position: absolute; top: 2px; left: 2px;
-            width: 0; height: 0;
-            border-left: 7px solid transparent;
-            border-right: 7px solid transparent;
-            border-bottom: 10px solid #667eea;
-        }
-        .travel-decor .decor-trail {
-            position: absolute; bottom: 18%; right: 10%; opacity: 0.06;
-            width: 120px; height: 40px;
-            border: 2px dashed #764ba2;
-            border-radius: 50%;
-            border-color: transparent transparent #764ba2 transparent;
-            transform: rotate(-15deg);
-        }
-        .travel-decor .decor-dot1 {
-            position: absolute; top: 25%; right: 14%; opacity: 0.07;
-            width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;
-        }
-        .travel-decor .decor-dot2 {
-            position: absolute; top: 65%; left: 12%; opacity: 0.06;
-            width: 8px; height: 8px; border-radius: 50%; background: #10b981;
-        }
-        .travel-decor .decor-peak {
-            position: absolute; bottom: 22%; left: 6%; opacity: 0.05;
-            width: 0; height: 0;
-            border-left: 20px solid transparent;
-            border-right: 20px solid transparent;
-            border-bottom: 28px solid #667eea;
-        }
-        /* 点阵网格 */
-        .dot-grid {
-            position: fixed; inset: 0;
-            background-image: radial-gradient(circle, rgba(148,163,184,0.12) 1px, transparent 1px);
-            background-size: 28px 28px;
-            pointer-events: none; z-index: 0;
-        }
-        .wrapper {
-            position: relative; z-index: 1;
-            width: 100%; max-width: 420px; padding: 24px;
-        }
-
-        /* ===== 品牌头部 ===== */
-        .brand {
-            text-align: center; margin-bottom: 28px;
-        }
-        .brand-icon {
-            display: inline-flex; align-items: center; justify-content: center;
-            width: 56px; height: 56px; margin-bottom: 14px;
-        }
-        .brand-icon svg {
-            width: 56px; height: 56px; display: block;
-        }
-        .brand-name {
-            font-size: 24px; font-weight: 700; color: #1a1a2e;
-            letter-spacing: -0.3px;
-        }
-        .brand-sub {
-            font-size: 14px; color: #8892a4; margin-top: 4px;
-            font-weight: 400;
-        }
-
-        /* ===== 二维码卡片 ===== */
-        .card {
-            background: rgba(255,255,255,0.85);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border-radius: 20px; padding: 36px 28px 32px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.07), 0 1px 0 rgba(255,255,255,0.6) inset;
-            border: 1px solid rgba(226,232,240,0.8);
-            text-align: center;
-            margin-bottom: 24px;
-        }
-        .qrcode-box {
-            display: inline-block; padding: 14px;
-            background: #fff; border: 2px solid #eef2f6;
-            border-radius: 14px; margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }
-        .qrcode-box canvas, .qrcode-box img {
-            display: block; width: 220px; height: 220px;
-        }
-        .spinner {
-            width: 28px; height: 28px; margin: 6px auto 12px;
-            border: 3px solid #e8ecf1; border-top-color: #667eea;
-            border-radius: 50%; animation: spin 0.7s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .hint { font-size: 16px; color: #1a1a2e; font-weight: 500; margin-bottom: 2px; }
-        .sub-hint { font-size: 13px; color: #94a3b8; margin-top: 2px; }
-        .sub-hint.verified {
-            color: #667eea; font-weight: 500;
-            animation: pulse 1.5s ease-in-out infinite;
-        }
-        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
-
-        /* ===== 功能卡 ===== */
-        .features {
-            display: flex; gap: 10px; margin-bottom: 24px;
-        }
-        .feature-item {
-            flex: 1; text-align: center;
-            background: rgba(255,255,255,0.72);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            border: 1px solid rgba(226,232,240,0.7);
-            border-radius: 14px; padding: 16px 8px;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .feature-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102,126,234,0.1);
-        }
-        .feature-icon {
-            width: 44px; height: 44px; margin: 0 auto 8px;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .feature-icon svg {
-            width: 44px; height: 44px; display: block;
-        }
-        .feature-title { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 2px; }
-        .feature-desc { font-size: 11px; color: #94a3b8; line-height: 1.4; }
-
-        /* ===== 底部 ===== */
-        .footer {
-            text-align: center; font-size: 12px; color: #b0b8c4;
-        }
-        .footer-line { margin-bottom: 4px; }
-        .footer-line:last-child { opacity: 0.7; }
-
-        /* ===== 结果区域 ===== */
-        .result-area { padding-top: 12px; }
-        .result-icon {
-            width: 80px; height: 80px; margin: 0 auto 20px;
-            border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            animation: popIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        @keyframes popIn {
-            0% { transform: scale(0); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        .result-icon.success { background: linear-gradient(135deg, #07c160, #06ad56); }
-        .result-icon.fail { background: linear-gradient(135deg, #fa5151, #e04848); }
-        .result-icon svg { width: 40px; height: 40px; }
-        .result-text {
-            font-size: 17px; color: #1a1a2e; font-weight: 500; margin-bottom: 20px;
-        }
-        .retry-btn {
-            padding: 10px 36px; font-size: 15px; color: #fff;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border: none; border-radius: 10px;
-            cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
-            box-shadow: 0 4px 12px rgba(102,126,234,0.3);
-        }
-        .retry-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(102,126,234,0.4); }
-        .retry-btn:active { transform: translateY(0); }
-
-        /* ===== 响应式 ===== */
-        @media (max-width: 480px) {
-            .wrapper { padding: 16px; }
-            .card { padding: 28px 18px 24px; border-radius: 16px; }
-            .features { flex-direction: column; gap: 8px; }
-            .feature-item { padding: 14px 12px; }
-        }
-        """;
-
-    // ==================== JS（内联） ====================
-
-    // language=JavaScript
-    private static final String JS = """
-        let pollTimer = null;
-        let scannedOnce = false;
-
-        function initLogin(qrUrl) {
-            console.log("qrUrl length:", qrUrl.length);
-            if (qrUrl && qrUrl.length > 0) {
-                generateQR(qrUrl);
-            }
-            startPolling();
-        }
-
-        // 加载 qrcodejs CDN 并生成二维码
-        function generateQR(qrUrl) {
-            var script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
-            script.onload = function() {
-                document.getElementById('qrcode').innerHTML = '';
-                new QRCode(document.getElementById('qrcode'), {
-                    text: qrUrl,
-                    width: 220,
-                    height: 220,
-                    colorDark: '#000000',
-                    colorLight: '#ffffff',
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-            };
-            script.onerror = function() {
-                document.getElementById('qrcode').innerHTML =
-                    '<p style="color:#94a3b8;">二维码加载失败，请<a href="' +
-                    escapeHtml(qrUrl) + '" target="_blank" style="color:#667eea;">点击此处</a>打开扫码页面</p>';
-            };
-            document.head.appendChild(script);
-        }
-
-        function escapeHtml(s) {
-            return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;')
-                    .replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
-        }
-
-        // 轮询登录状态
-        function startPolling() {
-            pollTimer = setInterval(function() {
-                fetch('/login/status')
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        if (data.status === 'SUCCESS') {
-                            updateHint('正在连接微信助手...', 'verified');
-                            // 短暂延迟让用户看到连接中状态
-                            setTimeout(function() {
-                                showResult('success');
-                                stopPolling();
-                                setTimeout(tryClose, 3000);
-                            }, 800);
-                        } else if (data.status === 'FAILED' || data.status === 'TIMEOUT') {
-                            showResult('fail');
-                            stopPolling();
-                            setTimeout(tryClose, 10000);
-                        } else if (data.status === 'SCANNED' && !scannedOnce) {
-                            scannedOnce = true;
-                            updateHint('正在验证身份...', 'verified');
-                        }
-                        // WAITING_SCAN 继续轮询
-                    })
-                    .catch(function() {
-                        // 网络错误静默忽略
-                    });
-            }, 2000);
-        }
-
-        function updateHint(text, className) {
-            var hint = document.getElementById('statusHint');
-            hint.textContent = text;
-            hint.className = 'sub-hint';
-            if (className) hint.classList.add(className);
-        }
-
-        function stopPolling() {
-            if (pollTimer) {
-                clearInterval(pollTimer);
-                pollTimer = null;
-            }
-        }
-
-        function showResult(type) {
-            var spinner = document.getElementById('spinner');
-            if (spinner) spinner.style.display = 'none';
-            document.getElementById('scanArea').style.display = 'none';
-            document.getElementById('features').style.display = 'none';
-            var area = document.getElementById('resultArea');
-            area.style.display = 'block';
-
-            var icon = document.getElementById('resultIcon');
-            var text = document.getElementById('resultText');
-            var btn = document.getElementById('retryBtn');
-
-            if (type === 'success') {
-                icon.className = 'result-icon success';
-                icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="white" ' +
-                    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
-                    '<polyline points="20 6 9 17 4 12"></polyline></svg>';
-                text.textContent = '连接成功，开始使用 🎉';
-                btn.style.display = 'none';
-            } else {
-                icon.className = 'result-icon fail';
-                icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="white" ' +
-                    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
-                    '<line x1="18" y1="6" x2="6" y2="18"></line>' +
-                    '<line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-                text.textContent = '连接失败，请重新扫码';
-                btn.style.display = 'inline-block';
-            }
-        }
-
-        function retry() {
-            location.reload();
-        }
-
-        function tryClose() {
-            try { window.close(); } catch(e) {}
-        }
-        """;
+    private static String jsonEscape(String s) {
+        return jsonString(s).replaceAll("^\"|\"$", "");
+    }
 }

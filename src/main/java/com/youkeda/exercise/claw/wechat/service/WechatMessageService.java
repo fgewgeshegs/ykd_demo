@@ -8,6 +8,7 @@ import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ public class WechatMessageService {
     private final WechatProperties wechatProperties;
     private final MessageRouter messageRouter;
     private final ContextStore contextStore;
+    private final WechatUserManager wechatUserManager;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
@@ -43,11 +45,13 @@ public class WechatMessageService {
     public WechatMessageService(WechatILinkClient wechatClient,
                                 WechatProperties wechatProperties,
                                 MessageRouter messageRouter,
-                                ContextStore contextStore) {
+                                ContextStore contextStore,
+                                WechatUserManager wechatUserManager) {
         this.wechatClient = wechatClient;
         this.wechatProperties = wechatProperties;
         this.messageRouter = messageRouter;
         this.contextStore = contextStore;
+        this.wechatUserManager = wechatUserManager;
     }
 
     @PostConstruct
@@ -57,23 +61,8 @@ public class WechatMessageService {
             return;
         }
 
-        // 等待登录完成（最多等 60 秒）
-        long deadline = System.currentTimeMillis() + 60_000;
-        while (!wechatClient.isLoggedIn() && System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-        }
-
-        if (!wechatClient.isLoggedIn()) {
-            log.warn("微信未登录，消息服务不启动");
-            return;
-        }
-
-        log.info("微信消息服务启动，开始监听消息");
+        // 不阻塞应用启动——轮询线程自动等待登录完成后开始处理消息
+        log.info("微信消息服务准备就绪，登录完成后将自动开始监听消息");
         running.set(true);
         pollThread = new Thread(this::pollLoop, "wechat-poll-thread");
         pollThread.setDaemon(true);
@@ -84,8 +73,20 @@ public class WechatMessageService {
      * 消息轮询主循环（适配新 SDK getUpdates + snake_case 模型）
      */
     private void pollLoop() {
+        boolean loginWarned = false;
         while (running.get()) {
             try {
+                // 未登录时跳过本轮，不阻塞
+                if (!wechatClient.isLoggedIn()) {
+                    if (!loginWarned) {
+                        log.info("等待微信登录完成...");
+                        loginWarned = true;
+                    }
+                    Thread.sleep(2000);
+                    continue;
+                }
+                loginWarned = false;
+
                 List<WeixinMessage> messages = wechatClient.receiveMessages();
 
                 if (messages != null && !messages.isEmpty()) {
@@ -95,6 +96,9 @@ public class WechatMessageService {
                         String contextToken = msg.getContext_token();
 
                         if (fromUserId == null || fromUserId.isEmpty()) continue;
+
+                        // 记录/更新用户活跃信息
+                        wechatUserManager.recordInteraction(fromUserId);
 
                         if (msg.getItem_list() != null) {
                             for (var item : msg.getItem_list()) {
