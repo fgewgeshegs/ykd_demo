@@ -92,17 +92,14 @@ public class TeamTripCollectFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext("anonymous", ""));
+        return execute(argumentsJson, new FunctionExecutionContext(""));
     }
 
     @Override
     public String execute(String argumentsJson, FunctionExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
-            args.put("action", "collect");
-            String userId = context != null && context.userId() != null
-                    ? context.userId() : "anonymous";
-            return objectMapper.writeValueAsString(planService.handle(userId, args));
+            return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
             log.error("team_trip_collect 执行失败 | error={}", e.getMessage());
             return error("团建需求收集失败: " + e.getMessage());

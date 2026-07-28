@@ -103,7 +103,7 @@ public class FileGenerationTool implements LLMFunction {
             String format = args.has("format") ? args.get("format").asText() : null;
 
             // 用 topic 作为用户消息调用 generate（内部会做 LLM 内容生成 + 渲染）
-            FileGenerationResult result = fileGenerationService.generate("system", topic, format);
+            FileGenerationResult result = fileGenerationService.generate(topic, format);
             if (result == null) {
                 return "{\"error\": \"文件生成失败\"}";
             }

@@ -36,32 +36,31 @@ public class ChatService {
     /**
      * 生成对话回复（带上下文记忆）
      *
-     * @param userId  用户标识
      * @param message 用户消息
      * @return 模型回复，失败时返回 null
      */
-    public String chat(String userId, String message) {
-        log.info("ChatService 开始处理 | user={} | text={}", userId, message);
+    public String chat(String message) {
+        log.info("ChatService 开始处理 | text={}", message);
 
         try {
             // 1. 获取历史上下文
-            List<Message> history = contextStore.getHistory(userId, MAX_HISTORY);
-            log.debug("获取历史消息 | user={} | historySize={}", userId, history.size());
+            List<Message> history = contextStore.getHistory(MAX_HISTORY);
+            log.debug("获取历史消息 | historySize={}", history.size());
 
             // 2. 调用 LLM（带历史）
-            String reply = llmClient.chat(userId, message, history);
+            String reply = llmClient.chat(message, history);
             if (reply == null || reply.isEmpty()) {
-                log.warn("ChatService 回复为空 | user={}", userId);
+                log.warn("ChatService 回复为空");
                 return null;
             }
 
             // 3. 保存回复到上下文（用户消息已由 WechatMessageService 统一存储）
-            contextStore.append(userId, "assistant", reply);
+            contextStore.append("assistant", reply);
 
-            log.info("ChatService 处理完成 | user={}", userId);
+            log.info("ChatService 处理完成");
             return reply;
         } catch (Exception e) {
-            log.error("ChatService 处理异常 | user={} | error={}", userId, e.getMessage());
+            log.error("ChatService 处理异常 | error={}", e.getMessage());
             return null;
         }
     }

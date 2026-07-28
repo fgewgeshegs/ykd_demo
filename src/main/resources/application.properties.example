@@ -94,6 +94,50 @@ place-image.provider=pexels
 pexels.api-key=
 
 # ============================================
+# SQLite DataSource (Spring JDBC + SqliteContextStore)
+# ============================================
+spring.datasource.url=jdbc:sqlite:data/claw.db
+spring.datasource.driver-class-name=org.sqlite.JDBC
+
+storage.enabled=true
+
+# ============================================
+# Long-Term Memory (Qdrant + BGE-M3)
+# ============================================
+# 总开关
+memory.enabled=true
+# 记忆重要性阈值：低于此值不入库（0.0~1.0）
+memory.importance-threshold=0.3
+# 每次召回的记忆条数（Top-K）
+memory.recall-top-k=5
+# 召回最低相似度：低于此值的记忆不注入
+memory.recall-min-score=0.45
+# 先多召回候选，再综合相关度、重要性和时间排序
+memory.recall-candidate-multiplier=3
+# 普通记忆的新鲜度半衰期（天）
+memory.recency-half-life-days=180
+# 单用户记忆提取线程池
+memory.async-core-size=1
+memory.async-max-size=2
+memory.async-queue-capacity=50
+# 去重相似度阈值：高于此值视为重复
+memory.dedup-similarity=0.90
+# 用户消息最短长度：低于此值跳过提取
+memory.min-extract-length=10
+
+# Qdrant 向量数据库
+memory.qdrant.host=localhost
+memory.qdrant.port=6334
+memory.qdrant.collection=claw_memories
+memory.qdrant.vector-dimension=1024
+
+# Embedding 模型（BGE-M3，需 OpenAI 兼容的 /v1/embeddings 端点）
+memory.embedding.base-url=http://localhost:11434
+memory.embedding.api-key=
+memory.embedding.model=bge-m3
+memory.embedding.dimension=1024
+
+# ============================================
 # Didi MCP Configuration
 # ============================================
 # 滴滴出行 MCP Server（JSON-RPC 2.0 协议）
@@ -102,3 +146,32 @@ pexels.api-key=
 didi.mcp.base-url=https://mcp.didichuxing.com/mcp-servers-sandbox
 didi.mcp.api-key=
 didi.mcp.timeout=15000
+
+# ============================================
+# Information Scout Agent（信息猎手）
+# ============================================
+# 总开关
+scout.enabled=true
+# 语义匹配最低分数（0.0-1.0）
+scout.min-match-score=0.60
+# 每次最大候选信息数
+scout.max-candidates=10
+# 每次最大推荐数
+scout.max-recommendations=5
+# 信息保留天数
+scout.ttl-days=7
+# 搜索任务数
+scout.search-task-count=5
+# 每个搜索任务最大结果数
+scout.max-results-per-task=5
+# 同一信息多少天内不重复推送
+scout.delivery-cooldown-days=30
+# 定时任务 cron 表达式（每天早8点）
+scout.cron=0 0 8 * * *
+
+# Qdrant 信息库（独立于记忆库）
+scout.qdrant.collection=scout_information
+scout.qdrant.vector-dimension=1024
+
+# RSS 订阅源（Phase 2）
+scout.rss.enabled=false

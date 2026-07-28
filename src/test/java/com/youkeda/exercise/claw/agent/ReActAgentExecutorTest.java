@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.model.PlanTask;
 import com.youkeda.exercise.claw.agent.plan.DefaultPlanStore;
@@ -11,8 +12,6 @@ import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
-import com.youkeda.exercise.claw.memory.model.UserMemoryContext;
-import com.youkeda.exercise.claw.memory.retriever.MemoryRetriever;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -36,7 +35,7 @@ class ReActAgentExecutorTest {
                         new LLMResponse("请补充必要信息。", List.of(), "stop"));
 
         String reply = fixture.executor.execute(new AgentContext()
-                .setUserId("u1").setMessage("帮我做方案"));
+                .setMessage("帮我做方案"));
 
         assertEquals("请补充必要信息。", reply);
         ArgumentCaptor<List<ToolDefinition>> tools = ArgumentCaptor.forClass(List.class);
@@ -61,7 +60,7 @@ class ReActAgentExecutorTest {
         });
 
         String reply = fixture.executor.execute(new AgentContext()
-                .setUserId("u2").setMessage("生成完整方案"));
+                .setMessage("生成完整方案"));
 
         assertEquals("已根据现有结果整理回复。", reply);
         assertEquals(13, calls.get());
@@ -82,7 +81,7 @@ class ReActAgentExecutorTest {
         });
 
         String reply = fixture.executor.execute(new AgentContext()
-                .setUserId("u-limit").setMessage("生成完整方案"));
+                .setMessage("生成完整方案"));
 
         assertTrue(reply.contains("当前可用信息") || reply.contains("已有结果"));
         assertFalse(reply.contains("处理请求超时"));
@@ -93,7 +92,7 @@ class ReActAgentExecutorTest {
     @Test
     void shouldRemoveLegacyLimitReplyWhenUserContinuesGeneration() {
         Fixture fixture = fixture();
-        when(fixture.contextStore.getHistory(anyString(), anyInt())).thenReturn(List.of(
+        when(fixture.contextStore.getHistory(anyInt())).thenReturn(List.of(
                 new com.youkeda.exercise.claw.agent.memory.Message("user", "生成团建方案"),
                 new com.youkeda.exercise.claw.agent.memory.Message("assistant",
                         "本轮处理步骤已达到上限，请回复" + "“" + "继续生成" + "”" + "。"),
@@ -102,7 +101,7 @@ class ReActAgentExecutorTest {
                 .thenReturn(new LLMResponse("继续完成方案。", List.of(), "stop"));
 
         fixture.executor.execute(new AgentContext()
-                .setUserId("u-continue").setMessage("继续生成"));
+                .setMessage("继续生成"));
 
         ArgumentCaptor<List<com.youkeda.exercise.claw.agent.memory.Message>> messages =
                 ArgumentCaptor.forClass(List.class);
@@ -119,7 +118,7 @@ class ReActAgentExecutorTest {
                 .thenReturn(new LLMResponse("你好！有什么可以帮你的？", List.of(), "stop"));
 
         AgentContext context = new AgentContext()
-                .setUserId("u-plan").setMessage("你好");
+                .setMessage("你好");
         String reply = fixture.executor.execute(context);
 
         assertEquals("你好！有什么可以帮你的？", reply);
@@ -129,7 +128,7 @@ class ReActAgentExecutorTest {
         ObjectMapper objectMapper = new ObjectMapper();
         LLMClient llmClient = mock(LLMClient.class);
         ContextStore contextStore = mock(ContextStore.class);
-        when(contextStore.getHistory(anyString(), anyInt())).thenReturn(List.of());
+        when(contextStore.getHistory(anyInt())).thenReturn(List.of());
 
         LLMFunctionRegistry registry = new LLMFunctionRegistry();
         registry.register(new LLMFunction() {
@@ -157,11 +156,11 @@ class ReActAgentExecutorTest {
         DefaultPlanStore planStore = new DefaultPlanStore();
         PlanValidator planValidator = new PlanValidator();
         SafetyPolicy safetyPolicy = new SafetyPolicy();
-        MemoryRetriever memoryRetriever = mock(MemoryRetriever.class);
-        when(memoryRetriever.retrieve(anyString(), anyString())).thenReturn(new UserMemoryContext());
+        LongTermMemoryService longTermMemoryService = mock(LongTermMemoryService.class);
+        when(longTermMemoryService.recall(anyString())).thenReturn(List.of());
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
-                planStore, planValidator, safetyPolicy, memoryRetriever);
+                planStore, planValidator, safetyPolicy, longTermMemoryService);
         return new Fixture(llmClient, executor, contextStore);
     }
 

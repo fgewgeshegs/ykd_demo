@@ -1,7 +1,6 @@
 package com.youkeda.exercise.claw.agent;
 
 import com.youkeda.exercise.claw.agent.model.PlanState;
-import com.youkeda.exercise.claw.memory.model.UserMemoryContext;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 
@@ -12,11 +11,6 @@ import com.youkeda.exercise.claw.wechat.model.WechatMessage;
  * {@link #planState} 为可选字段——非多步骤任务时为 null，0 额外开销。
  */
 public class AgentContext {
-
-    /**
-     * 用户标识
-     */
-    private String userId;
 
     /**
      * 用户消息文本（TEXT 类型时有效）
@@ -38,20 +32,6 @@ public class AgentContext {
      */
     private PlanState planState;
 
-    /**
-     * 用户长期记忆上下文（由 MemoryRetriever 在执行前填充）
-     */
-    private UserMemoryContext userMemoryContext;
-
-
-    public String getUserId() {
-        return userId;
-    }
-
-    public AgentContext setUserId(String userId) {
-        this.userId = userId;
-        return this;
-    }
 
     public String getMessage() {
         return message;
@@ -84,15 +64,6 @@ public class AgentContext {
 
     public AgentContext setPlanState(PlanState planState) {
         this.planState = planState;
-        return this;
-    }
-
-    public UserMemoryContext getUserMemoryContext() {
-        return userMemoryContext;
-    }
-
-    public AgentContext setUserMemoryContext(UserMemoryContext userMemoryContext) {
-        this.userMemoryContext = userMemoryContext;
         return this;
     }
 

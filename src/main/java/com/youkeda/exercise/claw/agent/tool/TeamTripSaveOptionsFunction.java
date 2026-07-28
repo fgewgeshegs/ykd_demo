@@ -78,17 +78,14 @@ public class TeamTripSaveOptionsFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext("anonymous", ""));
+        return execute(argumentsJson, new FunctionExecutionContext(""));
     }
 
     @Override
     public String execute(String argumentsJson, FunctionExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
-            args.put("action", "save_options");
-            String userId = context != null && context.userId() != null
-                    ? context.userId() : "anonymous";
-            return objectMapper.writeValueAsString(planService.handle(userId, args));
+            return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
             log.error("team_trip_save_options 执行失败 | error={}", e.getMessage());
             return error("保存候选方案失败: " + e.getMessage());

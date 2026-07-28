@@ -78,15 +78,13 @@ public class TeamTripSelectOptionFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext("anonymous", ""));
+        return execute(argumentsJson, new FunctionExecutionContext(""));
     }
 
     @Override
     public String execute(String argumentsJson, FunctionExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
-            String userId = context != null && context.userId() != null
-                    ? context.userId() : "anonymous";
 
             // budget_decision 存在时路由到 budget_decision action
             if (args.has("budget_decision") && !args.get("budget_decision").asText().isBlank()) {
@@ -94,7 +92,7 @@ public class TeamTripSelectOptionFunction implements LLMFunction {
             } else {
                 args.put("action", "select_option");
             }
-            return objectMapper.writeValueAsString(planService.handle(userId, args));
+            return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
             log.error("team_trip_select_option 执行失败 | error={}", e.getMessage());
             return error("选择方案失败: " + e.getMessage());

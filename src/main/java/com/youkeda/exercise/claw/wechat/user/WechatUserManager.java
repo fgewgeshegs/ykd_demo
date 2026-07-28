@@ -169,6 +169,24 @@ public class WechatUserManager {
         return result;
     }
 
+    /**
+     * 获取这份个人助手最近交互的主人标识。
+     *
+     * <p>项目按单用户本地安装设计；标识来自 SQLite，应用重启后仍然有效。
+     */
+    public String getOwnerUserId() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT user_id FROM wechat_users "
+                             + "ORDER BY last_active_time DESC LIMIT 1")) {
+            return rs.next() ? rs.getString("user_id") : null;
+        } catch (SQLException e) {
+            log.error("查询个人助手主人失败", e);
+            return null;
+        }
+    }
+
     // ==================== 内部方法 ====================
 
     private Connection getConnection() throws SQLException {

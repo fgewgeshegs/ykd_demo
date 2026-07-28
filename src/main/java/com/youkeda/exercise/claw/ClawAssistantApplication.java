@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.nio.charset.Charset;
 
@@ -11,6 +12,7 @@ import java.nio.charset.Charset;
  * 自动扫描 com.youkeda.exercise.claw 包及其子包下的所有组件
  */
 @SpringBootApplication
+@EnableScheduling
 public class ClawAssistantApplication {
 
     public static void main(String[] args) {

@@ -56,8 +56,24 @@ com/lth/
 # 忽略Claude的项目文档
 CLAUDE.md
 AGENTS.md
-memory/
+/memory/
+!src/main/java/com/youkeda/exercise/claw/agent/memory/
+!src/main/java/com/youkeda/exercise/claw/agent/memory/**
+!src/test/java/com/youkeda/exercise/claw/agent/memory/
+!src/test/java/com/youkeda/exercise/claw/agent/memory/**
+
+# 忽略 SQLite 数据库文件
+data/
 
 # 忽略设计文档（仅供 AI 参考，不应提交）
 docs/
 designs/
+
+# 忽略 Qdrant gRPC 生成代码（已有 Maven 依赖，不需要源码）
+io/
+grpc/
+META-INF/
+
+# SQLite 数据库文件
+data/
+*.sqlite
