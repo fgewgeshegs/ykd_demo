@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.task;
 
+import com.youkeda.exercise.claw.schedule.ScheduleReminderService;
 import com.youkeda.exercise.claw.task.executor.AgentTaskExecutor;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
@@ -46,6 +47,9 @@ class TaskSchedulerDispatchTest {
     @Mock
     private AgentTaskExecutor agentTaskExecutor;
 
+    @Mock
+    private ScheduleReminderService scheduleReminderService;
+
     private TaskSchedulerService scheduler;
 
     @BeforeEach
@@ -55,7 +59,7 @@ class TaskSchedulerDispatchTest {
         taskRepository.init();
         repeatCalculator = new RepeatCalculator();
 
-        scheduler = new TaskSchedulerService(taskRepository, wechatClient, repeatCalculator, agentTaskExecutor);
+        scheduler = new TaskSchedulerService(taskRepository, wechatClient, repeatCalculator, agentTaskExecutor, scheduleReminderService);
         // 设置 running=true 让调度器的 checkAndExecute 可以执行
         setField(scheduler, "running", new java.util.concurrent.atomic.AtomicBoolean(true));
     }

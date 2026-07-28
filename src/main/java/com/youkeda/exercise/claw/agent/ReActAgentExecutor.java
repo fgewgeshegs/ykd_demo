@@ -253,7 +253,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                 else {
                     toolCallCount++;
                     executedInBatch = true;
-                    result = fn.execute(tc.arguments(), new FunctionExecutionContext(userMessage));
+                    result = fn.execute(tc.arguments(), new FunctionExecutionContext(userMessage, context.getUserId()));
                     log.info("工具执行完成 | name={} | result={}", toolName, truncate(result, 200));
 
                     // 更新 PlanState（如果有）

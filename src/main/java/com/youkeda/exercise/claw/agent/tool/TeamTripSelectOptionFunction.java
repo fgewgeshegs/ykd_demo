@@ -78,7 +78,7 @@ public class TeamTripSelectOptionFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext(""));
+        return execute(argumentsJson, new FunctionExecutionContext("", ""));
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.task.scheduler;
 
+import com.youkeda.exercise.claw.schedule.ScheduleReminderService;
 import com.youkeda.exercise.claw.task.executor.AgentTaskExecutor;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
@@ -39,22 +40,31 @@ public class TaskSchedulerService {
     private static final int DEFAULT_INTERVAL_SECONDS = 5;
     private static final int INITIAL_DELAY_SECONDS = 10;
 
+    /** 课程提醒扫描间隔计数（每 12 次 = 约 60 秒触发一次提醒扫描） */
+    private static final int REMINDER_SCAN_INTERVAL = 12;
+
     private final ScheduledTaskRepository taskRepository;
     private final WechatILinkClient wechatClient;
     private final RepeatCalculator repeatCalculator;
     private final AgentTaskExecutor agentTaskExecutor;
+    private final ScheduleReminderService scheduleReminderService;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService scheduler;
 
+    /** 扫描计数器，用于控制课程提醒的扫描频率 */
+    private int scanCounter = 0;
+
     public TaskSchedulerService(ScheduledTaskRepository taskRepository,
                                 WechatILinkClient wechatClient,
                                 RepeatCalculator repeatCalculator,
-                                AgentTaskExecutor agentTaskExecutor) {
+                                AgentTaskExecutor agentTaskExecutor,
+                                ScheduleReminderService scheduleReminderService) {
         this.taskRepository = taskRepository;
         this.wechatClient = wechatClient;
         this.repeatCalculator = repeatCalculator;
         this.agentTaskExecutor = agentTaskExecutor;
+        this.scheduleReminderService = scheduleReminderService;
     }
 
     @PostConstruct
@@ -82,13 +92,20 @@ public class TaskSchedulerService {
         if (!running.get()) return;
 
         try {
+            // 1. 检查到期的定时任务
             List<ScheduledTask> dueTasks = taskRepository.findPendingAndDue();
-            if (dueTasks.isEmpty()) return;
+            if (!dueTasks.isEmpty()) {
+                log.info("定时任务调度器：发现 {} 个到期任务", dueTasks.size());
+                for (ScheduledTask task : dueTasks) {
+                    executeTask(task);
+                }
+            }
 
-            log.info("定时任务调度器：发现 {} 个到期任务", dueTasks.size());
-
-            for (ScheduledTask task : dueTasks) {
-                executeTask(task);
+            // 2. 定期触发课前提醒扫描（每 12 次 / 约 60 秒一次，避免过于频繁）
+            scanCounter++;
+            if (scanCounter >= REMINDER_SCAN_INTERVAL) {
+                scanCounter = 0;
+                scheduleReminderService.checkReminders();
             }
         } catch (Exception e) {
             log.error("定时任务调度器扫描异常", e);

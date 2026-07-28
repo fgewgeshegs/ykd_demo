@@ -58,6 +58,7 @@ public class ChatTool implements WechatMessageHandler {
         log.debug("ChatTool.handle 处理消息 | from={} | text={}", message.getUserId(), message.getText());
 
         String reply = agentExecutor.execute(new com.youkeda.exercise.claw.agent.AgentContext()
+                .setUserId(message.getUserId())
                 .setMessage(message.getText())
                 .setMessageType(MessageType.TEXT));
 

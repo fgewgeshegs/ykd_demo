@@ -1,0 +1,456 @@
+package com.youkeda.exercise.claw.schedule;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.agent.tool.LLMFunction;
+import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+/**
+ * 课程表管理 LLM Function
+ *
+ * <p>注册名称：{@code course_schedule}
+ *
+ * <p>处理用户课表的导入（多步确认）、查询、修改、删除等操作。
+ * 数据持久化通过 {@link CourseRepository} 写入 SQLite {@code course_schedule} 表，
+ * 以 {@code userId} 作为数据隔离键。
+ *
+ * <h3>导入流程（三步确认）：</h3>
+ * <ol>
+ *   <li>用户说「导入课表」→ 调用 {@code import} → 系统等待文件</li>
+ *   <li>用户发送课表图片/文件后 → LLM 从对话上下文中提取课程信息
+ *       → 调用 {@code parse} 传入提取的课程数据 → 系统返回预览</li>
+ *   <li>用户确认 → 调用 {@code confirm} → 保存入库</li>
+ *   <li>用户取消 → 调用 {@code cancel} → 丢弃</li>
+ * </ol>
+ */
+@Component
+public class CourseImportFunction implements LLMFunction {
+
+    private static final Logger log = LoggerFactory.getLogger(CourseImportFunction.class);
+
+    private static final String[] DAY_NAMES = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+
+    private final ObjectMapper objectMapper;
+    private final LLMFunctionRegistry functionRegistry;
+    private final CourseService courseService;
+    private final CourseRepository courseRepository;
+    private final SemesterConfig semesterConfig;
+    private final CourseImportStateManager importStateManager;
+
+    public CourseImportFunction(ObjectMapper objectMapper,
+                                LLMFunctionRegistry functionRegistry,
+                                CourseService courseService,
+                                CourseRepository courseRepository,
+                                SemesterConfig semesterConfig,
+                                CourseImportStateManager importStateManager) {
+        this.objectMapper = objectMapper;
+        this.functionRegistry = functionRegistry;
+        this.courseService = courseService;
+        this.courseRepository = courseRepository;
+        this.semesterConfig = semesterConfig;
+        this.importStateManager = importStateManager;
+    }
+
+    @PostConstruct
+    public void init() {
+        functionRegistry.register(this);
+        log.info("CourseImportFunction 已注册到 LLMFunctionRegistry");
+    }
+
+    @Override
+    public String getName() {
+        return "course_schedule";
+    }
+
+    @Override
+    public String getDescription() {
+        return "课程表管理。支持以下操作：\n"
+                + "1. import — 开始导入课表。当用户说「导入课表」「上传课表」时调用。\n"
+                + "   调用后系统进入等待文件状态，请告诉用户发送课表截图、PDF或Excel文件。\n"
+                + "   注意：只设置状态，不要传 courses 参数。\n"
+                + "2. parse — 解析并预览课表（import 后调用）。当用户上传了课表文件/截图后，\n"
+                + "   从对话上下文中的文件分析结果里提取课程信息，传入 courses 参数调用此函数。\n"
+                + "   系统返回课程预览列表，你需要展示给用户并询问「确认导入吗？」。\n"
+                + "3. confirm — 确认导入（parse 后调用）。用户确认后调用，保存课程到数据库。\n"
+                + "4. cancel — 取消导入。丢弃本次导入的所有数据。\n"
+                + "5. query_today — 查询今日课程。当用户问「今天有什么课」「今天的课表」时调用。\n"
+                + "6. query_free_time — 查询空闲时间段。当用户问「今天什么时候有空」时调用。\n"
+                + "7. query_all — 查询全部课程。当用户问「我的全部课表」「有哪些课」时调用。\n"
+                + "8. query_weekday — 查询指定星期几的课程。参数 day_of_week（1=周一~7=周日）。\n"
+                + "9. delete — 删除某门课程。参数 course_id（必填）。\n"
+                + "10. update — 修改某门课程。参数 course_id 和要修改的字段。\n"
+                + "11. clear — 清空全部课表。需要用户二次确认。";
+    }
+
+    @Override
+    public JsonNode getParameters() {
+        ObjectNode params = objectMapper.createObjectNode();
+        params.put("type", "object");
+
+        ObjectNode properties = params.putObject("properties");
+
+        ObjectNode action = properties.putObject("action");
+        action.put("type", "string");
+        action.put("description", "操作类型");
+        action.putArray("enum").add("import").add("parse").add("confirm").add("cancel")
+                .add("query_today").add("query_free_time").add("query_all").add("query_weekday")
+                .add("delete").add("update").add("clear");
+
+        ObjectNode courses = properties.putObject("courses");
+        courses.put("type", "array");
+        courses.put("description", "课程列表（parse 时必填，update 时可选）。每门课包含以下字段：");
+        ObjectNode courseItem = courses.putObject("items");
+        courseItem.put("type", "object");
+
+        ObjectNode itemProps = courseItem.putObject("properties");
+
+        itemProps.putObject("course_name").put("type", "string")
+                .put("description", "课程名称，如「高等数学」");
+        itemProps.putObject("teacher").put("type", "string")
+                .put("description", "授课教师姓名");
+        itemProps.putObject("day_of_week").put("type", "integer")
+                .put("description", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日");
+        itemProps.putObject("start_period").put("type", "integer")
+                .put("description", "开始节次（第几节课开始，从1开始）");
+        itemProps.putObject("end_period").put("type", "integer")
+                .put("description", "结束节次（第几节课结束，>= start_period）");
+        itemProps.putObject("classroom").put("type", "string")
+                .put("description", "上课教室/地点");
+        itemProps.putObject("start_week").put("type", "integer")
+                .put("description", "开始教学周（默认1）");
+        itemProps.putObject("end_week").put("type", "integer")
+                .put("description", "结束教学周（默认20）");
+        itemProps.putObject("week_type").put("type", "string")
+                .put("description", "单双周：ALL=全部周(默认), ODD=单周, EVEN=双周");
+        itemProps.putArray("week_type_enum").add("ALL").add("ODD").add("EVEN");
+
+        ObjectNode courseId = properties.putObject("course_id");
+        courseId.put("type", "integer");
+        courseId.put("description", "课程 ID（delete 和 update 时必填）。调用 delete 前请先通过 query_all 获取课程 ID。");
+
+        ObjectNode dayOfWeek = properties.putObject("day_of_week");
+        dayOfWeek.put("type", "integer");
+        dayOfWeek.put("description", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日");
+
+        params.putArray("required").add("action");
+
+        return params;
+    }
+
+    @Override
+    public String execute(String argumentsJson) {
+        return "{\"error\": \"缺少用户上下文\"}";
+    }
+
+    @Override
+    public String execute(String argumentsJson, FunctionExecutionContext context) {
+        try {
+            JsonNode args = objectMapper.readTree(argumentsJson);
+            String actionStr = args.path("action").asText("");
+            String userId = context.userId();
+
+            if (userId == null || userId.isBlank()) {
+                return "{\"error\": \"缺少用户ID\"}";
+            }
+
+            log.info("CourseImportFunction 执行 | action={} | userId={}", actionStr, userId);
+
+            return switch (actionStr) {
+                case "import" -> handleStartImport(userId);
+                case "parse" -> handleParse(args, userId);
+                case "confirm" -> handleConfirm(userId);
+                case "cancel" -> handleCancel(userId);
+                case "delete" -> handleDelete(args, userId);
+                case "update" -> handleUpdate(args, userId);
+                case "clear" -> handleClear(userId);
+                case "query_today" -> handleQueryToday(userId);
+                case "query_free_time" -> handleQueryFreeTime(userId);
+                case "query_all" -> handleQueryAll(userId);
+                case "query_weekday" -> handleQueryWeekday(args, userId);
+                default -> errorJson("不支持的 action: " + actionStr);
+            };
+        } catch (Exception e) {
+            log.error("CourseImportFunction 执行失败 | args={}", argumentsJson, e);
+            return errorJson(e.getMessage());
+        }
+    }
+
+    // ==================== 导入流程（三步确认） ====================
+
+    private String handleStartImport(String userId) {
+        importStateManager.setWaitingFile(userId);
+        return "{\"action\":\"import\",\"status\":\"waiting_file\","
+                + "\"message\":\"请发送课表截图、PDF或Excel文件，我会帮你导入课表。\"}";
+    }
+
+    private String handleParse(JsonNode args, String userId) {
+        CourseImportStateManager.Phase phase = importStateManager.getPhase(userId);
+        if (phase == CourseImportStateManager.Phase.NONE) {
+            log.debug("直接解析课表（无前置 import 状态）| userId={}", userId);
+        }
+
+        JsonNode coursesNode = args.get("courses");
+        if (coursesNode == null || !coursesNode.isArray() || coursesNode.isEmpty()) {
+            return "{\"action\":\"parse\",\"status\":\"error\","
+                    + "\"message\":\"请从对话上下文中的文件/图片分析结果里提取课程信息后重新调用。\"}";
+        }
+
+        String jsonStr = coursesNode.toString();
+        List<CourseEntity> courses = courseService.parseOnly(userId, jsonStr);
+
+        if (courses.isEmpty()) {
+            return "{\"action\":\"parse\",\"status\":\"error\","
+                    + "\"message\":\"无法从提供的数据中识别出有效的课程信息，请检查格式或重新上传课表。\"}";
+        }
+
+        importStateManager.setWaitingConfirm(userId, jsonStr);
+        importStateManager.setPendingCourses(userId, courses);
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("action", "parse");
+        result.put("status", "preview");
+        result.put("count", courses.size());
+
+        int currentWeek = semesterConfig.getCurrentWeek();
+        result.put("current_week", currentWeek);
+        result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "学期未开始");
+
+        var array = result.putArray("courses");
+        for (CourseEntity c : courses) {
+            ObjectNode item = array.addObject();
+            item.put("course_name", c.getCourseName());
+            item.put("day", c.getDayDisplay());
+            item.put("period", c.getPeriodDisplay());
+            item.put("weeks", c.getWeekDisplay());
+            if (!c.getClassroom().isBlank()) item.put("classroom", c.getClassroom());
+            if (!c.getTeacher().isBlank()) item.put("teacher", c.getTeacher());
+        }
+
+        result.put("message", "已识别出以下 " + courses.size() + " 门课程，请确认是否导入？"
+                + "（回复「确认」或「取消」）");
+        return result.toString();
+    }
+
+    private String handleConfirm(String userId) {
+        List<CourseEntity> pending = importStateManager.getPendingCourses(userId);
+        if (pending.isEmpty()) {
+            return "{\"action\":\"confirm\",\"status\":\"error\","
+                    + "\"message\":\"没有待确认的课程数据，请先上传课表。\"}";
+        }
+
+        // 保存到数据库（通过 CourseRepository 写入 course_schedule 表）
+        List<CourseEntity> saved = courseService.saveCourses(userId, pending);
+        importStateManager.clear(userId);
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("action", "confirm");
+        result.put("status", "success");
+        result.put("count", saved.size());
+
+        int currentWeek = semesterConfig.getCurrentWeek();
+        result.put("current_week", currentWeek);
+        result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "学期未开始");
+
+        result.put("message", "课表导入成功！共 " + saved.size() + " 门课程。"
+                + "你可以问我「今天有什么课」来查看今日课程。");
+        return result.toString();
+    }
+
+    private String handleCancel(String userId) {
+        importStateManager.clear(userId);
+        return "{\"action\":\"cancel\",\"status\":\"success\",\"message\":\"已取消课表导入。\"}";
+    }
+
+    // ==================== 课程管理 ====================
+
+    private String handleDelete(JsonNode args, String userId) {
+        long courseId = args.path("course_id").asLong(0);
+        if (courseId <= 0) {
+            return errorJson("请提供要删除的课程 ID（course_id 参数）");
+        }
+
+        CourseEntity course = courseService.findCourseById(courseId);
+        if (course == null) {
+            return "{\"action\":\"delete\",\"status\":\"error\",\"message\":\"未找到 ID 为 " + courseId + " 的课程\"}";
+        }
+        if (!userId.equals(course.getUserId())) {
+            return "{\"action\":\"delete\",\"status\":\"error\",\"message\":\"无权删除该课程\"}";
+        }
+
+        boolean deleted = courseService.deleteCourse(courseId, userId);
+        if (deleted) {
+            return "{\"action\":\"delete\",\"status\":\"success\","
+                    + "\"deleted_course\":\"" + course.getCourseName() + "\","
+                    + "\"message\":\"已删除课程「" + course.getCourseName() + "」\"}";
+        }
+        return "{\"action\":\"delete\",\"status\":\"error\",\"message\":\"删除失败\"}";
+    }
+
+    private String handleUpdate(JsonNode args, String userId) {
+        long courseId = args.path("course_id").asLong(0);
+        if (courseId <= 0) {
+            return errorJson("请提供要修改的课程 ID（course_id 参数）");
+        }
+
+        CourseEntity existing = courseService.findCourseById(courseId);
+        if (existing == null) {
+            return "{\"action\":\"update\",\"status\":\"error\",\"message\":\"未找到 ID 为 " + courseId + " 的课程\"}";
+        }
+        if (!userId.equals(existing.getUserId())) {
+            return "{\"action\":\"update\",\"status\":\"error\",\"message\":\"无权修改该课程\"}";
+        }
+
+        JsonNode coursesNode = args.get("courses");
+        if (coursesNode != null && coursesNode.isArray() && !coursesNode.isEmpty()) {
+            JsonNode updateSrc = coursesNode.get(0);
+            if (updateSrc.has("course_name")) existing.setCourseName(updateSrc.get("course_name").asText());
+            if (updateSrc.has("teacher")) existing.setTeacher(updateSrc.get("teacher").asText());
+            if (updateSrc.has("day_of_week")) existing.setDayOfWeek(updateSrc.get("day_of_week").asInt());
+            if (updateSrc.has("start_period")) existing.setStartPeriod(updateSrc.get("start_period").asInt());
+            if (updateSrc.has("end_period")) existing.setEndPeriod(updateSrc.get("end_period").asInt());
+            if (updateSrc.has("classroom")) existing.setClassroom(updateSrc.get("classroom").asText());
+            if (updateSrc.has("start_week")) existing.setStartWeek(updateSrc.get("start_week").asInt());
+            if (updateSrc.has("end_week")) existing.setEndWeek(updateSrc.get("end_week").asInt());
+            if (updateSrc.has("week_type")) existing.setWeekType(updateSrc.get("week_type").asText());
+        }
+
+        boolean updated = courseService.updateCourse(existing);
+        if (updated) {
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "update");
+            result.put("status", "success");
+            result.put("course_id", existing.getId());
+            result.put("course_name", existing.getCourseName());
+            result.put("day", existing.getDayDisplay());
+            result.put("period", existing.getPeriodDisplay());
+            result.put("weeks", existing.getWeekDisplay());
+            result.put("message", "已更新课程「" + existing.getCourseName() + "」");
+            return result.toString();
+        }
+        return "{\"action\":\"update\",\"status\":\"error\",\"message\":\"更新失败\"}";
+    }
+
+    private String handleClear(String userId) {
+        int count = courseService.getCourseCount(userId);
+        if (count == 0) {
+            return "{\"action\":\"clear\",\"status\":\"success\",\"message\":\"课表已经是空的啦～\"}";
+        }
+
+        courseService.deleteAll(userId);
+        return "{\"action\":\"clear\",\"status\":\"success\","
+                + "\"deleted_count\":" + count + ","
+                + "\"message\":\"已清空全部 " + count + " 门课程。\"}";
+    }
+
+    // ==================== 查询 ====================
+
+    private String handleQueryToday(String userId) {
+        int currentWeek = semesterConfig.getCurrentWeek();
+        if (currentWeek <= 0) {
+            return buildQueryResult("query_today", List.of(),
+                    "学期尚未开始（当前日期早于学期起始日）", currentWeek);
+        }
+
+        List<CourseEntity> todayCourses = courseService.getTodayCourses(userId);
+
+        if (todayCourses.isEmpty()) {
+            List<CourseEntity> allDayCourses = courseRepository.findByUserIdAndDay(
+                    userId, semesterConfig.getCurrentDayOfWeek());
+            if (allDayCourses.isEmpty()) {
+                return buildQueryResult("query_today", List.of(),
+                        "今天没有安排课程，好好休息吧！😊", currentWeek);
+            } else {
+                return buildQueryResult("query_today", List.of(),
+                        "今天虽然有课，但不在当前教学周，所以没有课程安排。当前是第 " + currentWeek + " 周。", currentWeek);
+            }
+        }
+
+        return buildQueryResult("query_today", todayCourses,
+                "今日课程共 " + todayCourses.size() + " 门", currentWeek);
+    }
+
+    private String handleQueryFreeTime(String userId) {
+        List<CourseService.TimeSlot> freeSlots = courseService.getFreeTimeSlots(userId);
+
+        if (freeSlots.isEmpty()) {
+            return "{\"action\":\"query_free_time\",\"slots\":[],\"message\":\"今天全天都有课，没有空闲时间 😅\"}";
+        }
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("action", "query_free_time");
+        var array = result.putArray("slots");
+        for (CourseService.TimeSlot slot : freeSlots) {
+            array.add(slot.display());
+        }
+        result.put("message", "今日空闲时间段共 " + freeSlots.size() + " 段");
+        return result.toString();
+    }
+
+    private String handleQueryAll(String userId) {
+        List<CourseEntity> allCourses = courseService.getAllCourses(userId);
+        if (allCourses.isEmpty()) {
+            return "{\"action\":\"query_all\",\"courses\":[],\"message\":\"你还没有导入课表，快上传课表文件或告诉我课程信息吧！\"}";
+        }
+        return buildQueryResult("query_all", allCourses,
+                "共有 " + allCourses.size() + " 门课程", semesterConfig.getCurrentWeek());
+    }
+
+    private String handleQueryWeekday(JsonNode args, String userId) {
+        int dayOfWeek = args.path("day_of_week").asInt(0);
+        if (dayOfWeek < 1 || dayOfWeek > 7) {
+            return "{\"error\":\"无效的 day_of_week 参数，请输入 1（周一）~ 7（周日）\"}";
+        }
+
+        int currentWeek = semesterConfig.getCurrentWeek();
+        if (currentWeek <= 0) {
+            return buildQueryResult("query_weekday", List.of(),
+                    "学期尚未开始", currentWeek);
+        }
+
+        List<CourseEntity> courses = courseService.getCoursesByDay(userId, dayOfWeek);
+        return buildQueryResult("query_weekday", courses,
+                DAY_NAMES[dayOfWeek] + "共 " + courses.size() + " 门课", currentWeek);
+    }
+
+    // ==================== 工具方法 ====================
+
+    private String buildQueryResult(String action, List<CourseEntity> courses, String message, int currentWeek) {
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("action", action);
+        result.put("current_week", currentWeek);
+        result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "假期");
+
+        var array = result.putArray("courses");
+        for (CourseEntity c : courses) {
+            ObjectNode item = array.addObject();
+            item.put("course_name", c.getCourseName());
+            item.put("day", c.getDayDisplay());
+            item.put("period", c.getPeriodDisplay());
+            if (!c.getClassroom().isBlank()) item.put("classroom", c.getClassroom());
+            if (!c.getTeacher().isBlank()) item.put("teacher", c.getTeacher());
+            item.put("weeks", c.getWeekDisplay());
+        }
+
+        result.put("count", courses.size());
+        result.put("message", message);
+        return result.toString();
+    }
+
+    private String errorJson(String message) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("error", message);
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            return "{\"error\":\"" + message + "\"}";
+        }
+    }
+}
