@@ -71,6 +71,13 @@
             <version>2.9.2</version>
         </dependency>
 
+        <!-- Apache PDFBox: direct PDF text extraction with coordinates -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.31</version>
+        </dependency>
+
         <!-- Qdrant Java Client -->
         <dependency>
             <groupId>io.qdrant</groupId>
@@ -110,6 +117,13 @@
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>1.18.1</version>
+        </dependency>
+
+        <!-- Apache POI: Excel parsing -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
         </dependency>
 
         <dependency>

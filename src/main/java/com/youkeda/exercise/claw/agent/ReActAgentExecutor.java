@@ -214,9 +214,19 @@ public class ReActAgentExecutor implements AgentExecutor {
             List<ToolDefinition> roundTools = forceTextResponse ? List.of() : tools;
             LLMResponse response = llmClient.chatWithTools(systemPrompt, messages, roundTools);
             forceTextResponse = false;
+
+            // 工具调用返回 null 时的单轮降级：
+            // 本轮先去掉工具重试一次（兼容不支持 tool_calls 的模型），
+            // 下一轮仍会带上工具（不同上下文模型可能选择不同行为）
             if (response == null) {
-                log.warn("LLM 返回空，结束循环");
-                return handleError();
+                if (!roundTools.isEmpty()) {
+                    log.warn("本轮带工具的 LLM 调用失败，降级不带工具重试（下一轮恢复工具）");
+                    response = llmClient.chatWithTools(messages, List.of());
+                }
+                if (response == null) {
+                    log.warn("LLM 调用失败，结束循环");
+                    return handleError();
+                }
             }
 
             // === 分支 1：结构化计划 ===
@@ -309,7 +319,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                 else {
                     toolCallCount++;
                     executedInBatch = true;
-                    result = fn.execute(tc.arguments(), new FunctionExecutionContext(userMessage));
+                    result = fn.execute(tc.arguments(), new FunctionExecutionContext(userMessage, context.getUserId()));
                     log.info("工具执行完成 | name={} | result={}", toolName, truncate(result, 200));
 
                     // 更新 PlanState（如果有）
@@ -537,7 +547,8 @@ public class ReActAgentExecutor implements AgentExecutor {
 
         String prompt = "你是一个分类器。判断用户消息是否需要调用工具才能完整回答。\n"
                 + "需要工具：查天气、查地图/地点/路线、查时间/日期/节假日、搜索网页、"
-                + "生成图片、生成文件/文档、语音合成、交通推荐、预算计算。\n"
+                + "生成图片、生成文件/文档、语音合成、交通推荐、预算计算、"
+                + "查课表/今天课表/导入课表/课程信息/考试安排。\n"
                 + "不需要工具：纯粹的聊天、问答、解释、翻译、写作、闲聊、感谢。\n"
                 + "如果用户消息很短（如\"好\"\"可以\"\"继续\"），可能是在回应之前提出的方案，"
                 + "需要让工具系统处理，返回 NEED_TOOLS。\n"

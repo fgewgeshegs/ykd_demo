@@ -14,7 +14,7 @@ import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 public class AgentContext {
 
     /**
-     * 用户 ID
+     * 用户ID
      */
     private String userId;
 

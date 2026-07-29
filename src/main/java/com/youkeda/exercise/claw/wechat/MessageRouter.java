@@ -5,6 +5,8 @@ import com.youkeda.exercise.claw.agent.tool.FileTool;
 import com.youkeda.exercise.claw.agent.tool.SimpleReplyTool;
 import com.youkeda.exercise.claw.agent.tool.VisionTool;
 import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
+import com.youkeda.exercise.claw.schedule.CourseImportHandler;
+import com.youkeda.exercise.claw.schedule.CourseImportStateManager;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -31,17 +33,23 @@ public class MessageRouter {
     private final SimpleReplyTool fallbackTool;
     private final VoiceFunction voiceTool;
     private final FileTool fileTool;
+    private final CourseImportStateManager courseImportStateManager;
+    private final CourseImportHandler courseImportHandler;
 
     public MessageRouter(ChatTool chatTool,
                          VisionTool visionTool,
                          SimpleReplyTool fallbackTool,
                          VoiceFunction voiceTool,
-                         FileTool fileTool) {
+                         FileTool fileTool,
+                         CourseImportStateManager courseImportStateManager,
+                         CourseImportHandler courseImportHandler) {
         this.chatTool = chatTool;
         this.visionTool = visionTool;
         this.fallbackTool = fallbackTool;
         this.voiceTool = voiceTool;
         this.fileTool = fileTool;
+        this.courseImportStateManager = courseImportStateManager;
+        this.courseImportHandler = courseImportHandler;
     }
 
     /**
@@ -51,9 +59,21 @@ public class MessageRouter {
      * @return 回复内容（WechatReply，包含 TEXT 或 IMAGE 类型）
      */
     public WechatReply route(WechatMessage message) {
-        // 图片消息：直接走 VisionHandler（保留已有图片处理流程）
+        // 图片消息：检查课表导入状态
         if (message.getType() == MessageType.IMAGE) {
-            log.info("路由：图片消息 → VisionTool | from={}", message.getUserId());
+            String userId = message.getUserId();
+            // 检查是否处于课表导入等待文件状态
+            if (courseImportStateManager.getPhase(userId) == CourseImportStateManager.Phase.WAITING_FILE) {
+                log.info("路由：图片消息 → CourseImportHandler（课表导入）| from={}", userId);
+                WechatReply reply = courseImportHandler.handleImage(message);
+                if (reply != null && reply.hasContent()) {
+                    return reply;
+                }
+                // CourseImportHandler 返回空，说明状态异常，降级到 VisionTool
+                log.warn("课表导入处理图片失败，降级到 VisionTool | from={}", userId);
+            }
+
+            log.info("路由：图片消息 → VisionTool | from={}", userId);
             WechatReply reply = visionTool.handle(message);
             return fallbackIfEmpty(reply, message);
         }
@@ -96,9 +116,22 @@ public class MessageRouter {
             return textReply;
         }
 
-        // 文件消息：直接走 FileTool（根据文件内容类型分发：图片→视觉模型，文档→文本提取+LLM）
+        // 文件消息：检查课表导入状态
         if (message.getType() == MessageType.FILE) {
-            log.info("路由：文件消息 → FileTool | from={} | fileName={}", message.getUserId(), message.getFileName());
+            String userId = message.getUserId();
+            // 检查是否处于课表导入等待文件状态
+            if (courseImportStateManager.getPhase(userId) == CourseImportStateManager.Phase.WAITING_FILE) {
+                log.info("路由：文件消息 → CourseImportHandler（课表导入）| from={} | fileName={}",
+                        userId, message.getFileName());
+                WechatReply reply = courseImportHandler.handleFile(message);
+                if (reply != null && reply.hasContent()) {
+                    return reply;
+                }
+                // CourseImportHandler 返回空，说明状态异常或不支持的格式，降级到 FileTool
+                log.warn("课表导入处理文件失败，降级到 FileTool | from={}", userId);
+            }
+
+            log.info("路由：文件消息 → FileTool | from={} | fileName={}", userId, message.getFileName());
             WechatReply reply = fileTool.handle(message);
             return fallbackIfEmpty(reply, message);
         }
