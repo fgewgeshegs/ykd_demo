@@ -1,9 +1,12 @@
 package com.youkeda.exercise.claw.agent.scout;
 
-import com.youkeda.exercise.claw.agent.skill.*;
+import com.youkeda.exercise.claw.agent.skill.WorkflowRequest;
+import com.youkeda.exercise.claw.agent.skill.WorkflowResult;
+import com.youkeda.exercise.claw.agent.skill.WorkflowWorker;
 import com.youkeda.exercise.claw.scout.ScoutOrchestrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.Instant;
@@ -17,19 +20,22 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
 
     private final ScoutOrchestrator orchestrator;
     private final ScoutTaskManager taskManager;
-    private final WorkflowRegistry workflowRegistry;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "scout-worker");
         t.setDaemon(true);
         return t;
     });
 
+    @Value("${workflow.timeout-minutes:30}")
+    private int timeoutMinutes;
+
+    @Value("${workflow.retry-max:3}")
+    private int retryMax;
+
     public ScoutWorkflowWorker(ScoutOrchestrator orchestrator,
-                               ScoutTaskManager taskManager,
-                               WorkflowRegistry workflowRegistry) {
+                               ScoutTaskManager taskManager) {
         this.orchestrator = orchestrator;
         this.taskManager = taskManager;
-        this.workflowRegistry = workflowRegistry;
     }
 
     @Override
@@ -42,10 +48,7 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
         String taskId = UUID.randomUUID().toString();
         taskManager.createTask(taskId, request.userId(), request.payload());
 
-        WorkflowDefinition def = workflowRegistry.find(request.workflowName()).orElse(null);
-        Duration timeout = def != null ? def.timeout() : Duration.ofMinutes(30);
-        int retryMax = def != null ? def.retryMax() : 3;
-
+        Duration timeout = Duration.ofMinutes(timeoutMinutes);
         Exception lastError = null;
 
         for (int attempt = 0; attempt <= retryMax; attempt++) {

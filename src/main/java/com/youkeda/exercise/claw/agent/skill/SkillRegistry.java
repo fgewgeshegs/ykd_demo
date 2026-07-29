@@ -17,18 +17,23 @@ public class SkillRegistry {
     private final Map<String, SkillDefinition> skills = new ConcurrentHashMap<>();
     private final Map<String, SkillHealth> healthCache = new ConcurrentHashMap<>();
     private final SkillsProperties properties;
-    private final Set<String> registeredToolNames;
+    private final LLMFunctionRegistry functionRegistry;
+    private Set<String> registeredToolNames;
 
     public SkillRegistry(SkillsProperties properties,
                          LLMFunctionRegistry functionRegistry) {
         this.properties = properties;
-        this.registeredToolNames = functionRegistry.getAllDefinitions().stream()
-                .map(td -> td.name())
-                .collect(Collectors.toSet());
+        this.functionRegistry = functionRegistry;
     }
 
     @PostConstruct
     public void init() {
+        // Collect registered tool names at PostConstruct time, AFTER all
+        // LLMFunction implementations have registered themselves.
+        this.registeredToolNames = functionRegistry.getAllDefinitions().stream()
+                .map(td -> td.name())
+                .collect(Collectors.toSet());
+
         properties.getSkills().forEach((name, def) -> {
             if (!def.enabled()) return;
             SkillHealth health = validate(name, def);
