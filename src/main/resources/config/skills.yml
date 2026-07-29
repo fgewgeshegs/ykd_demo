@@ -1,0 +1,100 @@
+claw:
+  global-tools:
+    - memory_manage
+    - time_query
+    - skill_knowledge_manage
+
+  skills:
+    common:
+      enabled: true
+      priority: 0
+      tags: [通用]
+      requiredTools: []
+      optionalTools: []
+      systemPromptResource: prompts/skills/common.txt
+      knowledge:
+        enabled: false
+        namespaces: []
+        topK: 0
+        minScore: 0.0
+        maxContextChars: 0
+
+    travel:
+      enabled: true
+      priority: 5
+      tags: [出行, 方案]
+      requiredTools:
+        - travel_collect
+        - travel_save_options
+        - travel_select_option
+        - travel_revise
+      optionalTools:
+        - travel_calculate_cost
+        - map_search_place
+        - map_route_planning
+        - map_distance_calculate
+        - weather_query
+        - holiday_check
+        - transport_recommend
+        - place_image_search
+      systemPromptResource: prompts/skills/travel.txt
+      knowledge:
+        enabled: false
+        namespaces: [travel]
+        topK: 5
+        minScore: 0.50
+        maxContextChars: 12000
+
+    transport:
+      enabled: true
+      priority: 4
+      tags: [出行, 打车]
+      requiredTools:
+        - transport_recommend
+      optionalTools:
+        - didi_ride
+        - map_search_place
+        - map_route_planning
+        - map_distance_calculate
+      systemPromptResource: prompts/skills/transport.txt
+      triggerPolicyName: transportTriggerPolicy
+      knowledge:
+        enabled: false
+        namespaces: [transport]
+        topK: 3
+        minScore: 0.50
+        maxContextChars: 6000
+
+    weather:
+      enabled: true
+      priority: 2
+      tags: [天气]
+      requiredTools: [weather_query]
+      optionalTools: [web_search]
+      systemPromptResource: prompts/skills/weather.txt
+      triggerPolicyName: keywordTriggerPolicy
+
+    information-scout:
+      enabled: true
+      priority: 3
+      tags: [信息, 搜索]
+      requiredTools: [information_scout]
+      optionalTools: [web_search]
+      systemPromptResource: prompts/skills/information-scout.txt
+      triggerPolicyName: scoutTriggerPolicy
+      knowledge:
+        enabled: false
+        namespaces: [scout]
+        topK: 3
+        minScore: 0.50
+        maxContextChars: 6000
+
+  workflows:
+    scoutWorkflow:
+      workerName: scoutWorkflowWorker
+      timeout: 30m
+      retryMax: 3
+      cron: 0 0 8 * * *
+
+  skill-workflow-bindings:
+    information-scout: scoutWorkflow
