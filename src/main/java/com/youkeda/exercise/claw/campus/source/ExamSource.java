@@ -1,5 +1,7 @@
 package com.youkeda.exercise.claw.campus.source;
 
+import com.youkeda.exercise.claw.campus.classifier.ExamLLMClassifier;
+import com.youkeda.exercise.claw.campus.classifier.ExamRuleClassifier;
 import com.youkeda.exercise.claw.campus.collector.CampusNoticeCollector;
 import com.youkeda.exercise.claw.campus.model.CampusConfig;
 import com.youkeda.exercise.claw.campus.model.ExamClassification;
@@ -35,6 +37,8 @@ public class ExamSource implements NotificationSource {
     private final PendingAskStore pendingAskStore;
     private final NotificationService notificationService;
     private final WechatUserManager userManager;
+    private final ExamRuleClassifier ruleClassifier;
+    private final ExamLLMClassifier llmClassifier;
 
     public ExamSource(CampusNoticeCollector collector,
                       CampusNoticeStore noticeStore,
@@ -42,7 +46,9 @@ public class ExamSource implements NotificationSource {
                       CampusConfigStore configStore,
                       PendingAskStore pendingAskStore,
                       NotificationService notificationService,
-                      WechatUserManager userManager) {
+                      WechatUserManager userManager,
+                      ExamRuleClassifier ruleClassifier,
+                      ExamLLMClassifier llmClassifier) {
         this.collector = collector;
         this.noticeStore = noticeStore;
         this.policy = policy;
@@ -50,6 +56,8 @@ public class ExamSource implements NotificationSource {
         this.pendingAskStore = pendingAskStore;
         this.notificationService = notificationService;
         this.userManager = userManager;
+        this.ruleClassifier = ruleClassifier;
+        this.llmClassifier = llmClassifier;
     }
 
     @Override
@@ -62,49 +70,65 @@ public class ExamSource implements NotificationSource {
 
     @Override
     public void check() {
-        CampusConfig config = configStore.get();
-        if (config == null || !supports(config)) return;
+        try {
+            CampusConfig config = configStore.get();
+            if (config == null || !supports(config)) return;
 
-        String schoolUrl = resolveSchoolUrl(config.getSchool());
-        if (schoolUrl == null) {
-            log.warn("未知学校，跳过考试通知检查 | school={}", config.getSchool());
-            return;
+            String schoolUrl = resolveSchoolUrl(config.getSchool());
+            if (schoolUrl == null) {
+                log.warn("未知学校，跳过考试通知检查 | school={}", config.getSchool());
+                return;
+            }
+
+            log.info("===== ExamSource 检查 | school={} =====", config.getSchool());
+
+            // 1. 采集
+            List<NoticeItem> notices = collector.collect(schoolUrl);
+            if (notices.isEmpty()) return;
+
+            // 2. 去重
+            List<NoticeItem> newNotices = noticeStore.deduplicate(notices);
+            if (newNotices.isEmpty()) return;
+
+            // 3. 逐条处理：分类 → 桥接 → 策略决策 → 推送
+            for (NoticeItem notice : newNotices) {
+                processNotice(notice, config);
+            }
+
+            log.info("===== ExamSource 完成 | school={} | new={} =====",
+                    config.getSchool(), newNotices.size());
+        } catch (Exception e) {
+            log.error("ExamSource 检查异常", e);
         }
-
-        log.info("===== ExamSource 检查 | school={} =====", config.getSchool());
-
-        // 1. 采集
-        List<NoticeItem> notices = collector.collect(schoolUrl);
-        if (notices.isEmpty()) return;
-
-        // 2. 去重
-        List<NoticeItem> newNotices = noticeStore.deduplicate(notices);
-        if (newNotices.isEmpty()) return;
-
-        // 3. 逐条处理
-        for (NoticeItem notice : newNotices) {
-            processNotice(notice, config);
-        }
-
-        log.info("===== ExamSource 完成 | school={} | new={} =====",
-                config.getSchool(), newNotices.size());
     }
 
     private void processNotice(NoticeItem notice, CampusConfig config) {
-        // 规则分类 → LLM分类（复用现有 CampusNoticeProcessor 的模式）
-        // 这里简化：直接调用 CampusNoticeProcessor 现有逻辑
-        // 由于 CampusNoticeProcessor 已经存在且运行稳定，ExamSource.check()
-        // 的职责是适配到新接口，实际的复杂编排仍由 CampusNoticeProcessor 完成。
-        // Phase 2 再考虑将 CampusNoticeProcessor 完全迁移到 ExamSource 内。
+        // 1. 分类：规则优先，LLM 兜底
+        ExamClassification result = ruleClassifier.classify(notice);
+        if (result == null) {
+            result = llmClassifier.classify(notice);
+        }
+        if (result == null || result.type() == NoticeType.UNKNOWN) {
+            log.warn("通知分类失败，下次重试 | title={}", notice.getTitle());
+            return;
+        }
 
-        // 将 NoticeItem 桥接为 NotificationItem 供 DefaultPolicy 使用
+        // 更新通知的分类结果
+        notice.setType(result.type());
+        notice.setConfidence(result.confidence());
+        notice.setScoreSource(result.scoreSource());
+        notice.setClassifierReason(result.reason());
+        notice.setProcessedAt(System.currentTimeMillis() / 1000);
+        noticeStore.update(notice);
+
+        // 2. 桥接为 NotificationItem，供 DefaultPolicy 决策
         NotificationItem notificationItem = bridgeToNotificationItem(notice);
 
-        // 决策
+        // 3. 策略决策
         NotificationPolicy.Decision decision = policy.decide(
             notificationItem, config, new ExamRules());
 
-        // 执行决策
+        // 4. 执行决策
         switch (decision) {
             case NOTIFY -> notifyUser(notice, notificationItem);
             case ASK -> askUser(notice, notificationItem);
