@@ -49,6 +49,8 @@ public class CourseImportFunction implements LLMFunction {
     private final SemesterDetector semesterDetector;
     private final SemesterRepository semesterRepository;
     private final SemesterService semesterService;
+    private final CourseMessageFormatter messageFormatter;
+    private final SchoolService schoolService;
 
     public CourseImportFunction(ObjectMapper objectMapper,
                                 LLMFunctionRegistry functionRegistry,
@@ -58,7 +60,9 @@ public class CourseImportFunction implements LLMFunction {
                                 CourseImportStateManager importStateManager,
                                 SemesterDetector semesterDetector,
                                 SemesterRepository semesterRepository,
-                                SemesterService semesterService) {
+                                SemesterService semesterService,
+                                CourseMessageFormatter messageFormatter,
+                                SchoolService schoolService) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
         this.courseService = courseService;
@@ -68,6 +72,8 @@ public class CourseImportFunction implements LLMFunction {
         this.semesterDetector = semesterDetector;
         this.semesterRepository = semesterRepository;
         this.semesterService = semesterService;
+        this.messageFormatter = messageFormatter;
+        this.schoolService = schoolService;
     }
 
     @PostConstruct
@@ -86,6 +92,8 @@ public class CourseImportFunction implements LLMFunction {
         return "课程表管理。管理用户的个人课程表数据（以userId隔离持久化到SQLite）。\n"
                 + "支持操作：\n"
                 + "- 导入：使用 import -> parse -> confirm 三步流程导入课表（图片/PDF/Excel/直接JSON）\n"
+                + "- 学校：query_school（查询当前学校信息），set_school（绑定学校，需school_name），\n"
+                + "         list_schools（查看可用的学校模板列表）\n"
                 + "- 查询：query_today（今日课程，自动过滤学期周次和单双周）\n"
                 + "         query_weekday（指定星期几的课程，如\"周一\"->day_of_week=1）\n"
                 + "         query_all（全部课程列表）\n"
@@ -106,11 +114,14 @@ public class CourseImportFunction implements LLMFunction {
         action.put("description", "操作类型：import(开始导入), parse(解析并预览), confirm(确认保存), "
                 + "cancel(取消), query_today(今日课程), query_free_time(空闲时间), "
                 + "query_all(全部课程), query_weekday(指定星期), delete(删除), update(修改), clear(清空), "
-                + "confirm_semester(确认学期), set_semester(设置学期)");
+                + "confirm_semester(确认学期), set_semester(设置学期), "
+                + "query_school(查询当前学校), set_school(绑定学校需school_name), "
+                + "list_schools(查看可用学校列表)");
         action.putArray("enum").add("import").add("parse").add("confirm").add("cancel")
                 .add("query_today").add("query_free_time").add("query_all").add("query_weekday")
                 .add("delete").add("update").add("clear")
-                .add("confirm_semester").add("set_semester");
+                .add("confirm_semester").add("set_semester")
+                .add("query_school").add("set_school").add("list_schools");
 
         ObjectNode courses = properties.putObject("courses");
         courses.put("type", "array");
@@ -169,6 +180,11 @@ public class CourseImportFunction implements LLMFunction {
                 + "仅 set_semester 操作使用，用于用户指定具体第1周周一日期。"
                 + "如果未提供，系统会根据学年和学期自动计算。");
 
+        ObjectNode schoolName = properties.putObject("school_name");
+        schoolName.put("type", "string");
+        schoolName.put("description", "学校名称，如「无锡学院」。用于 set_school 操作，"
+                + "系统会根据名称查找或自动创建学校。");
+
         params.putArray("required").add("action");
 
         return params;
@@ -206,6 +222,9 @@ public class CourseImportFunction implements LLMFunction {
                 case "query_free_time" -> handleQueryFreeTime(userId);
                 case "query_all" -> handleQueryAll(userId);
                 case "query_weekday" -> handleQueryWeekday(args, userId);
+                case "query_school" -> handleQuerySchool(userId);
+                case "set_school" -> handleSetSchool(args, userId);
+                case "list_schools" -> handleListSchools();
                 default -> errorJson("不支持的 action: " + actionStr);
             };
         } catch (Exception e) {
@@ -340,7 +359,7 @@ public class CourseImportFunction implements LLMFunction {
         }
 
         result.put("formatted_preview",
-                CourseMessageFormatter.formatImportPreview(courses, conflicts, currentWeek));
+                messageFormatter.formatImportPreview(courses, conflicts, currentWeek));
 
         String conflictSuffix = conflicts.isEmpty() ? "" : "，" + conflicts.size() + " 个时间冲突";
         result.put("message", "已识别出以下 " + courses.size() + " 门课程" + conflictSuffix
@@ -669,7 +688,7 @@ public class CourseImportFunction implements LLMFunction {
             array.add(slot.display());
         }
         result.put("message", "今日空闲时间段共 " + freeSlots.size() + " 段");
-        result.put("formatted", CourseMessageFormatter.formatFreeTimeSlots(freeSlots));
+        result.put("formatted", messageFormatter.formatFreeTimeSlots(userId, freeSlots));
         return result.toString();
     }
 
@@ -699,6 +718,98 @@ public class CourseImportFunction implements LLMFunction {
                 DAY_NAMES[dayOfWeek] + "共 " + courses.size() + " 门课", currentWeek);
     }
 
+    // ==================== 学校操作 ====================
+
+    /**
+     * 查询用户当前绑定的学校信息
+     */
+    private String handleQuerySchool(String userId) {
+        var school = schoolService.getUserSchool(userId);
+        if (school == null) {
+            return "{\"action\":\"query_school\",\"bound\":false,\"message\":\"你还没有绑定学校。"
+                    + "为了准确计算课程时间，请告诉我你的学校名称。\"}";
+        }
+
+        try {
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "query_school");
+            result.put("bound", true);
+            result.put("school_id", school.getId());
+            result.put("school_name", school.getSchoolName());
+            result.put("school_code", school.getSchoolCode() != null ? school.getSchoolCode() : "");
+            result.put("message", "当前绑定学校：" + school.getSchoolName());
+            return objectMapper.writeValueAsString(result);
+        } catch (Exception e) {
+            return "{\"action\":\"query_school\",\"bound\":true,\"school_name\":\""
+                    + school.getSchoolName() + "\"}";
+        }
+    }
+
+    /**
+     * 为用户绑定学校
+     */
+    private String handleSetSchool(JsonNode args, String userId) {
+        String schoolName = args.path("school_name").asText("");
+        if (schoolName.isBlank()) {
+            return "{\"action\":\"set_school\",\"status\":\"error\","
+                    + "\"message\":\"请提供学校名称（school_name 参数），如「无锡学院」。\"}";
+        }
+
+        var school = schoolService.bindUserToSchoolByName(userId, schoolName);
+        if (school == null) {
+            return "{\"action\":\"set_school\",\"status\":\"error\","
+                    + "\"message\":\"学校绑定失败，请稍后重试。\"}";
+        }
+
+        try {
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "set_school");
+            result.put("status", "success");
+            result.put("school_id", school.getId());
+            result.put("school_name", school.getSchoolName());
+            result.put("message", "已绑定学校：" + school.getSchoolName()
+                    + "，现在可以导入课表了。");
+            return objectMapper.writeValueAsString(result);
+        } catch (Exception e) {
+            return "{\"action\":\"set_school\",\"status\":\"success\",\"school_name\":\""
+                    + school.getSchoolName() + "\"}";
+        }
+    }
+
+    /**
+     * 列出可用学校列表
+     */
+    private String handleListSchools() {
+        var presetNames = schoolService.listPresetSchoolNames();
+        var allSchools = schoolService.listAllSchools();
+
+        try {
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "list_schools");
+
+            var presetArray = result.putArray("preset_schools");
+            for (String name : presetNames) {
+                presetArray.add(name);
+            }
+
+            var dbArray = result.putArray("all_schools");
+            for (var school : allSchools) {
+                ObjectNode item = dbArray.addObject();
+                item.put("id", school.getId());
+                item.put("name", school.getSchoolName());
+                item.put("code", school.getSchoolCode() != null ? school.getSchoolCode() : "");
+            }
+
+            result.put("message", "系统内置 " + presetNames.size() + " 套学校作息模板，"
+                    + "数据库中共 " + allSchools.size() + " 所学校。"
+                    + "可使用 set_school 操作绑定学校。");
+            return objectMapper.writeValueAsString(result);
+        } catch (Exception e) {
+            return "{\"action\":\"list_schools\",\"preset_schools\":"
+                    + presetNames.toString() + "}";
+        }
+    }
+
     // ==================== 工具方法 ====================
 
     private String buildQueryResult(String action, List<CourseEntity> courses, String message, int currentWeek) {
@@ -723,8 +834,8 @@ public class CourseImportFunction implements LLMFunction {
 
         // 嵌入预格式化的微信消息文本
         String formatted = switch (action) {
-            case "query_today" -> CourseMessageFormatter.formatTodayCourses(courses, currentWeek);
-            case "query_all" -> CourseMessageFormatter.formatWeekOverview(courses, currentWeek);
+            case "query_today" -> messageFormatter.formatTodayCourses(courses, currentWeek);
+            case "query_all" -> messageFormatter.formatWeekOverview(courses, currentWeek);
             default -> message;
         };
         result.put("formatted", formatted);

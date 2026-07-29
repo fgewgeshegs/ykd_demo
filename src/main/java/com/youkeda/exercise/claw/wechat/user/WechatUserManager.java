@@ -39,10 +39,16 @@ public class WechatUserManager {
                 user_id            TEXT PRIMARY KEY,
                 nickname           TEXT,
                 avatar_url         TEXT,
+                school_id          INTEGER,
                 last_active_time   DATETIME DEFAULT (datetime('now', 'localtime')),
                 first_active_time  DATETIME DEFAULT (datetime('now', 'localtime')),
                 interaction_count  INTEGER DEFAULT 1
             )
+            """;
+
+    /** 旧数据库迁移：新增 school_id 列 */
+    private static final String MIGRATE_ADD_SCHOOL_ID = """
+            ALTER TABLE wechat_users ADD COLUMN school_id INTEGER
             """;
 
     private static final String UPSERT_SQL = """
@@ -66,6 +72,13 @@ public class WechatUserManager {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(TABLE_DDL);
+            // 迁移：为已有数据库添加 school_id 列
+            try {
+                stmt.execute(MIGRATE_ADD_SCHOOL_ID);
+                log.info("数据库迁移完成：已添加 school_id 列");
+            } catch (SQLException e) {
+                log.debug("school_id 列已存在，跳过迁移");
+            }
             log.info("wechat_users 表初始化完成 | path={}", dbPath);
         } catch (SQLException e) {
             log.error("wechat_users 表初始化失败", e);
@@ -137,6 +150,60 @@ public class WechatUserManager {
             log.error("查询用户数失败", e);
         }
         return 0;
+    }
+
+    // ==================== 学校绑定 ====================
+
+    /**
+     * 获取用户绑定的学校 ID
+     *
+     * @param userId 用户标识
+     * @return 学校 ID，未绑定返回 null
+     */
+    public Long getUserSchoolId(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT school_id FROM wechat_users WHERE user_id = ?")) {
+            ps.setString(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    long val = rs.getLong("school_id");
+                    if (!rs.wasNull()) {
+                        return val;
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.error("查询用户学校绑定失败 | userId={}", userId, e);
+        }
+        return null;
+    }
+
+    /**
+     * 设置用户绑定的学校 ID
+     *
+     * @param userId   用户标识
+     * @param schoolId 学校 ID（传 null 解除绑定）
+     */
+    public void setUserSchoolId(String userId, Long schoolId) {
+        if (userId == null || userId.isBlank()) return;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE wechat_users SET school_id = ? WHERE user_id = ?")) {
+            if (schoolId != null) {
+                ps.setLong(1, schoolId);
+            } else {
+                ps.setNull(1, Types.INTEGER);
+            }
+            ps.setString(2, userId);
+            int rows = ps.executeUpdate();
+            if (rows > 0) {
+                log.info("用户学校绑定已更新 | userId={} | schoolId={}", userId, schoolId);
+            }
+        } catch (SQLException e) {
+            log.error("设置用户学校绑定失败 | userId={} | schoolId={}", userId, schoolId, e);
+        }
     }
 
     /** 用户记录，用于控制台展示 */

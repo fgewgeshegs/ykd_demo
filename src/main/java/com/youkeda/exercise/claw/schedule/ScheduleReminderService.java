@@ -31,6 +31,9 @@ import java.util.stream.Collectors;
  *
  * <p>提醒去重：使用内存缓存 {@link #notifiedCache} 避免同一天同一门课重复发送。
  * 缓存最多保留 10000 条，超限时全量清理。
+ *
+ * <p>课程开始时间通过 {@link ScheduleTimeResolver} 根据用户绑定的学校作息配置动态计算，
+ * 不再使用硬编码的固定节次时间表。
  */
 @Component
 public class ScheduleReminderService {
@@ -45,18 +48,11 @@ public class ScheduleReminderService {
     @Value("${schedule.reminder.tolerance-seconds:30}")
     private int reminderToleranceSeconds;
 
-    // 典型节次时间表（第几节 ~ 开始时间）
-    private static final int[] PERIOD_START_HOUR = {
-            0, 8, 8, 9, 10, 11, 14, 14, 15, 15, 16, 19, 19
-    };
-    private static final int[] PERIOD_START_MINUTE = {
-            0, 0, 50, 50, 40, 30, 0, 50, 50, 40, 30, 0, 45
-    };
-
     private final CourseRepository courseRepository;
     private final SemesterConfig semesterConfig;
     private final WechatILinkClient wechatClient;
     private final SemesterService semesterService;
+    private final ScheduleTimeResolver timeResolver;
 
     /** 已发送提醒的课程 ID 缓存（避免重复发送），key = userId:courseId:yyyyMMdd */
     private final ConcurrentHashMap<String, Boolean> notifiedCache = new ConcurrentHashMap<>();
@@ -64,11 +60,13 @@ public class ScheduleReminderService {
     public ScheduleReminderService(CourseRepository courseRepository,
                                    SemesterConfig semesterConfig,
                                    WechatILinkClient wechatClient,
-                                   SemesterService semesterService) {
+                                   SemesterService semesterService,
+                                   ScheduleTimeResolver timeResolver) {
         this.courseRepository = courseRepository;
         this.semesterConfig = semesterConfig;
         this.wechatClient = wechatClient;
         this.semesterService = semesterService;
+        this.timeResolver = timeResolver;
     }
 
     @PostConstruct
@@ -216,14 +214,14 @@ public class ScheduleReminderService {
     }
 
     /**
-     * 根据课程节次计算今日开始时间
+     * 根据课程节次计算今日开始时间（通过用户绑定的学校作息配置）
      */
     private LocalDateTime getCourseEntityStartTime(CourseEntity course) {
-        int period = course.getStartPeriod();
-        if (period < 1 || period > 12) return null;
+        var startTime = timeResolver.getStartTime(course.getUserId(), course.getStartPeriod());
+        if (startTime == null) return null;
         LocalDateTime now = LocalDateTime.now();
-        return now.withHour(PERIOD_START_HOUR[period])
-                  .withMinute(PERIOD_START_MINUTE[period])
+        return now.withHour(startTime.getHour())
+                  .withMinute(startTime.getMinute())
                   .withSecond(0).withNano(0);
     }
 

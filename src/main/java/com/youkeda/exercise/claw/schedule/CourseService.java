@@ -294,18 +294,10 @@ public class CourseService {
      */
     public record TimeSlot(int startPeriod, int endPeriod) {
 
-        private static final String[][] PERIOD_TIME_RANGES = {
-                {},
-                {"08:00", "08:45"}, {"08:50", "09:35"}, {"09:50", "10:35"}, {"10:40", "11:25"},
-                {"11:30", "12:15"}, {"14:00", "14:45"}, {"14:50", "15:35"}, {"15:50", "16:35"},
-                {"16:40", "17:25"}, {"17:30", "18:15"}, {"19:00", "19:45"}, {"19:50", "20:35"}
-        };
-
         public String display() {
-            String startTime = startPeriod <= 12 ? PERIOD_TIME_RANGES[startPeriod][0] : "";
-            String endTime = endPeriod <= 12 ? PERIOD_TIME_RANGES[endPeriod][1] : "";
-            String timeRange = (startTime.isEmpty() ? "" : (" (" + startTime + "-" + endTime + ")"));
-            return "第" + startPeriod + "-" + endPeriod + "节" + timeRange;
+            return startPeriod == endPeriod
+                    ? "第" + startPeriod + "节"
+                    : "第" + startPeriod + "-" + endPeriod + "节";
         }
     }
 

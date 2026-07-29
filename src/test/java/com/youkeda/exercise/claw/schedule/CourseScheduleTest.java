@@ -548,7 +548,10 @@ class CourseScheduleTest {
         void singlePeriodSlot() {
             CourseService.TimeSlot slot = new CourseService.TimeSlot(5, 5);
             String display = slot.display();
-            assertTrue(display.contains("5-5"));
+            assertTrue(display.contains("5"));
+            assertTrue(display.contains("节"));
+            // 单节次不再显示 "5-5" 的格式
+            assertFalse(display.contains("5-5"));
         }
     }
 

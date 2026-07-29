@@ -1,5 +1,7 @@
 package com.youkeda.exercise.claw.schedule;
 
+import org.springframework.stereotype.Component;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -12,20 +14,19 @@ import java.util.stream.Collectors;
  * <p>为微信聊天场景优化课程信息的文本展示格式。
  * 使用 emoji + 结构化缩进 + 分隔线，让课表信息一目了然。
  * 所有方法返回的字符串可直接用 {@code wechatClient.sendTextMessage()} 发送。
+ *
+ * <p>各方法需要通过 {@link ScheduleTimeResolver} 将节次号解析为具体时间，
+ * 以支持不同学校的作息配置差异。
  */
+@Component
 public class CourseMessageFormatter {
 
     private static final String[] DAY_LABELS = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
 
-    private static final String[][] PERIOD_TIME = {
-            {},
-            {"08:00", "08:45"}, {"08:50", "09:35"}, {"09:50", "10:35"}, {"10:40", "11:25"},
-            {"11:30", "12:15"}, {"14:00", "14:45"}, {"14:50", "15:35"}, {"15:50", "16:35"},
-            {"16:40", "17:25"}, {"17:30", "18:15"}, {"19:00", "19:45"}, {"19:50", "20:35"}
-    };
+    private final ScheduleTimeResolver timeResolver;
 
-    private CourseMessageFormatter() {
-        // 工具类，禁止实例化
+    public CourseMessageFormatter(ScheduleTimeResolver timeResolver) {
+        this.timeResolver = timeResolver;
     }
 
     /**
@@ -35,7 +36,7 @@ public class CourseMessageFormatter {
      * @param currentWeek 当前教学周
      * @return 格式化后的微信消息文本
      */
-    public static String formatTodayCourses(List<CourseEntity> courses, int currentWeek) {
+    public String formatTodayCourses(List<CourseEntity> courses, int currentWeek) {
         if (courses == null || courses.isEmpty()) {
             return "🎉 今天没有课，好好休息吧！";
         }
@@ -77,7 +78,7 @@ public class CourseMessageFormatter {
      * @param freeSlots 空闲时段列表（由 CourseService.getFreeTimeSlots 返回）
      * @return 格式化后的微信消息文本
      */
-    public static String formatFreeTimeSlots(List<CourseService.TimeSlot> freeSlots) {
+    public String formatFreeTimeSlots(String userId, List<CourseService.TimeSlot> freeSlots) {
         if (freeSlots == null || freeSlots.isEmpty()) {
             return "📅 今天全天满课，没有空闲时间 😅";
         }
@@ -88,10 +89,10 @@ public class CourseMessageFormatter {
 
         int idx = 1;
         for (CourseService.TimeSlot slot : freeSlots) {
-            String startTime = slot.startPeriod() <= 12 ? PERIOD_TIME[slot.startPeriod()][0] : "";
-            String endTime = slot.endPeriod() <= 12 ? PERIOD_TIME[slot.endPeriod()][1] : "";
-            sb.append("  ").append(idx++).append(". 第").append(slot.startPeriod());
-            sb.append("-").append(slot.endPeriod()).append("节");
+            sb.append("  ").append(idx++).append(". ").append(slot.display());
+            // 追加时间信息
+            String startTime = safeGetTime(userId, slot.startPeriod(), true);
+            String endTime = safeGetTime(userId, slot.endPeriod(), false);
             if (!startTime.isEmpty()) {
                 sb.append("  (").append(startTime).append("-").append(endTime).append(")");
             }
@@ -109,7 +110,7 @@ public class CourseMessageFormatter {
      * @param currentWeek 当前教学周
      * @return 格式化后的微信消息文本
      */
-    public static String formatWeekOverview(List<CourseEntity> courses, int currentWeek) {
+    public String formatWeekOverview(List<CourseEntity> courses, int currentWeek) {
         if (courses == null || courses.isEmpty()) {
             return "📋 还没有导入课表，快上传课表文件或告诉我课程信息吧！";
         }
@@ -161,7 +162,7 @@ public class CourseMessageFormatter {
      * @param currentWeek 当前教学周（小于等于 0 表示假期）
      * @return 格式化后的微信消息文本
      */
-    public static String formatCourseDetail(CourseEntity c, int currentWeek) {
+    public String formatCourseDetail(CourseEntity c, int currentWeek) {
         StringBuilder sb = new StringBuilder();
         sb.append("📖 **").append(c.getCourseName()).append("**\n");
         sb.append("📅 ").append(c.getDayDisplay()).append("\n");
@@ -187,9 +188,9 @@ public class CourseMessageFormatter {
      * @param currentWeek 当前教学周
      * @return 格式化后的预览文本
      */
-    public static String formatImportPreview(List<CourseEntity> courses,
-                                              List<?> conflicts,
-                                              int currentWeek) {
+    public String formatImportPreview(List<CourseEntity> courses,
+                                       List<?> conflicts,
+                                       int currentWeek) {
         StringBuilder sb = new StringBuilder();
         sb.append("📋 **课表预览**\n");
         sb.append("共解析到 ").append(courses.size()).append(" 门课程\n\n");
@@ -233,13 +234,21 @@ public class CourseMessageFormatter {
      * 格式化课程的时间段显示
      * 示例：第3-4节 (09:50-11:25)
      */
-    private static String formatPeriodTime(CourseEntity c) {
-        int s = c.getStartPeriod();
-        int e = c.getEndPeriod();
+    public String formatPeriodTime(CourseEntity c) {
         String periodLabel = "第" + c.getPeriodDisplay() + "节";
-        if (s < 1 || s > 12) return periodLabel;
-        String start = PERIOD_TIME[s][0];
-        String end = (e >= 1 && e <= 12) ? PERIOD_TIME[e][1] : "";
-        return periodLabel + " (" + start + "-" + end + ")";
+        String timeRange = timeResolver.formatTimeRange(
+                c.getUserId(), c.getStartPeriod(), c.getEndPeriod());
+        if (timeRange.isEmpty()) return periodLabel;
+        return periodLabel + " (" + timeRange + ")";
+    }
+
+    /**
+     * 安全获取某节次的开始或结束时间文本
+     */
+    private String safeGetTime(String userId, int period, boolean isStart) {
+        java.time.LocalTime t = isStart
+                ? timeResolver.getStartTime(userId, period)
+                : timeResolver.getEndTime(userId, period);
+        return t != null ? t.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : "";
     }
 }
