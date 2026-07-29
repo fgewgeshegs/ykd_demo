@@ -56,9 +56,9 @@ public class SqliteDatabaseInitializer {
             CREATE INDEX IF NOT EXISTS idx_context_user_id ON context_messages(user_id)
         """);
 
-        // 创建团建方案草稿表
+        // 创建旅游方案草稿表
         jdbcTemplate.execute("""
-            CREATE TABLE IF NOT EXISTS team_trip_plans (
+            CREATE TABLE IF NOT EXISTS travel_plans (
                 user_id TEXT PRIMARY KEY,
                 plan_json TEXT NOT NULL,
                 updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
@@ -142,9 +142,9 @@ public class SqliteDatabaseInitializer {
         // 清理 30 天前的团建方案（团建方案保留更长时间）
         long planExpireTime = System.currentTimeMillis() / 1000 - 30 * 24 * 3600;
         int planDeleted = jdbcTemplate.update(
-            "DELETE FROM team_trip_plans WHERE updated_at < ?", planExpireTime);
+            "DELETE FROM travel_plans WHERE updated_at < ?", planExpireTime);
         if (planDeleted > 0) {
-            log.info("已清理 {} 条过期团建方案", planDeleted);
+            log.info("已清理 {} 条过期旅游方案", planDeleted);
         }
     }
 

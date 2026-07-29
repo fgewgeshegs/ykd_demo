@@ -4,28 +4,28 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.teamtrip.TeamTripPlanService;
+import com.youkeda.exercise.claw.travel.TravelPlanService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 团建需求收集工具。
+ * 旅游需求收集工具。
  *
- * <p>当用户需要制定团建/出游方案且缺少关键信息（出发地、人数、日期、天数、目的地、预算）时调用。
+ * <p>当用户需要制定旅游/出游方案且缺少关键信息（出发地、人数、日期、天数、目的地、预算）时调用。
  * 信息不足时返回 NEED_MORE_INFORMATION 和具体缺失字段，LLM 应据此追问。
  */
 @Component
-public class TeamTripCollectFunction implements LLMFunction {
+public class TravelCollectFunction implements LLMFunction {
 
-    private static final Logger log = LoggerFactory.getLogger(TeamTripCollectFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TravelCollectFunction.class);
 
-    private final TeamTripPlanService planService;
+    private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
     private final LLMFunctionRegistry registry;
 
-    public TeamTripCollectFunction(TeamTripPlanService planService,
+    public TravelCollectFunction(TravelPlanService planService,
                                    ObjectMapper objectMapper,
                                    LLMFunctionRegistry registry) {
         this.planService = planService;
@@ -40,13 +40,13 @@ public class TeamTripCollectFunction implements LLMFunction {
 
     @Override
     public String getName() {
-        return "team_trip_collect";
+        return "travel_collect";
     }
 
     @Override
     public String getDescription() {
-        return "收集和更新团建规划需求。"
-                + "当用户需要制定团建、公司出游、部门活动、集体旅行或完整多人行程方案时调用。"
+        return "收集和更新旅游规划需求。"
+                + "当用户需要制定旅游、公司出游、部门活动、集体旅行或完整多人行程方案时调用。"
                 + "传入用户已提供的信息（出发地、人数、日期、天数、目的地/范围、预算等）；"
                 + "必要字段缺失时返回 NEED_MORE_INFORMATION 和缺失字段列表，LLM 应逐一追问。"
                 + "新方案首次调用前，若明显缺少必填信息（缺3项以上），应先用文字一次性追问，不调用此工具。"
@@ -74,7 +74,7 @@ public class TeamTripCollectFunction implements LLMFunction {
         property(p, "max_overrun_rate", "number", "可选：用户提前允许的最大超预算比例，百分数");
         property(p, "destination", "string", "确定的目的地");
         property(p, "travel_scope", "string", "目的地未定时可接受的范围");
-        property(p, "team_goal", "string", "团建目标");
+        property(p, "team_goal", "string", "出行目标");
         property(p, "activity_preferences", "string", "活动偏好，如户外、室内、水上、文化体验");
         property(p, "participant_profile", "string", "年龄、体力和人员构成");
         property(p, "transport_preference", "string", "交通偏好");
@@ -101,8 +101,8 @@ public class TeamTripCollectFunction implements LLMFunction {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
             return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
-            log.error("team_trip_collect 执行失败 | error={}", e.getMessage());
-            return error("团建需求收集失败: " + e.getMessage());
+            log.error("travel_collect 执行失败 | error={}", e.getMessage());
+            return error("旅游需求收集失败: " + e.getMessage());
         }
     }
 

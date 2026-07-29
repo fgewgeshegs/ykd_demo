@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.teamtrip;
+package com.youkeda.exercise.claw.travel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,13 +14,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 团建/出游方案业务服务。
+ * 旅游/出游方案业务服务。
  *
  * <p>纯工具：接收结构化输入，返回结构化结果。
  * 不维护编排状态（stage 管理已移除），不替 LLM 决定下一步做什么。
  */
 @Service
-public class TeamTripPlanService {
+public class TravelPlanService {
 
     private static final Pattern DAYS_PATTERN = Pattern.compile("(\\d+)\\s*天");
     private static final Pattern NIGHTS_PATTERN = Pattern.compile("(\\d+)\\s*晚");
@@ -30,11 +30,11 @@ public class TeamTripPlanService {
             "transport_preference", "accommodation_preference",
             "meal_preferences", "special_requirements");
 
-    private final TeamTripPlanStateStore stateStore;
+    private final TravelPlanStateStore stateStore;
     private final ObjectMapper objectMapper;
     private final WechatUserManager userManager;
 
-    public TeamTripPlanService(TeamTripPlanStateStore stateStore, ObjectMapper objectMapper,
+    public TravelPlanService(TravelPlanStateStore stateStore, ObjectMapper objectMapper,
                                 WechatUserManager userManager) {
         this.stateStore = stateStore;
         this.objectMapper = objectMapper;
@@ -47,7 +47,7 @@ public class TeamTripPlanService {
     }
 
     /**
-     * 处理团建方案工具调用。
+     * 处理旅游方案工具调用。
      *
      * @return 业务数据的结果描述，不包含编排指令（stage、next_tool、instruction、output_contract 均已移除）
      */
@@ -56,7 +56,7 @@ public class TeamTripPlanService {
     }
 
     /**
-     * 处理团建方案工具调用（指定 userId）。
+     * 处理旅游方案工具调用（指定 userId）。
      */
     public ObjectNode handle(JsonNode args, String userId) {
         normalizeAliases((ObjectNode) args);
@@ -69,8 +69,8 @@ public class TeamTripPlanService {
             return result;
         }
 
-        TeamTripPlanDraft draft = stateStore.get(userId);
-        if (draft == null) draft = new TeamTripPlanDraft();
+        TravelPlanDraft draft = stateStore.get(userId);
+        if (draft == null) draft = new TravelPlanDraft();
         if (args.has("option_count") && args.get("option_count").canConvertToInt()) {
             int optionCount = args.get("option_count").asInt();
             if (optionCount < 1 || optionCount > 5) {
@@ -95,13 +95,13 @@ public class TeamTripPlanService {
         return result;
     }
 
-    public TeamTripPlanDraft getDraft() {
+    public TravelPlanDraft getDraft() {
         return stateStore.get(resolveDefaultUserId());
     }
 
     // ==================== Action Handlers ====================
 
-    private ObjectNode collect(TeamTripPlanDraft draft) {
+    private ObjectNode collect(TravelPlanDraft draft) {
         Map<String, String> missing = findMissing(draft);
         ObjectNode result = objectMapper.createObjectNode();
 
@@ -121,7 +121,7 @@ public class TeamTripPlanService {
         return result;
     }
 
-    private ObjectNode saveOptions(TeamTripPlanDraft draft, JsonNode args) {
+    private ObjectNode saveOptions(TravelPlanDraft draft, JsonNode args) {
         JsonNode optionNodes = args.get("options");
         if (optionNodes == null || !optionNodes.isArray() || optionNodes.isEmpty()) {
             return saveError(draft, "save_options 至少需要一个候选方案。");
@@ -134,11 +134,11 @@ public class TeamTripPlanService {
                     + "个候选方案，实际收到" + optionNodes.size() + "个。");
         }
 
-        List<TeamTripPlanOption> options = new ArrayList<>();
+        List<TravelPlanOption> options = new ArrayList<>();
         for (JsonNode node : optionNodes) {
             String id = text(node, "option_id");
             if (id.isBlank()) return saveError(draft, "每个候选方案都必须提供 option_id。");
-            TeamTripPlanOption option = new TeamTripPlanOption();
+            TravelPlanOption option = new TravelPlanOption();
             option.setOptionId(id);
             option.setDisplayName(defaultText(text(node, "display_name"), id));
             option.setPositioning(text(node, "positioning"));
@@ -158,8 +158,8 @@ public class TeamTripPlanService {
         return result;
     }
 
-    private ObjectNode selectOption(TeamTripPlanDraft draft, String optionId) {
-        TeamTripPlanOption selected = findOption(draft, optionId);
+    private ObjectNode selectOption(TravelPlanDraft draft, String optionId) {
+        TravelPlanOption selected = findOption(draft, optionId);
         if (selected == null) return saveError(draft, "未找到候选方案：" + optionId);
 
         draft.setSelectedOptionId(selected.getOptionId());
@@ -175,13 +175,13 @@ public class TeamTripPlanService {
         return result;
     }
 
-    private ObjectNode combineOptions(TeamTripPlanDraft draft, JsonNode args) {
+    private ObjectNode combineOptions(TravelPlanDraft draft, JsonNode args) {
         JsonNode sourceIds = args.get("source_option_ids");
         if (sourceIds == null || !sourceIds.isArray() || sourceIds.size() < 2) {
             return saveError(draft, "组合方案至少需要两个 source_option_ids。");
         }
         String id = defaultText(text(args, "option_id"), "COMBINED-" + (draft.getOptionSetVersion() + 1));
-        TeamTripPlanOption combined = new TeamTripPlanOption();
+        TravelPlanOption combined = new TravelPlanOption();
         combined.setOptionId(id);
         combined.setDisplayName(defaultText(text(args, "display_name"), "组合方案"));
         combined.setPositioning(defaultText(text(args, "positioning"), "用户组合方案"));
@@ -198,8 +198,8 @@ public class TeamTripPlanService {
         return result;
     }
 
-    private ObjectNode reviseOption(TeamTripPlanDraft draft, JsonNode args) {
-        TeamTripPlanOption option = findOption(draft, text(args, "option_id"));
+    private ObjectNode reviseOption(TravelPlanDraft draft, JsonNode args) {
+        TravelPlanOption option = findOption(draft, text(args, "option_id"));
         if (option == null) return saveError(draft, "未找到需要修改的候选方案。");
 
         option.setVersion(Math.max(1, option.getVersion()) + 1);
@@ -220,8 +220,8 @@ public class TeamTripPlanService {
         return result;
     }
 
-    private ObjectNode handleBudgetDecision(TeamTripPlanDraft draft, JsonNode args) {
-        TeamTripPlanOption selected = findOption(draft, draft.getSelectedOptionId());
+    private ObjectNode handleBudgetDecision(TravelPlanDraft draft, JsonNode args) {
+        TravelPlanOption selected = findOption(draft, draft.getSelectedOptionId());
         if (selected == null) return saveError(draft, "请先选择一个候选方案。");
 
         String decision = text(args, "budget_decision");
@@ -265,7 +265,7 @@ public class TeamTripPlanService {
         return result;
     }
 
-    private ObjectNode handleRevision(TeamTripPlanDraft draft, String feedback) {
+    private ObjectNode handleRevision(TravelPlanDraft draft, String feedback) {
         draft.setLastFeedback(feedback);
         draft.setVersion(Math.max(1, draft.getVersion()) + 1);
 
@@ -278,7 +278,7 @@ public class TeamTripPlanService {
 
     // ==================== Business Helpers ====================
 
-    private Map<String, String> findMissing(TeamTripPlanDraft draft) {
+    private Map<String, String> findMissing(TravelPlanDraft draft) {
         Map<String, String> missing = new LinkedHashMap<>();
         if (blank(draft.getDepartureCity())) missing.put("departure_city", "从哪里出发或在哪里集合？");
         if (draft.getParticipantCount() == null || draft.getParticipantCount() <= 0)
@@ -294,7 +294,7 @@ public class TeamTripPlanService {
         return missing;
     }
 
-    private boolean merge(TeamTripPlanDraft draft, JsonNode args) {
+    private boolean merge(TravelPlanDraft draft, JsonNode args) {
         boolean changed = false;
         if (hasText(args, "departure_city")) {
             changed |= !Objects.equals(draft.getDepartureCity(), text(args, "departure_city"));
@@ -373,7 +373,7 @@ public class TeamTripPlanService {
         return changed;
     }
 
-    private void invalidateAllOptions(TeamTripPlanDraft draft) {
+    private void invalidateAllOptions(TravelPlanDraft draft) {
         draft.getOptions().forEach(option -> {
             option.setCostStatus("STALE");
             option.setCostResult(null);
@@ -383,13 +383,13 @@ public class TeamTripPlanService {
 
     // ==================== Formatting ====================
 
-    private void refreshState(ObjectNode result, TeamTripPlanDraft draft) {
+    private void refreshState(ObjectNode result, TravelPlanDraft draft) {
         result.put("plan_mode", draft.getPlanMode());
         result.put("version", draft.getVersion());
         result.set("collected_information", objectMapper.valueToTree(draft));
     }
 
-    private ObjectNode saveError(TeamTripPlanDraft draft, String message) {
+    private ObjectNode saveError(TravelPlanDraft draft, String message) {
         ObjectNode result = objectMapper.createObjectNode();
         result.put("status", "INVALID_ARGUMENT");
         result.put("error", message);
@@ -397,14 +397,14 @@ public class TeamTripPlanService {
         return result;
     }
 
-    private TeamTripPlanOption findOption(TeamTripPlanDraft draft, String optionId) {
+    private TravelPlanOption findOption(TravelPlanDraft draft, String optionId) {
         if (blank(optionId)) return null;
         return draft.getOptions().stream()
                 .filter(option -> optionId.equals(option.getOptionId()))
                 .findFirst().orElse(null);
     }
 
-    private void parseDuration(TeamTripPlanDraft draft, String duration) {
+    private void parseDuration(TravelPlanDraft draft, String duration) {
         Matcher days = DAYS_PATTERN.matcher(duration);
         if (days.find()) draft.setDays(Integer.parseInt(days.group(1)));
         Matcher nights = NIGHTS_PATTERN.matcher(duration);

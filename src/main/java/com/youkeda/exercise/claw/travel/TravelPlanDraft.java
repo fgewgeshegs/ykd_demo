@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.teamtrip;
+package com.youkeda.exercise.claw.travel;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -6,12 +6,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 团建/出游方案业务数据。
+ * 旅游/出游方案业务数据。
  *
  * <p>仅包含结构化业务数据（出发地、人数、日期、预算、方案列表等）。
  * 不包含编排状态（stage 已移除，由 Agent Runtime 的 PlanState 管理）。
  */
-class TeamTripPlanDraft {
+class TravelPlanDraft {
 
     private String departureCity;
     private Integer participantCount;
@@ -33,7 +33,7 @@ class TeamTripPlanDraft {
     private String planMode = "BALANCED_DEFAULT";
     private int version = 1;
     private String lastFeedback;
-    private List<TeamTripPlanOption> options = new ArrayList<>();
+    private List<TravelPlanOption> options = new ArrayList<>();
     private int optionCount = 3;
     private String selectedOptionId;
     private int optionSetVersion;
@@ -90,8 +90,8 @@ class TeamTripPlanDraft {
     public void setVersion(int version) { this.version = version; }
     public String getLastFeedback() { return lastFeedback; }
     public void setLastFeedback(String lastFeedback) { this.lastFeedback = lastFeedback; }
-    public List<TeamTripPlanOption> getOptions() { return options; }
-    public void setOptions(List<TeamTripPlanOption> options) {
+    public List<TravelPlanOption> getOptions() { return options; }
+    public void setOptions(List<TravelPlanOption> options) {
         this.options = options != null ? options : new ArrayList<>();
     }
     public int getOptionCount() { return optionCount; }

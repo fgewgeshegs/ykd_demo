@@ -1,9 +1,9 @@
-package com.youkeda.exercise.claw.teamtrip;
+package com.youkeda.exercise.claw.travel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-/** 团建/出游流程中的一个候选方案。 */
-public class TeamTripPlanOption {
+/** 旅游/出游流程中的一个候选方案。 */
+public class TravelPlanOption {
 
     private String optionId;
     private String displayName;

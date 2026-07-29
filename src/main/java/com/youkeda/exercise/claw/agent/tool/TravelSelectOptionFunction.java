@@ -3,29 +3,29 @@ package com.youkeda.exercise.claw.agent.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.teamtrip.TeamTripPlanService;
+import com.youkeda.exercise.claw.travel.TravelPlanService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 选择团建方案并处理预算决策工具。
+ * 选择旅游方案并处理预算决策工具。
  *
  * <p>当用户从多个候选方案中明确选择一个时调用。
  * 如果用户选择的方案超预算，本工具同时支持记录用户的超预算决定
  * （接受超支、修改到预算内、更新预算上限、查看调整选项）。
  */
 @Component
-public class TeamTripSelectOptionFunction implements LLMFunction {
+public class TravelSelectOptionFunction implements LLMFunction {
 
-    private static final Logger log = LoggerFactory.getLogger(TeamTripSelectOptionFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TravelSelectOptionFunction.class);
 
-    private final TeamTripPlanService planService;
+    private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
     private final LLMFunctionRegistry registry;
 
-    public TeamTripSelectOptionFunction(TeamTripPlanService planService,
+    public TravelSelectOptionFunction(TravelPlanService planService,
                                         ObjectMapper objectMapper,
                                         LLMFunctionRegistry registry) {
         this.planService = planService;
@@ -40,12 +40,12 @@ public class TeamTripSelectOptionFunction implements LLMFunction {
 
     @Override
     public String getName() {
-        return "team_trip_select_option";
+        return "travel_select_option";
     }
 
     @Override
     public String getDescription() {
-        return "记录用户选择的团建方案和处理超预算决定。"
+        return "记录用户选择的旅游方案和处理超预算决定。"
                 + "当用户从候选方案中明确选择一个时调用（如选第一个、方案B等）。"
                 + "如果用户选择的方案超出预算，后续可再次调用本工具来记录用户的超预算决定："
                 + "ACCEPT_OVERRUN（接受超支）、REVISE_TO_BUDGET（调整到预算内）、"
@@ -94,7 +94,7 @@ public class TeamTripSelectOptionFunction implements LLMFunction {
             }
             return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
-            log.error("team_trip_select_option 执行失败 | error={}", e.getMessage());
+            log.error("travel_select_option 执行失败 | error={}", e.getMessage());
             return error("选择方案失败: " + e.getMessage());
         }
     }

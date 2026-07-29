@@ -3,28 +3,28 @@ package com.youkeda.exercise.claw.agent.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.teamtrip.TeamTripPlanService;
+import com.youkeda.exercise.claw.travel.TravelPlanService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 修订团建方案工具。
+ * 修订旅游方案工具。
  *
  * <p>当用户对已有方案不满意、需要修改、组合方案或指定修订某个方案时调用。
  * 支持通用修订（反馈原话）、指定方案修订、多方案组合三种模式。
  */
 @Component
-public class TeamTripReviseFunction implements LLMFunction {
+public class TravelReviseFunction implements LLMFunction {
 
-    private static final Logger log = LoggerFactory.getLogger(TeamTripReviseFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TravelReviseFunction.class);
 
-    private final TeamTripPlanService planService;
+    private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
     private final LLMFunctionRegistry registry;
 
-    public TeamTripReviseFunction(TeamTripPlanService planService,
+    public TravelReviseFunction(TravelPlanService planService,
                                   ObjectMapper objectMapper,
                                   LLMFunctionRegistry registry) {
         this.planService = planService;
@@ -39,12 +39,12 @@ public class TeamTripReviseFunction implements LLMFunction {
 
     @Override
     public String getName() {
-        return "team_trip_revise";
+        return "travel_revise";
     }
 
     @Override
     public String getDescription() {
-        return "根据用户反馈修订团建方案。"
+        return "根据用户反馈修订旅游方案。"
                 + "用户对已有方案不满意、要求修改、组合方案或指定调整某个方案时调用。"
                 + "传入 source_option_ids 时为组合模式——从多个源方案生成一个新方案；"
                 + "传入 option_id 加其他修改字段时为指定方案修订模式；"
@@ -97,7 +97,7 @@ public class TeamTripReviseFunction implements LLMFunction {
 
             return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
-            log.error("team_trip_revise 执行失败 | error={}", e.getMessage());
+            log.error("travel_revise 执行失败 | error={}", e.getMessage());
             return error("修订方案失败: " + e.getMessage());
         }
     }

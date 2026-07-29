@@ -3,17 +3,17 @@ package com.youkeda.exercise.claw.budget;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
-import com.youkeda.exercise.claw.teamtrip.TeamTripCalculateCostFunction;
+import com.youkeda.exercise.claw.travel.TravelCalculateCostFunction;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class TeamTripCalculateCostFunctionTest {
+class TravelCalculateCostFunctionTest {
 
     @Test
     void shouldAcceptSnakeCaseToolArguments() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-        TeamTripCalculateCostFunction function = new TeamTripCalculateCostFunction(
+        TravelCalculateCostFunction function = new TravelCalculateCostFunction(
                 new BudgetCalculatorService(), objectMapper, new LLMFunctionRegistry());
 
         String response = function.execute("""

@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.teamtrip;
+package com.youkeda.exercise.claw.travel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,15 +10,15 @@ import com.youkeda.exercise.claw.budget.BudgetCalculatorService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
 
-/** 将团建方案成本核算注册为可供 LLM 调用的独立工具。 */
+/** 将旅游方案成本核算注册为可供 LLM 调用的独立工具。 */
 @Component
-public class TeamTripCalculateCostFunction implements LLMFunction {
+public class TravelCalculateCostFunction implements LLMFunction {
 
     private final BudgetCalculatorService calculatorService;
     private final ObjectMapper objectMapper;
     private final LLMFunctionRegistry registry;
 
-    public TeamTripCalculateCostFunction(BudgetCalculatorService calculatorService,
+    public TravelCalculateCostFunction(BudgetCalculatorService calculatorService,
                                          ObjectMapper objectMapper,
                                          LLMFunctionRegistry registry) {
         this.calculatorService = calculatorService;
@@ -33,17 +33,17 @@ public class TeamTripCalculateCostFunction implements LLMFunction {
 
     @Override
     public String getName() {
-        return "team_trip_calculate_cost";
+        return "travel_calculate_cost";
     }
 
     @Override
     public String getDescription() {
-        return "根据团建方案的具体费用项目、计费方式、数量和单价，"
+        return "根据旅游方案的具体费用项目、计费方式、数量和单价，"
                 + "核算方案预计总费用、人均费用、分类明细和预算差额。"
                 + "支持按人数、天数自动计算房间数（向上取整）、车辆数（向上取整）、桌数。"
                 + "本工具不按固定行业比例分配用户预算，也不生成或猜测单价。"
                 + "价格缺失时必须传 price_status=MISSING，工具会返回 PARTIAL 状态及缺失项列表。"
-                + "完整团建方案中的所有乘法、房间/车辆取整和费用汇总必须使用本工具。";
+                + "完整旅游方案中的所有乘法、房间/车辆取整和费用汇总必须使用本工具。";
     }
 
     @Override
