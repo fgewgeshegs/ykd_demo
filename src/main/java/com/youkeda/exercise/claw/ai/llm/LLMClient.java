@@ -211,6 +211,8 @@ public class LLMClient {
                     HttpResponse.BodyHandlers.ofString());
 
             String responseBody = response.body();
+            log.info("LLM 原始响应 | status={} | body={}",
+                    response.statusCode(), truncate(responseBody, 1000));
             LLMResponse result = parseStructuredResponse(responseBody);
             if (result == null) {
                 log.warn("LLM 响应解析失败 | status={} | body={}",

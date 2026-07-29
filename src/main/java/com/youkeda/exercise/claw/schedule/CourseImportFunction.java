@@ -124,9 +124,10 @@ public class CourseImportFunction implements LLMFunction {
                 .put("description", "开始教学周（默认1）");
         itemProps.putObject("end_week").put("type", "integer")
                 .put("description", "结束教学周（默认20）");
-        itemProps.putObject("week_type").put("type", "string")
-                .put("description", "单双周：ALL=全部周(默认), ODD=单周, EVEN=双周");
-        itemProps.putArray("week_type_enum").add("ALL").add("ODD").add("EVEN");
+        ObjectNode weekType = itemProps.putObject("week_type");
+        weekType.put("type", "string");
+        weekType.put("description", "单双周：ALL=全部周(默认), ODD=单周, EVEN=双周");
+        weekType.putArray("enum").add("ALL").add("ODD").add("EVEN");
 
         ObjectNode courseId = properties.putObject("course_id");
         courseId.put("type", "integer");

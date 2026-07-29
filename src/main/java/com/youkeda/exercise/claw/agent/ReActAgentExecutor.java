@@ -160,12 +160,12 @@ public class ReActAgentExecutor implements AgentExecutor {
             LLMResponse response = llmClient.chatWithTools(messages, roundTools);
             forceTextResponse = false;
 
-            // 工具调用返回 null 时的降级策略：
-            // 1. 如果本轮带了工具定义 → 去掉工具重试一次（兼容不支持 tool_calling 的模型）
-            // 2. 如果已无工具 → 兜底回复
+            // 工具调用返回 null 时的单轮降级：
+            // 本轮先去掉工具重试一次（兼容不支持 tool_calls 的模型），
+            // 下一轮仍会带上工具（不同上下文模型可能选择不同行为）
             if (response == null) {
                 if (!roundTools.isEmpty()) {
-                    log.warn("带工具的 LLM 调用失败，降级为纯文本重试");
+                    log.warn("本轮带工具的 LLM 调用失败，降级不带工具重试（下一轮恢复工具）");
                     response = llmClient.chatWithTools(messages, List.of());
                 }
                 if (response == null) {
