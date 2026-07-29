@@ -187,16 +187,26 @@ public class LLMClient {
     // ==================== Tool Calling 支持 ====================
 
     /**
-     * 带工具定义的 LLM 调用
+     * 获取启动时加载的 system prompt（供 ReActAgentExecutor 构建动态 prompt 使用）
+     */
+    public String getSystemPrompt() {
+        return systemPrompt;
+    }
+
+    /**
+     * 带工具定义和自定义 system prompt 的 LLM 调用
+     * <p>此方法接受显式的 per-request system prompt，不会使用实例字段 {@link #systemPrompt}。
+     * 适用于 Skill 场景（不同 Skill 有不同领域上下文）。
      *
-     * @param messages 完整消息列表（已包含 system prompt 之外的所有 user/assistant/tool 消息）
-     * @param tools    工具定义列表（为空时等价于普通 chat）
+     * @param systemPrompt 本次请求的完整 system prompt
+     * @param messages     完整消息列表（不含 system prompt）
+     * @param tools        工具定义列表
      * @return 结构化响应（可能包含 {@link LLMResponse.ToolCall}），失败返回 null
      */
-    public LLMResponse chatWithTools(List<Message> messages, List<ToolDefinition> tools) {
+    public LLMResponse chatWithTools(String systemPrompt, List<Message> messages, List<ToolDefinition> tools) {
         try {
-            String requestBody = buildRequestBodyWithTools(messages, tools);
-            log.debug("LLM 请求（含 {} 个工具定义）", tools != null ? tools.size() : 0);
+            String requestBody = buildRequestBodyWithTools(systemPrompt, messages, tools);
+            log.debug("LLM 请求（含 {} 个工具定义，自定义 system prompt）", tools != null ? tools.size() : 0);
 
             String url = properties.getBaseUrl() + "/chat/completions";
             HttpRequest request = HttpRequest.newBuilder()
@@ -225,9 +235,28 @@ public class LLMClient {
     }
 
     /**
-     * 构建含 tools 参数的请求 JSON 体
+     * 带工具定义的 LLM 调用（使用默认 system prompt）
+     *
+     * @param messages 完整消息列表（已包含 system prompt 之外的所有 user/assistant/tool 消息）
+     * @param tools    工具定义列表（为空时等价于普通 chat）
+     * @return 结构化响应（可能包含 {@link LLMResponse.ToolCall}），失败返回 null
+     */
+    public LLMResponse chatWithTools(List<Message> messages, List<ToolDefinition> tools) {
+        return chatWithTools(systemPrompt, messages, tools);
+    }
+
+    /**
+     * 构建含 tools 参数的请求 JSON 体（内部方法）
      */
     private String buildRequestBodyWithTools(List<Message> messages,
+                                              List<ToolDefinition> tools) throws Exception {
+        return buildRequestBodyWithTools(systemPrompt, messages, tools);
+    }
+
+    /**
+     * 构建含 tools 参数的请求 JSON 体
+     */
+    private String buildRequestBodyWithTools(String systemPrompt, List<Message> messages,
                                               List<ToolDefinition> tools) throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", properties.getModel());
