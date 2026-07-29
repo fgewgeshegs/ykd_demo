@@ -7,19 +7,23 @@ import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.model.PlanTask;
 import com.youkeda.exercise.claw.agent.plan.DefaultPlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
+import com.youkeda.exercise.claw.agent.skill.*;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ReActAgentExecutorTest {
@@ -27,7 +31,7 @@ class ReActAgentExecutorTest {
     @Test
     void shouldStopOfferingToolsWhenWholeBatchWasBlocked() {
         Fixture fixture = fixture();
-        when(fixture.llmClient.chatWithTools(anyList(), anyList()))
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList()))
                 .thenReturn(
                         new LLMResponse(null,
                                 List.of(new LLMResponse.ToolCall("tc1", "unknown_tool", "{}")),
@@ -39,7 +43,7 @@ class ReActAgentExecutorTest {
 
         assertEquals("请补充必要信息。", reply);
         ArgumentCaptor<List<ToolDefinition>> tools = ArgumentCaptor.forClass(List.class);
-        verify(fixture.llmClient, times(2)).chatWithTools(anyList(), tools.capture());
+        verify(fixture.llmClient, times(2)).chatWithTools(anyString(), anyList(), tools.capture());
         assertFalse(tools.getAllValues().get(0).isEmpty());
         assertTrue(tools.getAllValues().get(1).isEmpty());
     }
@@ -48,7 +52,7 @@ class ReActAgentExecutorTest {
     void shouldSynthesizeExistingResultsInsteadOfReturningTimeoutAtRoundLimit() {
         Fixture fixture = fixture();
         AtomicInteger calls = new AtomicInteger();
-        when(fixture.llmClient.chatWithTools(anyList(), anyList())).thenAnswer(invocation -> {
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList())).thenAnswer(invocation -> {
             int call = calls.incrementAndGet();
             if (call <= 12) {
                 return new LLMResponse(null,
@@ -70,7 +74,7 @@ class ReActAgentExecutorTest {
     void shouldNotReportTimeoutWhenFinalSynthesisStillRequestsTool() {
         Fixture fixture = fixture();
         AtomicInteger calls = new AtomicInteger();
-        when(fixture.llmClient.chatWithTools(anyList(), anyList())).thenAnswer(invocation -> {
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList())).thenAnswer(invocation -> {
             int call = calls.incrementAndGet();
             return new LLMResponse(null,
                     List.of(new LLMResponse.ToolCall(
@@ -97,7 +101,7 @@ class ReActAgentExecutorTest {
                 new com.youkeda.exercise.claw.agent.memory.Message("assistant",
                         "本轮处理步骤已达到上限，请回复" + "“" + "继续生成" + "”" + "。"),
                 new com.youkeda.exercise.claw.agent.memory.Message("user", "继续生成")));
-        when(fixture.llmClient.chatWithTools(anyList(), anyList()))
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList()))
                 .thenReturn(new LLMResponse("继续完成方案。", List.of(), "stop"));
 
         fixture.executor.execute(new AgentContext()
@@ -105,7 +109,7 @@ class ReActAgentExecutorTest {
 
         ArgumentCaptor<List<com.youkeda.exercise.claw.agent.memory.Message>> messages =
                 ArgumentCaptor.forClass(List.class);
-        verify(fixture.llmClient).chatWithTools(messages.capture(), anyList());
+        verify(fixture.llmClient).chatWithTools(anyString(), messages.capture(), anyList());
         assertFalse(messages.getValue().stream()
                 .anyMatch(message -> message.content() != null
                         && message.content().contains("本轮处理步骤已达到上限")));
@@ -114,7 +118,7 @@ class ReActAgentExecutorTest {
     @Test
     void shouldHandleSimpleChatQuickPath() {
         Fixture fixture = fixture();
-        when(fixture.llmClient.chatWithTools(anyList(), anyList()))
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList()))
                 .thenReturn(new LLMResponse("你好！有什么可以帮你的？", List.of(), "stop"));
 
         AgentContext context = new AgentContext()
@@ -158,9 +162,24 @@ class ReActAgentExecutorTest {
         SafetyPolicy safetyPolicy = new SafetyPolicy();
         LongTermMemoryService longTermMemoryService = mock(LongTermMemoryService.class);
         when(longTermMemoryService.recall(anyString())).thenReturn(List.of());
+
+        // Skill dependencies (mocked to fallback to common mode)
+        SkillRouter skillRouter = mock(SkillRouter.class);
+        when(skillRouter.route(anyString(), anyString()))
+                .thenReturn(SkillRoutingResult.fallback());
+        SkillSessionStore skillSessionStore = mock(SkillSessionStore.class);
+        when(skillSessionStore.find(anyString())).thenReturn(java.util.Optional.empty());
+        SkillRegistry skillRegistry = mock(SkillRegistry.class);
+        SkillsProperties skillsProperties = new SkillsProperties();
+        skillsProperties.setGlobalTools(new java.util.LinkedHashSet<>(Set.of("dummy_tool")));
+        WechatUserManager wechatUserManager = mock(WechatUserManager.class);
+        when(wechatUserManager.getOwnerUserId()).thenReturn("test-user");
+        when(llmClient.getSystemPrompt()).thenReturn("你是 Claw助手，一个智能AI助手。");
+
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
-                planStore, planValidator, safetyPolicy, longTermMemoryService);
+                planStore, planValidator, safetyPolicy, longTermMemoryService,
+                skillRouter, skillSessionStore, skillRegistry, skillsProperties, wechatUserManager);
         return new Fixture(llmClient, executor, contextStore);
     }
 
