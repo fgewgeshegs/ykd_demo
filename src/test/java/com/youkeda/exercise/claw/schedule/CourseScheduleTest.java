@@ -249,6 +249,70 @@ class CourseScheduleTest {
             List<CourseEntity> courses = parser.parseFromJson(json);
             assertTrue(courses.isEmpty());
         }
+
+        // ==================== week_type 兜底解析测试 ====================
+
+        @Test
+        @DisplayName("course_name 含(双)标记时兜底为 EVEN")
+        void fallbackDetectEvenFromCourseName() {
+            String json = """
+                    [{"course_name":"概率统计(双)","day_of_week":2,"start_period":3,"end_period":4,
+                     "start_week":2,"end_week":16,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertEquals(1, courses.size());
+            assertEquals(CourseEntity.WEEK_EVEN, courses.get(0).getWeekType());
+        }
+
+        @Test
+        @DisplayName("course_name 含(单)标记时兜底为 ODD")
+        void fallbackDetectOddFromCourseName() {
+            String json = """
+                    [{"course_name":"大学物理(单)","day_of_week":4,"start_period":3,"end_period":4,
+                     "start_week":1,"end_week":15,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertEquals(1, courses.size());
+            assertEquals(CourseEntity.WEEK_ODD, courses.get(0).getWeekType());
+        }
+
+        @Test
+        @DisplayName("备注字段含双周标记时兜底为 EVEN")
+        void fallbackDetectEvenFromNote() {
+            String json = """
+                    [{"course_name":"概率统计","day_of_week":2,"start_period":3,"end_period":4,
+                     "start_week":2,"end_week":16,"week_type":"ALL","note":"双周上课"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertEquals(1, courses.size());
+            assertEquals(CourseEntity.WEEK_EVEN, courses.get(0).getWeekType());
+        }
+
+        @Test
+        @DisplayName("LLM 返回正确 ODD 时，兜底不覆盖（优先级：LLM > 兜底）")
+        void fallbackDoesNotOverrideCorrectOdd() {
+            String json = """
+                    [{"course_name":"离散数学(单)","day_of_week":1,"start_period":7,"end_period":8,
+                     "start_week":2,"end_week":16,"week_type":"ODD"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertEquals(1, courses.size());
+            assertEquals(CourseEntity.WEEK_ODD, courses.get(0).getWeekType());
+            // course_name 中的"(单)"不应改变正确返回值
+            assertEquals("离散数学(单)", courses.get(0).getCourseName());
+        }
+
+        @Test
+        @DisplayName("无单双周标记时保持 ALL")
+        void fallbackKeepsAllWhenNoMarkers() {
+            String json = """
+                    [{"course_name":"高等数学","day_of_week":1,"start_period":1,"end_period":2,
+                     "start_week":1,"end_week":16,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertEquals(1, courses.size());
+            assertEquals(CourseEntity.WEEK_ALL, courses.get(0).getWeekType());
+        }
     }
 
     // ==================== SemesterConfig 测试 ====================

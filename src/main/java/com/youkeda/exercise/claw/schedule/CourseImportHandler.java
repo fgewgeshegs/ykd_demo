@@ -1,10 +1,15 @@
 package com.youkeda.exercise.claw.schedule;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.file.FileParseService;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.schedule.pdf.PdfTableExtractor;
+import com.youkeda.exercise.claw.schedule.pdf.ScheduleCell;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -12,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
@@ -29,6 +35,28 @@ import java.util.List;
 public class CourseImportHandler {
 
     private static final Logger log = LoggerFactory.getLogger(CourseImportHandler.class);
+
+    private static final String COURSE_PDF_CELL_PROMPT =
+            "你是一位课表识别专家。以下是从PDF课表中提取的课程单元格，"
+            + "每个单元格的星期(day_of_week)和节次(period)已由PDF表格分析正确确定。\n"
+            + "请从每个单元格的文本中提取课程信息，返回JSON数组。\n"
+            + "每个单元格返回一个对象，包含：\n"
+            + "- \"cell_index\": 单元格序号（与输入对应）\n"
+            + "- \"course_name\": 课程名称（必填）\n"
+            + "- \"teacher\": 授课教师（可选，无则填空字符串）\n"
+            + "- \"classroom\": 教室/地点（可选，无则填空字符串）\n"
+            + "- \"start_week\": 开始周（必填）\n"
+            + "- \"end_week\": 结束周（必填）\n"
+            + "- \"week_type\": \"ALL\"或\"ODD\"或\"EVEN\"（必填）\n"
+            + "  - 如果课表文本中出现(双)、双周则填 EVEN\n"
+            + "  - 如果出现(单)、单周则填 ODD\n"
+            + "  - 只有确认每周都有课才填 ALL\n"
+            + "格式示例：\n"
+            + "[\n"
+            + "  {\"cell_index\":0,\"course_name\":\"概率统计\",\"teacher\":\"常远\","
+            + "\"classroom\":\"C3敏学楼404\",\"start_week\":1,\"end_week\":16,\"week_type\":\"EVEN\"}\n"
+            + "]\n"
+            + "注意：▲标记表示课程名称所在行。";
 
     private static final String COURSE_IMAGE_PROMPT =
             "你是一位课表识别专家。请从这张课表图片中提取所有课程信息。\n"
@@ -49,14 +77,23 @@ public class CourseImportHandler {
             + "字段说明：\n"
             + "- course_name: 课程名称（必填）\n"
             + "- teacher: 授课教师（可选，无则填空字符串）\n"
-            + "- day_of_week: 星期几，1=周一~7=周日（必填）\n"
+            + "- day_of_week: 星期几，必填数字。映射规则：\n"
+            + "  星期一=1, 星期二=2, 星期三=3, 星期四=4, 星期五=5, 星期六=6, 星期日=7\n"
+            + "  判断方法：原始课表是星期列结构，请根据列标题确定每门课的星期：\n"
+            + "  - 列标题为【星期一】时 → day_of_week=1\n"
+            + "  - 列标题为【星期二】时 → day_of_week=2\n"
+            + "  - 以此类推...\n"
+            + "  ⚠️ 禁止：不要根据课程在文本中出现的顺序依次分配1,2,3,4,5,6,7。\n"
+            + "  每门课的 day_of_week 只由它在课表原始表格中的列决定。\n"
             + "- start_period: 开始节次，从1开始（必填）\n"
             + "- end_period: 结束节次（必填）\n"
             + "- classroom: 教室/地点（可选）\n"
             + "- start_week: 开始周，默认1\n"
             + "- end_week: 结束周，默认20\n"
-            + "- week_type: ALL=全部周, ODD=单周, EVEN=双周（默认ALL）\n"
-            + "请确保 day_of_week 用数字表示，不要用中文。";
+            + "- week_type: ALL=全部周, ODD=单周, EVEN=双周（必填，禁止默认ALL）\n"
+            + "  如果课表文本中出现(单)、单周，则填 ODD\n"
+            + "  如果出现(双)、双周，则填 EVEN\n"
+            + "  只有确认每周都有课才填 ALL\n";
 
     private static final String COURSE_DOC_PROMPT =
             "你是一位课表识别专家。以下是从课表文档中提取的文本内容，"
@@ -75,7 +112,26 @@ public class CourseImportHandler {
             + "    \"week_type\": \"ALL\"\n"
             + "  }\n"
             + "]\n"
-            + "字段同上说明。";
+            + "字段说明：\n"
+            + "- course_name: 课程名称（必填）\n"
+            + "- teacher: 授课教师（可选，无则填空字符串）\n"
+            + "- day_of_week: 星期几，必填数字。映射规则：\n"
+            + "  星期一=1, 星期二=2, 星期三=3, 星期四=4, 星期五=5, 星期六=6, 星期日=7\n"
+            + "  判断方法：原始课表是星期列结构，请根据列标题确定每门课的星期：\n"
+            + "  - 列标题为【星期一】时 → day_of_week=1\n"
+            + "  - 列标题为【星期二】时 → day_of_week=2\n"
+            + "  - 以此类推...\n"
+            + "  ⚠️ 禁止：不要根据课程在文本中出现的顺序依次分配1,2,3,4,5,6,7。\n"
+            + "  每门课的 day_of_week 只由它在课表原始表格中的列决定。\n"
+            + "- start_period: 开始节次，从1开始（必填）\n"
+            + "- end_period: 结束节次（必填）\n"
+            + "- classroom: 教室/地点（可选）\n"
+            + "- start_week: 开始周，默认1\n"
+            + "- end_week: 结束周，默认20\n"
+            + "- week_type: ALL=全部周, ODD=单周, EVEN=双周（必填，禁止默认ALL）\n"
+            + "  如果课表文本中出现(单)、单周，则填 ODD\n"
+            + "  如果出现(双)、双周，则填 EVEN\n"
+            + "  只有确认每周都有课才填 ALL\n";
 
     private final WechatILinkClient wechatClient;
     private final VisionService visionService;
@@ -87,6 +143,7 @@ public class CourseImportHandler {
     private final LLMClient llmClient;
     private final ContextStore contextStore;
     private final ObjectMapper objectMapper;
+    private final PdfTableExtractor pdfTableExtractor;
 
     public CourseImportHandler(WechatILinkClient wechatClient,
                                VisionService visionService,
@@ -97,7 +154,8 @@ public class CourseImportHandler {
                                FileParseService fileParseService,
                                LLMClient llmClient,
                                ContextStore contextStore,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               PdfTableExtractor pdfTableExtractor) {
         this.wechatClient = wechatClient;
         this.visionService = visionService;
         this.courseParser = courseParser;
@@ -108,6 +166,7 @@ public class CourseImportHandler {
         this.llmClient = llmClient;
         this.contextStore = contextStore;
         this.objectMapper = objectMapper;
+        this.pdfTableExtractor = pdfTableExtractor;
     }
 
     // ==================== IMAGE 处理 ====================
@@ -175,7 +234,9 @@ public class CourseImportHandler {
         String mimeType = fileParseService.detectMimeType(fileBytes);
         log.info("课表导入：文件类型检测 | fileName={} | mimeType={}", fileName, mimeType);
 
-        if (isExcelFile(fileName, mimeType)) {
+        if (isPdfFile(fileName, mimeType)) {
+            return handlePdfFile(userId, fileBytes, fileName);
+        } else if (isExcelFile(fileName, mimeType)) {
             return handleExcelFile(userId, fileBytes, fileName);
         } else if (isImageFile(mimeType)) {
             return handleImageFile(userId, fileBytes, mimeType, fileName);
@@ -263,6 +324,123 @@ public class CourseImportHandler {
         return WechatReply.text(buildPreview(userId, courses));
     }
 
+    // ==================== PDF 处理（PdfTableExtractor + LLM） ====================
+
+    private WechatReply handlePdfFile(String userId, byte[] fileBytes, String fileName) {
+        log.info("课表导入：PDF 文件（PdfTableExtractor）| userId={} | fileName={}", userId, fileName);
+
+        // 1. PdfTableExtractor 恢复表格结构，获取正确 dayOfWeek + period
+        List<ScheduleCell> cells = pdfTableExtractor.extract(fileBytes);
+        if (cells.isEmpty()) {
+            log.warn("课表导入：PDF 表格恢复为空 | userId={}", userId);
+            return handleDocumentFile(userId, fileBytes, fileName);
+        }
+        log.info("课表导入：PDF 表格恢复完成 | userId={} | cells={}", userId, cells.size());
+
+        // 2. 构建结构化的 LLM Prompt（包含正确的 dayOfWeek 和 period）
+        StringBuilder cellText = new StringBuilder();
+        cellText.append("共有 ").append(cells.size()).append(" 个课表单元格：\n\n");
+        for (int i = 0; i < cells.size(); i++) {
+            ScheduleCell cell = cells.get(i);
+            String dayName = getDayName(cell.getDayOfWeek());
+            cellText.append("【单元格").append(i).append("】\n");
+            cellText.append("星期: ").append(cell.getDayOfWeek()).append("(").append(dayName).append(")\n");
+            cellText.append("节次: ").append(cell.getPeriod()).append("\n");
+            cellText.append("文本: ").append(cell.getContent()).append("\n\n");
+        }
+
+        String llmResult = llmClient.chatWithSystemPrompt(COURSE_PDF_CELL_PROMPT, cellText.toString());
+        if (llmResult == null || llmResult.isBlank()) {
+            log.warn("课表导入：LLM 提取失败 | userId={}", userId);
+            return WechatReply.text("无法从PDF中提取课程信息，请尝试发送清晰的课表截图。");
+        }
+
+        log.info("课表导入：LLM 提取完成 | userId={} | resultLen={}", userId, llmResult.length());
+
+        // 3. 用 ScheduleCell 的 dayOfWeek 和 period 覆盖 LLM 结果
+        List<CourseEntity> courses = buildCoursesFromCells(cells, llmResult);
+        if (courses.isEmpty()) {
+            log.warn("课表导入：构建课程列表为空 | userId={}", userId);
+            return WechatReply.text("未能从PDF中识别出有效的课程信息。");
+        }
+
+        importStateManager.setPendingCourses(userId, courses);
+        importStateManager.setWaitingConfirm(userId, "[PDF 解析] " + fileName);
+
+        contextStore.append("user", "[课表导入 PDF 解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
+        contextStore.append("assistant", buildPreviewText(userId, courses));
+
+        return WechatReply.text(buildPreview(userId, courses));
+    }
+
+    /**
+     * 将 ScheduleCell 和 LLM 提取结果合并为 CourseEntity 列表
+     * <p>dayOfWeek 和 period 以 ScheduleCell 为准，覆盖 LLM 返回值。</p>
+     */
+    private List<CourseEntity> buildCoursesFromCells(List<ScheduleCell> cells, String llmResult) {
+        List<CourseEntity> courses = new ArrayList<>();
+        try {
+            JsonNode results = objectMapper.readTree(llmResult);
+            if (!results.isArray()) {
+                // 尝试解析 {courses:[...]} 格式
+                results = results.get("courses");
+                if (results == null || !results.isArray()) return courses;
+            }
+
+            for (JsonNode item : results) {
+                int cellIndex = item.path("cell_index").asInt(-1);
+                if (cellIndex < 0 || cellIndex >= cells.size()) continue;
+
+                ScheduleCell cell = cells.get(cellIndex);
+                String name = item.path("course_name").asText("");
+                if (name.isBlank()) continue;
+
+                String teacher = item.path("teacher").asText("");
+                String classroom = item.path("classroom").asText("");
+                int startWeek = item.path("start_week").asInt(1);
+                int endWeek = item.path("end_week").asInt(20);
+                String weekType = item.path("week_type").asText("ALL");
+
+                // 从 cell 获取正确的 dayOfWeek 和 period
+                String[] periodParts = cell.getPeriod().split("-");
+                int startPeriod = Integer.parseInt(periodParts[0]);
+                int endPeriod = periodParts.length > 1 ? Integer.parseInt(periodParts[1]) : startPeriod;
+
+                // 单双周兜底检测（复用 CourseParser 的逻辑）
+                if ("ALL".equals(weekType)) {
+                    String detected = detectOddEvenFromContent(cell.getContent());
+                    if (detected != null) weekType = detected;
+                }
+
+                courses.add(new CourseEntity(null, name, teacher,
+                        cell.getDayOfWeek(), startPeriod, endPeriod,
+                        classroom, startWeek, endWeek, weekType));
+            }
+        } catch (Exception e) {
+            log.error("合并 ScheduleCell 与 LLM 结果失败", e);
+        }
+        return courses;
+    }
+
+    /**
+     * 从原始文本中检测单双周标记
+     */
+    private String detectOddEvenFromContent(String content) {
+        if (content == null) return null;
+        if (content.contains("(双)") || content.contains("（双）") || content.contains("双周")) {
+            return "EVEN";
+        }
+        if (content.contains("(单)") || content.contains("（单）") || content.contains("单周")) {
+            return "ODD";
+        }
+        return null;
+    }
+
+    private String getDayName(int dayOfWeek) {
+        String[] names = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+        return dayOfWeek >= 1 && dayOfWeek <= 7 ? names[dayOfWeek] : "周" + dayOfWeek;
+    }
+
     // ==================== 预览构建 ====================
 
     private String buildPreview(String userId, List<CourseEntity> courses) {
@@ -339,6 +517,16 @@ public class CourseImportHandler {
         if (fileName != null) {
             String lower = fileName.toLowerCase();
             return lower.endsWith(".xls") || lower.endsWith(".xlsx") || lower.endsWith(".csv");
+        }
+        return false;
+    }
+
+    private boolean isPdfFile(String fileName, String mimeType) {
+        if (mimeType != null && (mimeType.contains("pdf") || mimeType.contains("application"))) {
+            return true;
+        }
+        if (fileName != null) {
+            return fileName.toLowerCase().endsWith(".pdf");
         }
         return false;
     }

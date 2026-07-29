@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -183,9 +184,25 @@ public class CourseImportFunction implements LLMFunction {
     // ==================== 导入流程（三步确认） ====================
 
     private String handleStartImport(String userId) {
+        int existingCount = courseService.getCourseCount(userId);
+        if (existingCount > 0) {
+            courseService.deleteAll(userId);
+            log.info("导入新课表：已清除旧课表 | userId={} | count={}", userId, existingCount);
+        }
+
         importStateManager.setWaitingFile(userId);
-        return "{\"action\":\"import\",\"status\":\"waiting_file\","
-                + "\"message\":\"请发送课表截图、PDF或Excel文件，我会帮你导入课表。\"}";
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("action", "import");
+        result.put("status", "waiting_file");
+        String msg = existingCount > 0
+                ? "已清除旧课表（共 " + existingCount + " 门课程），请发送新课表截图、PDF或Excel文件。"
+                : "请发送课表截图、PDF或Excel文件，我会帮你导入课表。";
+        result.put("message", msg);
+        if (existingCount > 0) {
+            result.put("cleared_count", existingCount);
+        }
+        return result.toString();
     }
 
     private String handleParse(JsonNode args, String userId) {
@@ -208,7 +225,14 @@ public class CourseImportFunction implements LLMFunction {
                     + "\"message\":\"无法从提供的数据中识别出有效的课程信息，请检查格式或重新上传课表。\"}";
         }
 
-        // 冲突检测
+        // 内部冲突检测：检查新解析出的课程间是否有同天同时段冲突
+        // 这种冲突通常表示 LLM 的 day_of_week 分配有误
+        List<String> internalConflicts = detectInternalDayConflicts(courses);
+        for (String conflict : internalConflicts) {
+            log.warn("新导入课程间存在同天同时段冲突 | userId={} | {}", userId, conflict);
+        }
+
+        // 冲突检测（与已有课表）
         List<CourseService.ConflictInfo> conflicts = courseService.detectConflicts(userId, courses);
 
         importStateManager.setWaitingConfirm(userId, jsonStr);
@@ -253,6 +277,30 @@ public class CourseImportFunction implements LLMFunction {
         result.put("message", "已识别出以下 " + courses.size() + " 门课程" + conflictSuffix
                 + "，请确认是否导入？（回复「确认」或「取消」）");
         return result.toString();
+    }
+
+    /**
+     * 检测新解析的课程列表内部是否存在同天同时段冲突
+     * <p>同一用户同一 day_of_week 的同一时间段出现多门课程 → day_of_week 很可能分配错误。
+     * 只记录 warning，不修改数据。</p>
+     */
+    private List<String> detectInternalDayConflicts(List<CourseEntity> courses) {
+        List<String> conflicts = new ArrayList<>();
+        for (int i = 0; i < courses.size(); i++) {
+            for (int j = i + 1; j < courses.size(); j++) {
+                CourseEntity a = courses.get(i);
+                CourseEntity b = courses.get(j);
+                if (a.getDayOfWeek() == b.getDayOfWeek()
+                        && a.getStartPeriod() <= b.getEndPeriod()
+                        && b.getStartPeriod() <= a.getEndPeriod()) {
+                    String desc = String.format("day=%d period=%d-%d: 「%s」与「%s」冲突",
+                            a.getDayOfWeek(), a.getStartPeriod(), a.getEndPeriod(),
+                            a.getCourseName(), b.getCourseName());
+                    conflicts.add(desc);
+                }
+            }
+        }
+        return conflicts;
     }
 
     private String handleConfirm(String userId) {

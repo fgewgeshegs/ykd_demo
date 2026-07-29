@@ -172,6 +172,15 @@ public class CourseParser {
         int endWeek = parseIntField(node, "end_week", "endWeek", "week_end", "结束周", "终止周");
         String weekType = parseWeekType(getTextField(node, "week_type", "weekType", "单双周", "周类型"));
 
+        // 兜底：如果 LLM 返回 ALL，检查所有文本字段中的单双周标记
+        if (CourseEntity.WEEK_ALL.equals(weekType)) {
+            String detected = detectOddEvenFromNodeFields(node);
+            if (detected != null) {
+                weekType = detected;
+                log.debug("解析器兜底修正单双周 | course={} | detected={}", name, weekType);
+            }
+        }
+
         if (dayOfWeek < 1 || dayOfWeek > 7) dayOfWeek = 1;
         if (startPeriod < 1) startPeriod = 1;
         if (endPeriod < startPeriod) endPeriod = startPeriod;
@@ -376,6 +385,28 @@ public class CourseParser {
         if (t.contains("双") || t.equals("even")) return CourseEntity.WEEK_EVEN;
         if (t.equals("all") || t.equals("全部") || t.contains("全")) return CourseEntity.WEEK_ALL;
         return CourseEntity.WEEK_ALL;
+    }
+
+    /**
+     * 扫描 JSON 节点所有文本字段，检测单双周标记
+     * <p>兜底机制：当 LLM 返回的 week_type=ALL 时，尝试从其他字段中提取单双周信息。
+     * 优先级：原始文本标记 &gt; LLM 返回值 &gt; ALL</p>
+     */
+    private String detectOddEvenFromNodeFields(JsonNode node) {
+        Iterator<java.util.Map.Entry<String, JsonNode>> fields = node.fields();
+        while (fields.hasNext()) {
+            JsonNode value = fields.next().getValue();
+            if (value != null && value.isTextual()) {
+                String text = value.asText();
+                if (text.contains("(双)") || text.contains("（双）") || text.contains("双周")) {
+                    return CourseEntity.WEEK_EVEN;
+                }
+                if (text.contains("(单)") || text.contains("（单）") || text.contains("单周")) {
+                    return CourseEntity.WEEK_ODD;
+                }
+            }
+        }
+        return null;
     }
 
     private String getCellString(Row row, int col) {
