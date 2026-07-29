@@ -159,7 +159,12 @@ public class CourseParser {
         }
 
         String teacher = getTextField(node, "teacher", "教师", "授课教师");
-        int dayOfWeek = parseDayOfWeek(getTextField(node, "day_of_week", "dayOfWeek", "weekday", "星期", "星期几"));
+        // day_of_week: 先尝试整数解析（LLM 按要求返回 1-7 数字），再降级到中文解析（如"周一"）
+        int dayOfWeek = parseIntField(node, "day_of_week", "dayOfWeek", "weekday", "星期", "星期几");
+        if (dayOfWeek < 0) {
+            String dayText = getTextField(node, "day_of_week", "dayOfWeek", "weekday", "星期", "星期几");
+            dayOfWeek = parseDayOfWeek(dayText);
+        }
         int startPeriod = parseIntField(node, "start_period", "startPeriod", "start", "开始节次", "节次开始");
         int endPeriod = parseIntField(node, "end_period", "endPeriod", "end", "结束节次", "节次结束");
         String classroom = getTextField(node, "classroom", "class_room", "room", "教室", "地点");
