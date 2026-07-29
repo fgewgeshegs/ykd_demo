@@ -82,7 +82,7 @@ public class CompetitionCollector {
         if (href.startsWith("http://") || href.startsWith("https://")) return href;
         String base = baseUri.replaceAll("/[^/]*$", "/");
         if (href.startsWith("/")) base = baseUri.replaceAll("^(https?://[^/]+).*$", "$1");
-        return base + (href.startsWith("/") ? href.substring(1) : href);
+        return base + (href.startsWith("/") ? "/" + href.substring(1) : href);
     }
 
     private String findDate(Element entry) {

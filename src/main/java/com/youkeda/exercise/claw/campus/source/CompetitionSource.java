@@ -24,6 +24,7 @@ import java.util.List;
 public class CompetitionSource implements NotificationSource {
 
     private static final Logger log = LoggerFactory.getLogger(CompetitionSource.class);
+    private static final CompetitionRules RULES = new CompetitionRules();
 
     private final CompetitionCollector collector;
     private final CampusNotificationStore store;
@@ -90,8 +91,7 @@ public class CompetitionSource implements NotificationSource {
         store.update(item);
 
         // 决策
-        CompetitionRules rules = new CompetitionRules(); // Phase 1 硬编码白名单
-        NotificationPolicy.Decision decision = policy.decide(item, null, rules);
+        NotificationPolicy.Decision decision = policy.decide(item, null, RULES);
 
         switch (decision) {
             case NOTIFY -> notifyUser(item);

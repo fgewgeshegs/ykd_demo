@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.campus.classifier;
 import com.youkeda.exercise.claw.campus.model.NotificationItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.regex.Pattern;
  * Phase 1 仅规则分类，Phase 2 可扩展 LLM 分类。
  */
 @Component
+@ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
 public class CompetitionClassifier {
 
     private static final Logger log = LoggerFactory.getLogger(CompetitionClassifier.class);
