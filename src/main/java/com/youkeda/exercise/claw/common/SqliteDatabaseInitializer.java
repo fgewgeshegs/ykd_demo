@@ -127,6 +127,34 @@ public class SqliteDatabaseInitializer {
             )
         """);
 
+        // === 校园通知框架迁移：为 campus_notice 添加 source 列 ===
+        try {
+            jdbcTemplate.execute("ALTER TABLE campus_notice ADD COLUMN source TEXT NOT NULL DEFAULT 'EXAM'");
+            log.info("DB迁移完成：campus_notice 添加 source 列");
+        } catch (Exception e) {
+            log.debug("campus_notice.source 列已存在，跳过迁移");
+        }
+
+        try {
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_source ON campus_notice(source)");
+        } catch (Exception e) {
+            log.debug("idx_notice_source 索引已存在，跳过");
+        }
+
+        // === 迁移：为 campus_pending_ask 添加 source 列（默认 'EXAM' 兼容旧数据） ===
+        try {
+            jdbcTemplate.execute("ALTER TABLE campus_pending_ask ADD COLUMN source TEXT NOT NULL DEFAULT 'EXAM'");
+            log.info("DB迁移完成：campus_pending_ask 添加 source 列");
+        } catch (Exception e) {
+            log.debug("campus_pending_ask.source 列已存在，跳过迁移");
+        }
+
+        try {
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_pending_source_type ON campus_pending_ask(source, notice_type, status)");
+        } catch (Exception e) {
+            log.debug("idx_pending_source_type 索引已存在，跳过");
+        }
+
         log.debug("数据库表结构创建完成");
     }
 
