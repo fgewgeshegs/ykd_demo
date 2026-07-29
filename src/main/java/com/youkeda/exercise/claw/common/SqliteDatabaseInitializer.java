@@ -114,6 +114,19 @@ public class SqliteDatabaseInitializer {
             CREATE INDEX IF NOT EXISTS idx_pending_type ON campus_pending_ask(notice_type, status)
         """);
 
+        // 创建技能会话表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS skill_sessions (
+                user_id TEXT PRIMARY KEY,
+                active_skill TEXT NOT NULL,
+                previous_skill TEXT,
+                context_json TEXT NOT NULL DEFAULT '{}',
+                activated_at INTEGER NOT NULL,
+                last_activity_at INTEGER NOT NULL,
+                inactivity_count INTEGER NOT NULL DEFAULT 0
+            )
+        """);
+
         log.debug("数据库表结构创建完成");
     }
 
