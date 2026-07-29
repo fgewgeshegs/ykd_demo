@@ -11,21 +11,19 @@ public class TriggerPolicyFactory {
     private static final Logger log = LoggerFactory.getLogger(TriggerPolicyFactory.class);
 
     private final ApplicationContext applicationContext;
-    private final SkillTriggerPolicy defaultPolicy;
+    private static final String DEFAULT_POLICY_NAME = "keywordTriggerPolicy";
 
-    public TriggerPolicyFactory(ApplicationContext applicationContext,
-                                 SkillTriggerPolicy defaultPolicy) {
+    public TriggerPolicyFactory(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
-        this.defaultPolicy = defaultPolicy;
     }
 
     public SkillTriggerPolicy getPolicy(String policyName) {
-        if (policyName == null || policyName.isBlank()) return defaultPolicy;
+        String resolvedName = (policyName == null || policyName.isBlank()) ? DEFAULT_POLICY_NAME : policyName;
         try {
-            return applicationContext.getBean(policyName, SkillTriggerPolicy.class);
+            return applicationContext.getBean(resolvedName, SkillTriggerPolicy.class);
         } catch (Exception e) {
-            log.warn("Trigger policy [{}] not found, falling back to default", policyName);
-            return defaultPolicy;
+            log.warn("Trigger policy [{}] not found, falling back to default [{}]", resolvedName, DEFAULT_POLICY_NAME, e);
+            return applicationContext.getBean(DEFAULT_POLICY_NAME, SkillTriggerPolicy.class);
         }
     }
 }
