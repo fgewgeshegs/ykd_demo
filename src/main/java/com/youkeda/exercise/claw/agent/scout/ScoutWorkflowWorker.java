@@ -18,7 +18,11 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
     private final ScoutOrchestrator orchestrator;
     private final ScoutTaskManager taskManager;
     private final WorkflowRegistry workflowRegistry;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "scout-worker");
+        t.setDaemon(true);
+        return t;
+    });
 
     public ScoutWorkflowWorker(ScoutOrchestrator orchestrator,
                                ScoutTaskManager taskManager,

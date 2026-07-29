@@ -102,7 +102,7 @@ public class QdrantSkillKnowledgeStore implements SkillKnowledgeStore {
             if (skillNames != null && !skillNames.isEmpty()) {
                 Filter.Builder filter = Filter.newBuilder();
                 for (String name : skillNames) {
-                    filter.addMust(Condition.newBuilder()
+                    filter.addShould(Condition.newBuilder()
                         .setField(FieldCondition.newBuilder()
                             .setKey("skillName")
                             .setMatch(Match.newBuilder().setKeyword(name).build())

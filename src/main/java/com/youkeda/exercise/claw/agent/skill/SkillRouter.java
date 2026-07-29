@@ -16,6 +16,7 @@ public class SkillRouter {
     private final SkillSessionStore sessionStore;
     private final TriggerPolicyFactory triggerPolicyFactory;
     private final SkillLlmRouter llmRouter;
+    private final TriggerProperties triggerProperties;
     private final RouterConfig config;
 
     public record RouterConfig(
@@ -33,11 +34,13 @@ public class SkillRouter {
     public SkillRouter(SkillRegistry skillRegistry,
                        SkillSessionStore sessionStore,
                        TriggerPolicyFactory triggerPolicyFactory,
-                       SkillLlmRouter llmRouter) {
+                       SkillLlmRouter llmRouter,
+                       TriggerProperties triggerProperties) {
         this.skillRegistry = skillRegistry;
         this.sessionStore = sessionStore;
         this.triggerPolicyFactory = triggerPolicyFactory;
         this.llmRouter = llmRouter;
+        this.triggerProperties = triggerProperties;
         this.config = RouterConfig.defaults();
     }
 
@@ -118,16 +121,36 @@ public class SkillRouter {
     }
 
     private SkillRoutingResult handleNewTrigger(String message, Optional<SkillSession> sessionOpt) {
+        // Collect keyword triggers once (skill -> matching keywords)
+        Map<String, List<String>> triggers = triggerProperties.getTriggers();
+
         List<SkillMatchResult> matches = new ArrayList<>();
         List<SkillDefinition> all = new ArrayList<>(skillRegistry.getAll());
         all.sort(Comparator.comparingInt(SkillDefinition::priority).reversed());
 
         for (SkillDefinition skill : all) {
             if ("common".equals(skill.name())) continue;
-            SkillTriggerPolicy policy = triggerPolicyFactory.getPolicy(skill.triggerPolicyName());
-            SkillTriggerMatch match = policy.match(message, sessionOpt);
-            if (match.matched()) {
-                matches.add(new SkillMatchResult(skill.name(), match.confidence(), skill.priority()));
+
+            boolean isDefaultKeywordPolicy = skill.triggerPolicyName() == null
+                    || "keywordTriggerPolicy".equals(skill.triggerPolicyName());
+
+            if (isDefaultKeywordPolicy) {
+                // Direct per-skill keyword matching (fix: shared KeywordTriggerPolicy
+                // would attribute matches from other skills' keywords to this skill)
+                List<String> skillKeywords = triggers.get(skill.name());
+                if (skillKeywords == null || skillKeywords.isEmpty()) continue;
+
+                boolean matched = skillKeywords.stream().anyMatch(message::contains);
+                if (matched) {
+                    matches.add(new SkillMatchResult(skill.name(), 0.85, skill.priority()));
+                }
+            } else {
+                // Custom trigger policy (ScoutTriggerPolicy, TransportTriggerPolicy, etc.)
+                SkillTriggerPolicy policy = triggerPolicyFactory.getPolicy(skill.triggerPolicyName());
+                SkillTriggerMatch match = policy.match(message, sessionOpt);
+                if (match.matched()) {
+                    matches.add(new SkillMatchResult(skill.name(), match.confidence(), skill.priority()));
+                }
             }
         }
 

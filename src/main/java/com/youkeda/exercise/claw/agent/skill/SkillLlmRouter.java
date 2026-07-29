@@ -20,7 +20,11 @@ public class SkillLlmRouter {
 
     private final LLMClient llmClient;
     private final ObjectMapper objectMapper;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "skill-llm-router");
+        t.setDaemon(true);
+        return t;
+    });
     private final Duration timeout = Duration.ofSeconds(5);
 
     public SkillLlmRouter(LLMClient llmClient, ObjectMapper objectMapper) {
