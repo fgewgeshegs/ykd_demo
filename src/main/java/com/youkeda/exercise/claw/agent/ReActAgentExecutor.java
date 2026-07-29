@@ -26,8 +26,11 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import com.youkeda.exercise.claw.agent.skill.*;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 
 /**
  * ReAct 模式 Agent 执行器
@@ -75,6 +78,11 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final PlanValidator planValidator;
     private final SafetyPolicy safetyPolicy;
     private final LongTermMemoryService longTermMemoryService;
+    private final SkillRouter skillRouter;
+    private final SkillSessionStore skillSessionStore;
+    private final SkillRegistry skillRegistry;
+    private final SkillsProperties skillsProperties;
+    private final WechatUserManager wechatUserManager;
 
     public ReActAgentExecutor(LLMClient llmClient,
                                LLMFunctionRegistry functionRegistry,
@@ -83,7 +91,12 @@ public class ReActAgentExecutor implements AgentExecutor {
                                PlanStore planStore,
                                PlanValidator planValidator,
                                SafetyPolicy safetyPolicy,
-                               LongTermMemoryService longTermMemoryService) {
+                               LongTermMemoryService longTermMemoryService,
+                               SkillRouter skillRouter,
+                               SkillSessionStore skillSessionStore,
+                               SkillRegistry skillRegistry,
+                               SkillsProperties skillsProperties,
+                               WechatUserManager wechatUserManager) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
@@ -92,6 +105,11 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.planValidator = planValidator;
         this.safetyPolicy = safetyPolicy;
         this.longTermMemoryService = longTermMemoryService;
+        this.skillRouter = skillRouter;
+        this.skillSessionStore = skillSessionStore;
+        this.skillRegistry = skillRegistry;
+        this.skillsProperties = skillsProperties;
+        this.wechatUserManager = wechatUserManager;
     }
 
     @Override
@@ -99,6 +117,34 @@ public class ReActAgentExecutor implements AgentExecutor {
         String userMessage = context.getMessage();
 
         log.info("AgentExecutor 执行 | message={}", userMessage);
+
+        // Resolve userId
+        String userId = context.getUserId();
+        if (userId == null || userId.isBlank()) {
+            userId = wechatUserManager.getOwnerUserId();
+            context.setUserId(userId);
+        }
+
+        // Route through SkillRouter
+        SkillRoutingResult routingResult = skillRouter.route(userMessage, userId);
+        SkillSession session = updateSession(userId, routingResult);
+        context.setSkillSession(session);
+
+        // Get active SkillDefinition
+        String activeSkillName = session.activeSkill();
+        SkillDefinition activeSkill = skillRegistry.find(activeSkillName).orElse(null);
+
+        // Build effective tool set
+        Set<String> effectiveTools = new LinkedHashSet<>();
+        if (skillsProperties.getGlobalTools() != null) {
+            effectiveTools.addAll(skillsProperties.getGlobalTools());
+        }
+        if (activeSkill != null) {
+            effectiveTools.addAll(activeSkill.allowedTools());
+        }
+
+        // Build dynamic system prompt
+        String systemPrompt = buildSystemPrompt(context, activeSkill);
 
         // 1. 加载 PlanState
         PlanState planState = context.getPlanState() != null
@@ -127,26 +173,32 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
 
         // 3. 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
-        if (!continuationRequest && isSimpleChat(userMessage)) {
-            log.debug("快速通道：用户消息不需工具，走纯对话");
-            LLMResponse quickResponse = llmClient.chatWithTools(messages, List.of());
-            if (quickResponse != null && !quickResponse.isToolCall()
-                    && quickResponse.getContent() != null
-                    && !quickResponse.getContent().isBlank()) {
-                String reply = quickResponse.getContent();
-                log.info("快速对话回复 | reply={}", reply);
-                contextStore.append("assistant", reply);
-                // 异步提取长期记忆
-                final String fastUserMsg = userMessage;
-                final String fastReply = reply;
-                longTermMemoryService.processAndStoreAsync(fastUserMsg, fastReply);
-                return reply;
+        // 当 activeSkill 为 common（或 null）时才走快速路径；有专属 Skill 时跳过
+        if (!continuationRequest && (activeSkill == null || "common".equals(activeSkill.name()))) {
+            if (isSimpleChat(userMessage)) {
+                log.debug("快速通道：用户消息不需工具，走纯对话");
+                LLMResponse quickResponse = llmClient.chatWithTools(systemPrompt, messages, List.of());
+                if (quickResponse != null && !quickResponse.isToolCall()
+                        && quickResponse.getContent() != null
+                        && !quickResponse.getContent().isBlank()) {
+                    String reply = quickResponse.getContent();
+                    log.info("快速对话回复 | reply={}", reply);
+                    contextStore.append("assistant", reply);
+                    // 异步提取长期记忆
+                    final String fastUserMsg = userMessage;
+                    final String fastReply = reply;
+                    longTermMemoryService.processAndStoreAsync(fastUserMsg, fastReply);
+                    // Update session after fast path
+                    skillSessionStore.save(userId, session);
+                    return reply;
+                }
+                log.warn("快速对话路径异常，回退到工具循环");
             }
-            log.warn("快速对话路径异常，回退到工具循环");
         }
 
-        // 4. 所有可用工具定义（不再按 stage 筛选）
-        List<ToolDefinition> tools = functionRegistry.getAllDefinitions();
+        // 4. 按 Skill 过滤可用工具
+        FunctionExecutionContext execContext = new FunctionExecutionContext(userMessage);
+        List<ToolDefinition> tools = functionRegistry.getAvailableDefinitions(effectiveTools, execContext);
         log.debug("可用工具: {}", tools.stream().map(ToolDefinition::name).toList());
 
         // 5. tool-calling 循环
@@ -157,7 +209,7 @@ public class ReActAgentExecutor implements AgentExecutor {
             log.info("工具调用循环第 {} 轮 | messages={}", round + 1, messages.size());
 
             List<ToolDefinition> roundTools = forceTextResponse ? List.of() : tools;
-            LLMResponse response = llmClient.chatWithTools(messages, roundTools);
+            LLMResponse response = llmClient.chatWithTools(systemPrompt, messages, roundTools);
             forceTextResponse = false;
             if (response == null) {
                 log.warn("LLM 返回空，结束循环");
@@ -212,6 +264,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                 final String directUserMsg = userMessage;
                 final String directReply = reply;
                 longTermMemoryService.processAndStoreAsync(directUserMsg, directReply);
+                skillSessionStore.save(userId, session);
                 return reply;
             }
 
@@ -320,11 +373,12 @@ public class ReActAgentExecutor implements AgentExecutor {
 
         // 6. 达到局部上限，兜底回复
         log.warn("工具调用循环达到上限 {} 轮", MAX_ROUNDS);
-        String synthesizedReply = synthesizeWithExistingResults(messages);
+        String synthesizedReply = synthesizeWithExistingResults(messages, systemPrompt);
         // 异步提取长期记忆
         final String synthUserMsg = userMessage;
         final String synthReply = synthesizedReply;
         longTermMemoryService.processAndStoreAsync(synthUserMsg, synthReply);
+        skillSessionStore.save(userId, session);
         return synthesizedReply;
     }
 
@@ -338,13 +392,13 @@ public class ReActAgentExecutor implements AgentExecutor {
     /**
      * 达到局部上限时让 LLM 基于已有结果生成最终回复。
      */
-    private String synthesizeWithExistingResults(List<Message> messages) {
+    private String synthesizeWithExistingResults(List<Message> messages, String systemPrompt) {
         List<Message> finalMessages = new ArrayList<>(messages);
         finalMessages.add(new Message("system",
                 "工具调用轮次已结束。请仅根据已有结果回复："
                         + "若信息不足，提出一个明确问题让用户补充；"
                         + "若信息已齐全，给出当前结果；缺失信息标记待确认，不得编造。"));
-        LLMResponse response = llmClient.chatWithTools(finalMessages, List.of());
+        LLMResponse response = llmClient.chatWithTools(systemPrompt, finalMessages, List.of());
         if (response != null && response.getContent() != null
                 && !response.getContent().isBlank()) {
             String reply = response.getContent();
@@ -489,5 +543,77 @@ public class ReActAgentExecutor implements AgentExecutor {
 
         String result = llmClient.chatWithSystemPrompt(prompt, userMessage);
         return "CHAT_ONLY".equals(result != null ? result.trim() : "");
+    }
+
+    // ==================== Skill 支持方法 ====================
+
+    /**
+     * 根据 SkillRouter 的 routing 结果更新 SkillSession。
+     * <ul>
+     *   <li>ACTIVATE/SWITCH → 切换 activeSkill</li>
+     *   <li>CONTINUE → 高置信度重置不活跃计数，低置信度递增</li>
+     *   <li>DEACTIVATE → 创建新 session（回退 common）</li>
+     *   <li>NONE → 非 common 时递增不活跃计数</li>
+     * </ul>
+     */
+    private SkillSession updateSession(String userId, SkillRoutingResult routing) {
+        java.util.Optional<SkillSession> existing = skillSessionStore.find(userId);
+        SkillSession session = existing.orElseGet(() -> SkillSession.create(userId));
+
+        switch (routing.action()) {
+            case ACTIVATE, SWITCH -> session = session.withActiveSkill(routing.primarySkill());
+            case CONTINUE -> {
+                if (routing.confidence() >= 0.3) {
+                    session = session.withResetInactivity();
+                } else {
+                    session = session.withIncrementInactivity();
+                }
+            }
+            case DEACTIVATE -> { session = SkillSession.create(userId); }
+            case NONE -> {
+                if (!"common".equals(session.activeSkill())) {
+                    session = session.withIncrementInactivity();
+                }
+            }
+        }
+        skillSessionStore.save(userId, session);
+        return session;
+    }
+
+    /**
+     * 构建动态 system prompt：基础 prompt + Active Skill 上下文。
+     * <p>Release 2 还会在此追加知识库上下文。
+     */
+    private String buildSystemPrompt(AgentContext context, SkillDefinition activeSkill) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(llmClient.getSystemPrompt()).append("\n\n");
+
+        if (activeSkill != null && activeSkill.systemPromptResource() != null) {
+            String skillPrompt = loadSkillPrompt(activeSkill.systemPromptResource());
+            if (skillPrompt != null) {
+                sb.append("--- 当前上下文 ---\n\n");
+                sb.append("[SKILL_CONTEXT]\n");
+                sb.append(skillPrompt).append("\n");
+                sb.append("[/SKILL_CONTEXT]\n\n");
+            }
+        }
+        // Release 2: knowledge context will go here
+        return sb.toString();
+    }
+
+    /**
+     * 从 classpath 加载 Skill 的 system prompt 资源文件。
+     */
+    private String loadSkillPrompt(String resourcePath) {
+        try {
+            return new String(
+                new org.springframework.core.io.ClassPathResource(resourcePath)
+                    .getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8
+            );
+        } catch (Exception e) {
+            log.warn("Failed to load skill prompt: {}", resourcePath, e);
+            return null;
+        }
     }
 }
