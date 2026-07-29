@@ -135,11 +135,11 @@ public class DidiRideFunction implements LLMFunction {
             log.info("DidiRideFunction 执行 | action={} | args={}", action, args);
 
             return switch (action) {
-                case "estimate" -> rideService.estimate("", args);
-                case "create_order" -> rideService.createOrder("", args);
-                case "query_order" -> rideService.queryOrder("", args);
-                case "cancel_order" -> rideService.cancelOrder("", args);
-                case "generate_link" -> rideService.generateLink("", args);
+                case "estimate" -> rideService.estimate(args);
+                case "create_order" -> rideService.createOrder(args);
+                case "query_order" -> rideService.queryOrder(args);
+                case "cancel_order" -> rideService.cancelOrder(args);
+                case "generate_link" -> rideService.generateLink(args);
                 default ->
                     "{\"status\":\"error\",\"error\":\"不支持的 action: " + action
                             + "，支持的 action: estimate, create_order, query_order, cancel_order, generate_link\"}";
@@ -153,31 +153,7 @@ public class DidiRideFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson, FunctionExecutionContext context) {
-        String result = execute(argumentsJson);
-
-        // 如果 userId 不为空，替换空字符串为实际 userId
-        if (context != null && context.userId() != null && !context.userId().isBlank()) {
-            try {
-                JsonNode args = objectMapper.readTree(argumentsJson);
-                String action = args.path("action").asText("");
-                String userId = context.userId();
-
-                log.info("DidiRideFunction 带上下文执行 | userId={} | action={}", userId, action);
-
-                return switch (action) {
-                    case "estimate" -> rideService.estimate(userId, args);
-                    case "create_order" -> rideService.createOrder(userId, args);
-                    case "query_order" -> rideService.queryOrder(userId, args);
-                    case "cancel_order" -> rideService.cancelOrder(userId, args);
-                    case "generate_link" -> rideService.generateLink(userId, args);
-                    default -> result; // 错误由无上下文的 execute 返回
-                };
-            } catch (Exception e) {
-                log.error("DidiRideFunction 执行失败 | error={}", e.getMessage());
-                return "{\"status\":\"error\",\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}";
-            }
-        }
-
-        return result;
+        // Delegate to the simpler execute method since userId is no longer used
+        return execute(argumentsJson);
     }
 }

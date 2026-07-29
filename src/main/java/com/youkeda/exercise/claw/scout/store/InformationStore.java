@@ -17,15 +17,15 @@ public interface InformationStore {
     /**
      * 向量检索
      */
-    List<InformationItem> searchByVector(String userId, float[] vector, int topK);
+    List<InformationItem> searchByVector(float[] vector, int topK);
 
     /**
      * 获取最近的信息
      */
-    List<InformationItem> getRecent(String userId, int limit);
+    List<InformationItem> getRecent(int limit);
 
     /**
      * 删除过期信息
      */
-    void deleteExpired(String userId, long beforeTimestamp);
+    void deleteExpired(long beforeTimestamp);
 }

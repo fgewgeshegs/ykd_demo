@@ -33,7 +33,7 @@ public class CandidateMatcher {
     /**
      * 匹配用户兴趣与信息
      */
-    public List<MatchedCandidate> match(String userId, UserProfile profile,
+    public List<MatchedCandidate> match(UserProfile profile,
                                          List<InformationItem> items) {
         if (items.isEmpty()) return List.of();
 
@@ -42,7 +42,7 @@ public class CandidateMatcher {
             String interestText = profile.toText();
             if (interestText.isBlank()) {
                 // 无画像时返回全部（按采集时间）
-                log.info("用户画像为空，返回全部候选 | userId={}", userId);
+                log.info("用户画像为空，返回全部候选");
                 return items.stream()
                         .filter(item -> item.getVector() != null)
                         .limit(props.getMaxCandidates())
@@ -69,12 +69,11 @@ public class CandidateMatcher {
                     .limit(props.getMaxCandidates())
                     .toList();
 
-            log.info("语义匹配完成 | userId={} | total={} | matched={}",
-                    userId, items.size(), topK.size());
+            log.info("语义匹配完成 | total={} | matched={}", items.size(), topK.size());
 
             return topK;
         } catch (Exception e) {
-            log.error("语义匹配失败 | userId={}", userId, e);
+            log.error("语义匹配失败", e);
             return List.of();
         }
     }

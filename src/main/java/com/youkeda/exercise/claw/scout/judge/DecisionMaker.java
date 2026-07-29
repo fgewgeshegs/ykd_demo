@@ -75,19 +75,19 @@ public class DecisionMaker {
                 return List.of();
             }
 
-            List<Recommendation> recommendations = parseRecommendations(profile.userId(), json, candidates);
+            List<Recommendation> recommendations = parseRecommendations(json, candidates);
 
             // 截断到最大推荐数
             if (recommendations.size() > props.getMaxRecommendations()) {
                 recommendations = recommendations.subList(0, props.getMaxRecommendations());
             }
 
-            log.info("推荐决策完成 | userId={} | candidates={} | recommended={}",
-                    profile.userId(), candidates.size(), recommendations.size());
+            log.info("推荐决策完成 | candidates={} | recommended={}",
+                    candidates.size(), recommendations.size());
 
             return recommendations;
         } catch (Exception e) {
-            log.error("推荐决策失败 | userId={}", profile.userId(), e);
+            log.error("推荐决策失败", e);
             return List.of();
         }
     }
@@ -112,7 +112,7 @@ public class DecisionMaker {
         return sb.toString();
     }
 
-    private List<Recommendation> parseRecommendations(String userId, String json,
+    private List<Recommendation> parseRecommendations(String json,
                                                        List<MatchedCandidate> candidates) {
         List<Recommendation> result = new ArrayList<>();
         try {
@@ -130,7 +130,6 @@ public class DecisionMaker {
                 MatchedCandidate candidate = candidates.get(index);
                 Recommendation rec = new Recommendation(
                         UUID.randomUUID().toString(),
-                        userId,
                         node.path("title").asText(candidate.item().getTitle()),
                         node.path("summary").asText(truncate(candidate.item().getContent(), 100)),
                         node.path("reason").asText(""),

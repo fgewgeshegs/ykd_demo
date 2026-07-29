@@ -31,28 +31,21 @@ public class CollectorRegistry {
     /**
      * 对所有搜索任务执行采集
      */
-    public List<InformationItem> collectAll(List<SearchTask> tasks, String userId) {
+    public List<InformationItem> collectAll(List<SearchTask> tasks) {
         List<InformationItem> allItems = new ArrayList<>();
 
         for (SearchTask task : tasks) {
-            // Phase 1 只用 WebSearch，后续扩展 RSS 等
-            Collector collector = collectors.get("WEB_SEARCH");
-            if (collector == null) {
-                log.warn("无可用采集器 | type=WEB_SEARCH");
-                continue;
-            }
-
-            try {
-                List<InformationItem> items = collector.collect(task);
-                // 设置 userId
-                items.forEach(item -> item.setUserId(userId));
-                allItems.addAll(items);
-            } catch (Exception e) {
-                log.error("采集失败 | task={}", task.query(), e);
+            for (Collector collector : collectors.values()) {
+                try {
+                    List<InformationItem> items = collector.collect(task);
+                    allItems.addAll(items);
+                } catch (Exception e) {
+                    log.error("采集失败 | type={} | task={}", collector.getType(), task.query(), e);
+                }
             }
         }
 
-        log.info("采集汇总 | userId={} | tasks={} | items={}", userId, tasks.size(), allItems.size());
+        log.info("采集汇总 | tasks={} | items={}", tasks.size(), allItems.size());
         return allItems;
     }
 }

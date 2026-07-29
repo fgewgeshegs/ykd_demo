@@ -88,7 +88,7 @@ public class MemoryFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext("unknown", ""));
+        return execute(argumentsJson, new FunctionExecutionContext(""));
     }
 
     @Override
@@ -96,16 +96,15 @@ public class MemoryFunction implements LLMFunction {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String actionStr = args.path("action").asText("");
-            String userId = context.userId();
 
-            log.info("MemoryFunction 执行 | action={} | userId={} | args={}",
-                    actionStr, userId, argumentsJson);
+            log.info("MemoryFunction 执行 | action={} | args={}",
+                    actionStr, argumentsJson);
 
             return switch (actionStr) {
-                case "save" -> handleSave(userId, args);
-                case "list" -> handleList(userId);
-                case "recall" -> handleRecall(userId, args);
-                case "delete" -> handleDelete(userId, args);
+                case "save" -> handleSave(args);
+                case "list" -> handleList();
+                case "recall" -> handleRecall(args);
+                case "delete" -> handleDelete(args);
                 default -> errorJson("不支持的 action: " + actionStr);
             };
         } catch (Exception e) {
@@ -116,7 +115,7 @@ public class MemoryFunction implements LLMFunction {
 
     // ==================== Action 处理 ====================
 
-    private String handleSave(String userId, JsonNode args) {
+    private String handleSave(JsonNode args) {
         String content = args.path("content").asText("");
         if (content.isBlank()) {
             return errorJson("save 操作需要 content 参数");
@@ -130,7 +129,7 @@ public class MemoryFunction implements LLMFunction {
             return errorJson("无效的分类: " + args.path("category").asText());
         }
 
-        boolean saved = memoryService.saveManual(userId, category, content);
+        boolean saved = memoryService.saveManual(category, content);
 
         ObjectNode result = objectMapper.createObjectNode();
         result.put("action", "save");
@@ -141,21 +140,21 @@ public class MemoryFunction implements LLMFunction {
         return result.toString();
     }
 
-    private String handleList(String userId) {
-        List<MemoryItem> memories = memoryService.listAll(userId);
+    private String handleList() {
+        List<MemoryItem> memories = memoryService.listAll();
         return buildMemoryListResult("list", memories);
     }
 
-    private String handleRecall(String userId, JsonNode args) {
+    private String handleRecall(JsonNode args) {
         String categoryStr = args.path("category").asText("");
         if (categoryStr.isBlank()) {
             // 无分类过滤，返回全部
-            return handleList(userId);
+            return handleList();
         }
 
         try {
             MemoryCategory category = MemoryCategory.valueOf(categoryStr.toUpperCase());
-            List<MemoryItem> all = memoryService.listAll(userId);
+            List<MemoryItem> all = memoryService.listAll();
             List<MemoryItem> filtered = all.stream()
                     .filter(m -> m.category() == category)
                     .toList();
@@ -165,14 +164,14 @@ public class MemoryFunction implements LLMFunction {
         }
     }
 
-    private String handleDelete(String userId, JsonNode args) {
+    private String handleDelete(JsonNode args) {
         String content = args.path("content").asText("");
         if (content.isBlank()) {
             return errorJson("delete 操作需要 content 参数描述要删除的记忆");
         }
 
         // 通过语义检索找到最匹配的记忆
-        List<MemoryItem> all = memoryService.listAll(userId);
+        List<MemoryItem> all = memoryService.listAll();
         MemoryItem target = all.stream()
                 .filter(m -> m.content().contains(content) || content.contains(m.content()))
                 .findFirst()
@@ -186,7 +185,7 @@ public class MemoryFunction implements LLMFunction {
             return result.toString();
         }
 
-        boolean deleted = memoryService.delete(userId, target.id());
+        boolean deleted = memoryService.delete(target.id());
 
         ObjectNode result = objectMapper.createObjectNode();
         result.put("action", "delete");

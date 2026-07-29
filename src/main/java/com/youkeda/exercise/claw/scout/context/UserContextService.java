@@ -61,12 +61,12 @@ public class UserContextService {
     /**
      * 从长期记忆构建用户画像
      */
-    public UserProfile buildProfile(String userId) {
+    public UserProfile buildProfile() {
         // 1. 获取用户所有长期记忆
-        List<MemoryItem> memories = memoryService.listAll(userId);
+        List<MemoryItem> memories = memoryService.listAll();
         if (memories.isEmpty()) {
-            log.info("用户无长期记忆，返回空画像 | userId={}", userId);
-            return new UserProfile(userId, List.of(), List.of(), List.of(), List.of(), "");
+            log.info("用户无长期记忆，返回空画像");
+            return new UserProfile(List.of(), List.of(), List.of(), List.of(), "");
         }
 
         // 2. 拼接记忆文本
@@ -77,14 +77,14 @@ public class UserContextService {
             String prompt = "以下是用户的长期记忆：\n\n" + memoryText;
             String json = llmClient.chatWithSystemPrompt(SYSTEM_PROMPT, prompt);
             if (json == null || json.isBlank()) {
-                log.warn("LLM 返回空，使用默认画像 | userId={}", userId);
-                return fallbackProfile(userId, memories);
+                log.warn("LLM 返回空，使用默认画像");
+                return fallbackProfile(memories);
             }
 
-            return parseProfile(userId, json);
+            return parseProfile(json);
         } catch (Exception e) {
-            log.error("用户画像提取失败，使用降级方案 | userId={}", userId, e);
-            return fallbackProfile(userId, memories);
+            log.error("用户画像提取失败，使用降级方案", e);
+            return fallbackProfile(memories);
         }
     }
 
@@ -100,7 +100,7 @@ public class UserContextService {
         return sb.toString();
     }
 
-    private UserProfile parseProfile(String userId, String json) {
+    private UserProfile parseProfile(String json) {
         try {
             // 提取 JSON 部分（LLM 可能返回 markdown 包裹的 JSON）
             String jsonStr = extractJson(json);
@@ -115,17 +115,16 @@ public class UserContextService {
                     + "；项目：" + String.join("、", projects)
                     + "；技术：" + String.join("、", techStack);
 
-            log.info("用户画像提取成功 | userId={} | interests={} | projects={}",
-                    userId, interests.size(), projects.size());
+            log.info("用户画像提取成功 | interests={} | projects={}", interests.size(), projects.size());
 
-            return new UserProfile(userId, interests, projects, techStack, goals, summary);
+            return new UserProfile(interests, projects, techStack, goals, summary);
         } catch (Exception e) {
-            log.error("画像 JSON 解析失败 | userId={} | json={}", userId, json, e);
-            return new UserProfile(userId, List.of(), List.of(), List.of(), List.of(), "");
+            log.error("画像 JSON 解析失败 | json={}", json, e);
+            return new UserProfile(List.of(), List.of(), List.of(), List.of(), "");
         }
     }
 
-    private UserProfile fallbackProfile(String userId, List<MemoryItem> memories) {
+    private UserProfile fallbackProfile(List<MemoryItem> memories) {
         // 降级方案：直接从记忆内容中提取关键词
         List<String> interests = new ArrayList<>();
         for (MemoryItem m : memories) {
@@ -134,7 +133,7 @@ public class UserContextService {
             }
             if (interests.size() >= 5) break;
         }
-        return new UserProfile(userId, interests, List.of(), List.of(), List.of(), "");
+        return new UserProfile(interests, List.of(), List.of(), List.of(), "");
     }
 
     private List<String> parseStringArray(JsonNode root, String field) {

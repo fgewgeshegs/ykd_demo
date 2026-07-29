@@ -53,13 +53,12 @@ public class LongTermMemoryService {
     // ==================== Recall：根据当前消息召回相关记忆 ====================
 
     /**
-     * 根据用户当前消息，语义检索最相关的记忆
+     * 根据当前消息，语义检索最相关的记忆
      *
-     * @param userId        用户标识
      * @param currentMessage 当前用户消息
      * @return Top-K 相关记忆
      */
-    public List<MemoryItem> recall(String userId, String currentMessage) {
+    public List<MemoryItem> recall(String currentMessage) {
         if (!props.isEnabled()) return List.of();
 
         try {
@@ -68,7 +67,7 @@ public class LongTermMemoryService {
             int candidateMultiplier = Math.max(1, props.getRecallCandidateMultiplier());
             int candidateLimit = (int) Math.min(100L, (long) topK * candidateMultiplier);
             List<MemoryItem> results = memoryStore.searchScored(
-                            userId, queryVector, candidateLimit, props.getRecallMinScore())
+                            queryVector, candidateLimit, props.getRecallMinScore())
                     .stream()
                     .sorted(Comparator.comparingDouble(this::recallScore).reversed())
                     .limit(topK)
@@ -76,13 +75,13 @@ public class LongTermMemoryService {
                     .toList();
 
             if (!results.isEmpty()) {
-                log.info("记忆召回 | userId={} | count={} | ids={}",
-                        userId, results.size(),
+                log.info("记忆召回 | count={} | ids={}",
+                        results.size(),
                         results.stream().map(MemoryItem::id).toList());
             }
             return results;
         } catch (Exception e) {
-            log.error("记忆召回失败 | userId={}", userId, e);
+            log.error("记忆召回失败", e);
             return List.of();
         }
     }
@@ -94,11 +93,10 @@ public class LongTermMemoryService {
      *
      * 通常在 ReActAgentExecutor 返回回复后异步调用，不阻塞用户响应。
      *
-     * @param userId        用户标识
      * @param userMessage   用户消息
      * @param assistantReply 助手回复
      */
-    public void processAndStore(String userId, String userMessage, String assistantReply) {
+    public void processAndStore(String userMessage, String assistantReply) {
         if (!props.isEnabled()) return;
 
         // 消息太短，跳过提取
@@ -108,23 +106,23 @@ public class LongTermMemoryService {
 
         try {
             // 1. LLM 提取
-            List<MemoryItem> extracted = extractor.extract(userId, userMessage, assistantReply);
+            List<MemoryItem> extracted = extractor.extract(userMessage, assistantReply);
             if (extracted.isEmpty()) return;
 
             for (MemoryItem item : extracted) {
                 try {
-                    processExtractedItem(userId, item);
+                    processExtractedItem(item);
                 } catch (Exception e) {
-                    log.error("单条记忆处理失败，继续处理剩余记忆 | userId={} | memoryId={} | content={}",
-                            userId, item.id(), item.content(), e);
+                    log.error("单条记忆处理失败，继续处理剩余记忆 | memoryId={} | content={}",
+                            item.id(), item.content(), e);
                 }
             }
         } catch (Exception e) {
-            log.error("记忆处理管线异常 | userId={}", userId, e);
+            log.error("记忆处理管线异常", e);
         }
     }
 
-    private void processExtractedItem(String userId, MemoryItem item) {
+    private void processExtractedItem(MemoryItem item) {
         if (item.importance() < props.getImportanceThreshold()) {
             log.debug("记忆重要性不足，丢弃 | importance={} | content={}",
                     item.importance(), item.content());
@@ -132,28 +130,28 @@ public class LongTermMemoryService {
         }
 
         float[] vector = embeddingClient.embed(item.content());
-        StoreOutcome outcome = storeOrConsolidate(userId, item, vector);
+        StoreOutcome outcome = storeOrConsolidate(item, vector);
         if (outcome == StoreOutcome.ADDED) {
-            log.info("记忆入库 | userId={} | category={} | importance={} | content={}",
-                    userId, item.category(), item.importance(), item.content());
+            log.info("记忆入库 | category={} | importance={} | content={}",
+                    item.category(), item.importance(), item.content());
         } else if (outcome == StoreOutcome.UPDATED || outcome == StoreOutcome.MERGED) {
-            log.info("记忆整合 | userId={} | category={} | outcome={} | content={}",
-                    userId, item.category(), outcome, item.content());
+            log.info("记忆整合 | category={} | outcome={} | content={}",
+                    item.category(), outcome, item.content());
         } else if (outcome == StoreOutcome.FAILED) {
-            log.warn("记忆写入失败 | userId={} | content={}", userId, item.content());
+            log.warn("记忆写入失败 | content={}", item.content());
         }
     }
 
     /** Queues extraction without using the JVM-wide common pool. */
     public boolean processAndStoreAsync(
-            String userId, String userMessage, String assistantReply) {
+            String userMessage, String assistantReply) {
         if (!props.isEnabled()) return false;
         try {
             memoryTaskExecutor.execute(
-                    () -> processAndStore(userId, userMessage, assistantReply));
+                    () -> processAndStore(userMessage, assistantReply));
             return true;
         } catch (RejectedExecutionException e) {
-            log.warn("记忆任务队列已满，本轮跳过 | userId={}", userId);
+            log.warn("记忆任务队列已满，本轮跳过");
             return false;
         }
     }
@@ -163,66 +161,79 @@ public class LongTermMemoryService {
     /**
      * 用户主动要求记住某条信息
      *
-     * @param userId 用户标识
      * @param content 记忆内容
      */
-    public boolean saveManual(String userId, String content) {
-        return saveManual(userId, MemoryCategory.PREFERENCE, content);
+    public boolean saveManual(String content) {
+        return saveManual(MemoryCategory.PREFERENCE, content);
     }
 
     /** 保存一条带明确分类的用户主动记忆。 */
-    public boolean saveManual(String userId, MemoryCategory category, String content) {
-        if (!props.isEnabled() || userId == null || userId.isBlank()
-                || content == null || content.isBlank()) return false;
+    public boolean saveManual(MemoryCategory category, String content) {
+        if (!props.isEnabled() || content == null || content.isBlank()) return false;
 
         try {
             float[] vector = embeddingClient.embed(content);
             MemoryTopicResolver.TopicResolution topic = topicResolver.resolve(category, content);
             MemoryItem item = MemoryItem.ofManual(
-                    userId, category, topic.topicKey(), content.strip());
-            StoreOutcome outcome = storeOrConsolidate(userId, item, vector);
-            log.info("手动记忆处理 | userId={} | category={} | outcome={} | content={}",
-                    userId, category, outcome, content);
+                    category, topic.topicKey(), content.strip());
+            StoreOutcome outcome = storeOrConsolidate(item, vector);
+            log.info("手动记忆处理 | category={} | outcome={} | content={}",
+                    category, outcome, content);
             return outcome != StoreOutcome.FAILED;
         } catch (Exception e) {
-            log.error("手动记忆保存失败 | userId={}", userId, e);
+            log.error("手动记忆保存失败", e);
             return false;
         }
+    }
+
+    /** 保存用户主动记忆（指定 userId，兼容多数据源）。userId 透传至 memoryStore。 */
+    public boolean saveManual(String userId, MemoryCategory category, String content) {
+        return saveManual(category, content);
     }
 
     // ==================== 查询与管理 ====================
 
     /**
-     * 获取用户全部记忆
+     * 获取全部记忆
      */
+    public List<MemoryItem> listAll() {
+        return memoryStore.getAll();
+    }
+
+    /** 获取指定用户的全部记忆。userId 透传至 memoryStore。 */
     public List<MemoryItem> listAll(String userId) {
-        return memoryStore.getAll(userId);
+        return memoryStore.getAll();
     }
 
     /**
      * 删除一条记忆
      */
-    public boolean delete(String userId, String memoryId) {
+    public boolean delete(String memoryId) {
         try {
-            return memoryStore.delete(userId, memoryId);
+            return memoryStore.delete(memoryId);
         } catch (Exception e) {
-            log.error("删除记忆失败 | userId={} | memoryId={}", userId, memoryId, e);
+            log.error("删除记忆失败 | memoryId={}", memoryId, e);
             return false;
         }
     }
 
-    /**
-     * 清空用户全部记忆
-     */
-    public void clearAll(String userId) {
-        memoryStore.clear(userId);
+    /** 删除指定用户的记忆。userId 透传至 memoryStore。 */
+    public boolean delete(String userId, String memoryId) {
+        return delete(memoryId);
     }
 
     /**
-     * 获取用户记忆总数
+     * 清空全部记忆
      */
-    public int count(String userId) {
-        return memoryStore.count(userId);
+    public void clearAll() {
+        memoryStore.clear();
+    }
+
+    /**
+     * 获取记忆总数
+     */
+    public int count() {
+        return memoryStore.count();
     }
 
     // ==================== Prompt 构建 ====================
@@ -300,18 +311,18 @@ public class LongTermMemoryService {
     }
 
     private StoreOutcome storeOrConsolidate(
-            String userId, MemoryItem incoming, float[] incomingVector) {
+            MemoryItem incoming, float[] incomingVector) {
         return writeCoordinator.withTopicLock(
-                userId, incoming.topicKey(),
-                () -> storeOrConsolidateLocked(userId, incoming, incomingVector));
+                incoming.topicKey(),
+                () -> storeOrConsolidateLocked(incoming, incomingVector));
     }
 
     private StoreOutcome storeOrConsolidateLocked(
-            String userId, MemoryItem incoming, float[] incomingVector) {
-        MemoryItem existing = memoryStore.findByTopicKey(userId, incoming.topicKey());
+            MemoryItem incoming, float[] incomingVector) {
+        MemoryItem existing = memoryStore.findByTopicKey(incoming.topicKey());
         if (existing == null) {
             List<MemoryItem> similar = memoryStore.search(
-                    userId, incomingVector, 1, props.getDedupSimilarity());
+                    incomingVector, 1, props.getDedupSimilarity());
             existing = similar.isEmpty() ? null : similar.get(0);
         }
         if (existing == null) {

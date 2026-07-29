@@ -69,7 +69,6 @@ public class WebSearchCollector implements Collector {
                 if (title.isEmpty() && content.isEmpty()) continue;
 
                 InformationItem item = InformationItem.create(
-                        "", // userId 由上层设置
                         title,
                         content,
                         url,

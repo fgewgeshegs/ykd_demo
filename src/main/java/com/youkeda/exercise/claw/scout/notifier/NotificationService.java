@@ -4,6 +4,7 @@ import com.youkeda.exercise.claw.scout.ScoutProperties;
 import com.youkeda.exercise.claw.scout.judge.Recommendation;
 import com.youkeda.exercise.claw.scout.processor.InformationIdentity;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,21 +27,24 @@ public class NotificationService {
     private final WechatILinkClient wechatClient;
     private final ScoutDeliveryStore deliveryStore;
     private final ScoutProperties props;
+    private final WechatUserManager userManager;
 
     public NotificationService(WechatILinkClient wechatClient,
                                ScoutDeliveryStore deliveryStore,
-                               ScoutProperties props) {
+                               ScoutProperties props,
+                               WechatUserManager userManager) {
         this.wechatClient = wechatClient;
         this.deliveryStore = deliveryStore;
         this.props = props;
+        this.userManager = userManager;
     }
 
     /**
      * 推送推荐结果给用户
      */
-    public void notify(String userId, List<Recommendation> recommendations) {
+    public void notify(List<Recommendation> recommendations) {
         if (recommendations == null || recommendations.isEmpty()) {
-            log.info("无推荐结果，跳过推送 | userId={}", userId);
+            log.info("无推荐结果，跳过推送");
             return;
         }
 
@@ -52,30 +56,29 @@ public class NotificationService {
         for (Recommendation recommendation : recommendations) {
             String itemKey = InformationIdentity.stableKey(
                     recommendation.source(), recommendation.title());
-            if (!deliveryStore.wasDeliveredSince(userId, itemKey, cooldownStart)) {
+            if (!deliveryStore.wasDeliveredSince(itemKey, cooldownStart)) {
                 eligible.add(recommendation);
             }
         }
 
         if (eligible.isEmpty()) {
-            log.info("推荐均在冷却期内，跳过重复推送 | userId={} | count={}",
-                    userId, recommendations.size());
+            log.info("推荐均在冷却期内，跳过重复推送 | count={}", recommendations.size());
             return;
         }
 
         String report = formatReport(eligible);
 
         try {
-            wechatClient.sendTextMessage(userId, report);
+            wechatClient.sendTextMessage(userManager.getOwnerUserId(), report);
             for (Recommendation recommendation : eligible) {
                 String itemKey = InformationIdentity.stableKey(
                         recommendation.source(), recommendation.title());
-                deliveryStore.markDelivered(userId, itemKey, now);
+                deliveryStore.markDelivered(itemKey, now);
             }
-            log.info("推荐推送成功 | userId={} | count={} | suppressed={}",
-                    userId, eligible.size(), recommendations.size() - eligible.size());
+            log.info("推荐推送成功 | count={} | suppressed={}",
+                    eligible.size(), recommendations.size() - eligible.size());
         } catch (Exception e) {
-            log.error("推荐推送失败 | userId={}", userId, e);
+            log.error("推荐推送失败", e);
         }
     }
 

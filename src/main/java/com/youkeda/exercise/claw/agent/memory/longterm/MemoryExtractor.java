@@ -62,12 +62,11 @@ public class MemoryExtractor {
     /**
      * 从一轮对话中提取值得长期记忆的信息
      *
-     * @param userId        用户标识
      * @param userMessage   用户消息
      * @param assistantReply 助手回复
      * @return 提取出的记忆列表（可能为空）
      */
-    public List<MemoryItem> extract(String userId, String userMessage, String assistantReply) {
+    public List<MemoryItem> extract(String userMessage, String assistantReply) {
         // Only user-authored text may become a user fact. Assistant output can contain
         // suggestions or hallucinations and must never be treated as evidence.
         String conversation = "只分析下面的用户原话，不要补充或推断未明确表达的信息：\n用户原话："
@@ -75,13 +74,13 @@ public class MemoryExtractor {
 
         String result = llmClient.chatWithSystemPrompt(EXTRACT_PROMPT, conversation);
         if (result == null || result.isBlank()) {
-            log.debug("记忆提取返回空 | userId={}", userId);
+            log.debug("记忆提取返回空");
             return List.of();
         }
 
-        List<MemoryItem> memories = parseExtractionResult(userId, userMessage, result);
+        List<MemoryItem> memories = parseExtractionResult(userMessage, result);
         if (!memories.isEmpty()) {
-            log.info("记忆提取成功 | userId={} | count={}", userId, memories.size());
+            log.info("记忆提取成功 | count={}", memories.size());
         }
         return memories;
     }
@@ -90,7 +89,7 @@ public class MemoryExtractor {
      * 解析 LLM 返回的 JSON 数组
      */
     private List<MemoryItem> parseExtractionResult(
-            String userId, String evidence, String llmOutput) {
+            String evidence, String llmOutput) {
         List<MemoryItem> items = new ArrayList<>();
         try {
             // 清理可能的 markdown 代码块包裹
@@ -138,7 +137,7 @@ public class MemoryExtractor {
                     }
 
                     items.add(MemoryItem.ofAuto(
-                            userId, category, topicKey, content, evidence,
+                            category, topicKey, content, evidence,
                             importance, confidence));
                 } catch (Exception e) {
                     log.warn("单条记忆解析失败 | node={}", node, e);

@@ -5,7 +5,6 @@ package com.youkeda.exercise.claw.scout.judge;
  */
 public record Recommendation(
         String id,
-        String userId,
         String title,
         String summary,
         String reason,

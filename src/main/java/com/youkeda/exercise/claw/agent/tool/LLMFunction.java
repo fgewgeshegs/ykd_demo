@@ -47,6 +47,23 @@ public interface LLMFunction {
     }
 
     /**
+     * 判断当前用户消息是否允许暴露并执行该工具。
+     *
+     * <p>默认所有消息均可使用。具有严格触发条件的工具应覆盖此方法；
+     * 执行器会同时在工具定义暴露阶段和实际执行阶段进行校验。
+     */
+    default boolean isAvailable(FunctionExecutionContext context) {
+        return true;
+    }
+
+    /**
+     * 当前消息不允许使用该工具时返回给模型的原因。
+     */
+    default String getUnavailableReason(FunctionExecutionContext context) {
+        return "当前用户消息未明确请求使用该工具。";
+    }
+
+    /**
      * 快捷方法：生成发给 LLM 的 {@link ToolDefinition}
      */
     default ToolDefinition toDefinition() {

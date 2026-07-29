@@ -96,19 +96,18 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     @Override
     public String execute(AgentContext context) {
-        String userId = context.getUserId();
         String userMessage = context.getMessage();
 
-        log.info("AgentExecutor 执行 | user={} | message={}", userId, userMessage);
+        log.info("AgentExecutor 执行 | message={}", userMessage);
 
         // 1. 加载 PlanState
         PlanState planState = context.getPlanState() != null
                 ? context.getPlanState()
-                : planStore.get(userId);
+                : planStore.get();
         context.setPlanState(planState);
 
         // 2. 历史 + 当前消息
-        List<Message> history = contextStore.getHistory(userId, MAX_HISTORY);
+        List<Message> history = contextStore.getHistory(MAX_HISTORY);
         boolean continuationRequest = isContinuationRequest(userMessage);
         List<Message> messages = new ArrayList<>();
         for (Message message : history) {
@@ -120,34 +119,35 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
 
         // 2.5 长期记忆召回：根据当前消息语义检索相关记忆，注入消息列表
-        List<MemoryItem> recalledMemories = longTermMemoryService.recall(userId, userMessage);
+        List<MemoryItem> recalledMemories = longTermMemoryService.recall(userMessage);
         if (!recalledMemories.isEmpty()) {
             String memoryPrompt = longTermMemoryService.buildMemoryPrompt(recalledMemories);
             messages.add(0, new Message("system", memoryPrompt));
-            log.debug("长期记忆已注入 | userId={} | count={}", userId, recalledMemories.size());
+            log.debug("长期记忆已注入 | count={}", recalledMemories.size());
         }
 
         // 3. 快速路径：明显不需要工具的闲聊跳过 tool-calling 循环
         if (!continuationRequest && isSimpleChat(userMessage)) {
-            log.debug("快速通道：用户消息不需工具，走纯对话 | user={}", userId);
+            log.debug("快速通道：用户消息不需工具，走纯对话");
             LLMResponse quickResponse = llmClient.chatWithTools(messages, List.of());
             if (quickResponse != null && !quickResponse.isToolCall()
                     && quickResponse.getContent() != null
                     && !quickResponse.getContent().isBlank()) {
                 String reply = quickResponse.getContent();
-                log.info("快速对话回复 | user={} | reply={}", userId, reply);
-                contextStore.append(userId, "assistant", reply);
+                log.info("快速对话回复 | reply={}", reply);
+                contextStore.append("assistant", reply);
                 // 异步提取长期记忆
                 final String fastUserMsg = userMessage;
                 final String fastReply = reply;
-                longTermMemoryService.processAndStoreAsync(userId, fastUserMsg, fastReply);
+                longTermMemoryService.processAndStoreAsync(fastUserMsg, fastReply);
                 return reply;
             }
-            log.warn("快速对话路径异常，回退到工具循环 | user={}", userId);
+            log.warn("快速对话路径异常，回退到工具循环");
         }
 
-        // 4. 所有可用工具定义（不再按 stage 筛选）
-        List<ToolDefinition> tools = functionRegistry.getAllDefinitions();
+        // 4. 仅暴露当前消息明确允许使用的工具
+        FunctionExecutionContext executionContext = new FunctionExecutionContext(userMessage);
+        List<ToolDefinition> tools = functionRegistry.getAvailableDefinitions(executionContext);
         log.debug("可用工具: {}", tools.stream().map(ToolDefinition::name).toList());
 
         // 5. tool-calling 循环
@@ -155,27 +155,27 @@ public class ReActAgentExecutor implements AgentExecutor {
         int toolCallCount = 0;
         boolean forceTextResponse = false;
         for (int round = 0; round < MAX_ROUNDS; round++) {
-            log.info("工具调用循环第 {} 轮 | user={} | messages={}", round + 1, userId, messages.size());
+            log.info("工具调用循环第 {} 轮 | messages={}", round + 1, messages.size());
 
             List<ToolDefinition> roundTools = forceTextResponse ? List.of() : tools;
             LLMResponse response = llmClient.chatWithTools(messages, roundTools);
             forceTextResponse = false;
             if (response == null) {
-                log.warn("LLM 返回空，结束循环 | user={}", userId);
-                return handleError(userId);
+                log.warn("LLM 返回空，结束循环");
+                return handleError();
             }
 
             // === 分支 1：结构化计划 ===
             if (response.isPlan()) {
                 PlanDecision plan = response.getPlan();
-                log.info("LLM 返回计划 | user={} | goal={} | tasks={}",
-                        userId, plan.getGoal(),
+                log.info("LLM 返回计划 | goal={} | tasks={}",
+                        plan.getGoal(),
                         plan.getTasks().stream().map(TaskDefinition::getId).toList());
 
                 PlanState newPlan = planDecisionToState(plan);
                 ValidationResult vr = planValidator.validate(newPlan);
                 if (!vr.valid()) {
-                    log.warn("计划校验失败 | user={} | errors={}", userId, vr.errors());
+                    log.warn("计划校验失败 | errors={}", vr.errors());
                     String errorMsg = "你生成的计划存在结构问题："
                             + String.join("；", vr.errors())
                             + "。请修正后重新生成。";
@@ -183,11 +183,11 @@ public class ReActAgentExecutor implements AgentExecutor {
                     continue;
                 }
                 if (!vr.warnings().isEmpty()) {
-                    log.info("计划警告 | user={} | warnings={}", userId, vr.warnings());
+                    log.info("计划警告 | warnings={}", vr.warnings());
                 }
 
                 newPlan.setVersion(planState != null ? planState.getVersion() + 1 : 1);
-                planStore.save(userId, newPlan);
+                planStore.save(newPlan);
                 context.setPlanState(newPlan);
                 planState = newPlan;
 
@@ -195,7 +195,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                 if (newPlan.getTasks().stream()
                         .allMatch(t -> t.getExecutionStatus() == ExecutionStatus.DONE
                                 || t.getEvaluationState() == EvaluationState.SUPERSEDED)) {
-                    log.info("所有计划任务已完成，进入最终回复 | user={}", userId);
+                    log.info("所有计划任务已完成，进入最终回复");
                     forceTextResponse = true;
                     continue;
                 }
@@ -207,12 +207,12 @@ public class ReActAgentExecutor implements AgentExecutor {
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
                 String reply = response.getContent();
-                log.info("LLM 直接回复 | user={} | reply={}", userId, reply);
-                contextStore.append(userId, "assistant", reply);
+                log.info("LLM 直接回复 | reply={}", reply);
+                contextStore.append("assistant", reply);
                 // 异步提取长期记忆
                 final String directUserMsg = userMessage;
                 final String directReply = reply;
-                longTermMemoryService.processAndStoreAsync(userId, directUserMsg, directReply);
+                longTermMemoryService.processAndStoreAsync(directUserMsg, directReply);
                 return reply;
             }
 
@@ -238,6 +238,11 @@ public class ReActAgentExecutor implements AgentExecutor {
                     log.warn("未找到工具: {}", toolName);
                     result = "{\"error\":\"未知工具: " + toolName + "\"}";
                 }
+                // 当前消息不满足工具的严格触发条件
+                else if (!fn.isAvailable(executionContext)) {
+                    log.warn("工具调用被可用性策略阻止 | name={} | message={}", toolName, userMessage);
+                    result = policyBlocked(fn.getUnavailableReason(executionContext));
+                }
                 // 安全检查阻止
                 else if (blockedReason != null) {
                     result = policyBlocked(blockedReason);
@@ -254,7 +259,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                 else {
                     toolCallCount++;
                     executedInBatch = true;
-                    result = fn.execute(tc.arguments(), new FunctionExecutionContext(userId, userMessage));
+                    result = fn.execute(tc.arguments(), executionContext);
                     log.info("工具执行完成 | name={} | result={}", toolName, truncate(result, 200));
 
                     // 更新 PlanState（如果有）
@@ -266,7 +271,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                                     matchingTask.getId(), toolName,
                                     parseResultStatus(result), result, System.currentTimeMillis());
                             matchingTask.setResult(taskResult);
-                            planStore.save(userId, planState);
+                            planStore.save(planState);
                         }
                     }
                 }
@@ -320,26 +325,26 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
 
         // 6. 达到局部上限，兜底回复
-        log.warn("工具调用循环达到上限 {} 轮 | user={}", MAX_ROUNDS, userId);
-        String synthesizedReply = synthesizeWithExistingResults(userId, messages);
+        log.warn("工具调用循环达到上限 {} 轮", MAX_ROUNDS);
+        String synthesizedReply = synthesizeWithExistingResults(messages);
         // 异步提取长期记忆
         final String synthUserMsg = userMessage;
         final String synthReply = synthesizedReply;
-        longTermMemoryService.processAndStoreAsync(userId, synthUserMsg, synthReply);
+        longTermMemoryService.processAndStoreAsync(synthUserMsg, synthReply);
         return synthesizedReply;
     }
 
     // ==================== 错误与兜底 ====================
 
-    private String handleError(String userId) {
-        contextStore.append(userId, "assistant", ERROR_REPLY);
+    private String handleError() {
+        contextStore.append("assistant", ERROR_REPLY);
         return ERROR_REPLY;
     }
 
     /**
      * 达到局部上限时让 LLM 基于已有结果生成最终回复。
      */
-    private String synthesizeWithExistingResults(String userId, List<Message> messages) {
+    private String synthesizeWithExistingResults(List<Message> messages) {
         List<Message> finalMessages = new ArrayList<>(messages);
         finalMessages.add(new Message("system",
                 "工具调用轮次已结束。请仅根据已有结果回复："
@@ -349,12 +354,12 @@ public class ReActAgentExecutor implements AgentExecutor {
         if (response != null && response.getContent() != null
                 && !response.getContent().isBlank()) {
             String reply = response.getContent();
-            contextStore.append(userId, "assistant", reply);
+            contextStore.append("assistant", reply);
             return reply;
         }
-        log.warn("最终汇总仍返回工具调用，使用兜底消息 | user={}", userId);
+        log.warn("最终汇总仍返回工具调用，使用兜底消息");
         String fallback = "已根据当前可用信息整理方案。尚未核实的信息标记为待确认。";
-        contextStore.append(userId, "assistant", fallback);
+        contextStore.append("assistant", fallback);
         return fallback;
     }
 

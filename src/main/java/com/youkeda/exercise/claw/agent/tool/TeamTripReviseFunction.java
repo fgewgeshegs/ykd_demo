@@ -76,15 +76,13 @@ public class TeamTripReviseFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext("anonymous", ""));
+        return execute(argumentsJson, new FunctionExecutionContext(""));
     }
 
     @Override
     public String execute(String argumentsJson, FunctionExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
-            String userId = context != null && context.userId() != null
-                    ? context.userId() : "anonymous";
 
             // 根据参数判断路由
             JsonNode sourceIds = args.get("source_option_ids");
@@ -97,7 +95,7 @@ public class TeamTripReviseFunction implements LLMFunction {
                 args.put("action", "revise");
             }
 
-            return objectMapper.writeValueAsString(planService.handle(userId, args));
+            return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
             log.error("team_trip_revise 执行失败 | error={}", e.getMessage());
             return error("修订方案失败: " + e.getMessage());

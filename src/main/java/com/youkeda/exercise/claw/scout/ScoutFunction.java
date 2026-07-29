@@ -2,9 +2,9 @@ package com.youkeda.exercise.claw.scout;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,8 +49,10 @@ public class ScoutFunction implements LLMFunction {
 
     @Override
     public String getDescription() {
-        return "触发信息猎手 Agent，根据你的兴趣、项目和目标，主动发现高价值信息并推荐。"
-                + "当用户说「帮我找找」「有什么新消息」「搜搜看」「今天有什么值得关注的」「信息猎手」时调用。";
+        return "触发信息猎手 Agent，根据用户兴趣、项目和目标主动发现高价值信息并推荐。"
+                + "仅当当前用户消息明确要求查找信息时调用，例如「帮我找找」「有什么新消息」"
+                + "「搜搜看」「今天有什么值得关注的」「启动信息猎手」。"
+                + "用户只是在介绍兴趣、回答问题或补充情况时严禁调用；不得从历史对话推断触发意图。";
     }
 
     @Override
@@ -61,16 +63,20 @@ public class ScoutFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson) {
-        // 无上下文版本，不应被直接调用
-        return "{\"status\":\"ERROR\",\"message\":\"需要用户上下文\"}";
+    public boolean isAvailable(FunctionExecutionContext context) {
+        return context != null && ScoutTriggerPolicy.hasExplicitRequest(context.currentMessage());
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String getUnavailableReason(FunctionExecutionContext context) {
+        return "用户当前消息没有明确要求查找信息，禁止调用信息猎手。请直接回应用户当前内容。";
+    }
+
+    @Override
+    public String execute(String argumentsJson) {
         try {
-            log.info("手动触发信息猎手 | userId={}", context.userId());
-            ScoutReport report = orchestrator.runForUser(context.userId());
+            log.info("手动触发信息猎手");
+            ScoutReport report = orchestrator.run();
 
             String result = objectMapper.writeValueAsString(Map.of(
                     "status", "SUCCESS",
@@ -84,7 +90,7 @@ public class ScoutFunction implements LLMFunction {
 
             return result;
         } catch (Exception e) {
-            log.error("信息猎手执行失败 | userId={}", context.userId(), e);
+            log.error("信息猎手执行失败", e);
             return "{\"status\":\"ERROR\",\"message\":\"信息猎手执行失败: " + e.getMessage() + "\"}";
         }
     }

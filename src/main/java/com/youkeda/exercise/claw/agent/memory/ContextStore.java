@@ -12,14 +12,14 @@ import java.util.List;
 public interface ContextStore {
 
     /**
-     * 获取用户最近 maxMessages 条历史消息（按时间正序）
+     * 获取最近 maxMessages 条历史消息（按时间正序）
      */
-    List<Message> getHistory(String userId, int maxMessages);
+    List<Message> getHistory(int maxMessages);
 
     /**
      * 追加一条纯文本消息
      */
-    void append(String userId, String role, String content);
+    void append(String role, String content);
 
     /**
      * 追加一条带媒体附件的消息
@@ -28,22 +28,22 @@ public interface ContextStore {
      * @param mediaAesKey       媒体 CDN 解密密钥（无则 null）
      * @param mediaUrl          媒体 URL（无则 null）
      */
-    void append(String userId, String role, String content,
+    void append(String role, String content,
                 String mediaEncryptParam, String mediaAesKey,
                 String mediaUrl);
 
     /**
      * 找到最近一条 content 以 prefix 开头的消息（反向扫描）
      */
-    Message findLastByPrefix(String userId, String contentPrefix);
+    Message findLastByPrefix(String contentPrefix);
 
     /**
      * 找到所有 content 以 prefix 开头的消息（正序）
      */
-    List<Message> findAllByPrefix(String userId, String contentPrefix);
+    List<Message> findAllByPrefix(String contentPrefix);
 
     /**
-     * 清除指定用户的全部上下文
+     * 清除全部上下文
      */
-    void clear(String userId);
+    void clear();
 }

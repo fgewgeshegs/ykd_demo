@@ -26,10 +26,8 @@ public class ScoutDeliveryStore {
 
     private static final String TABLE_DDL = """
             CREATE TABLE IF NOT EXISTS scout_deliveries (
-                user_id       TEXT NOT NULL,
-                item_key      TEXT NOT NULL,
-                delivered_at  INTEGER NOT NULL,
-                PRIMARY KEY (user_id, item_key)
+                item_key      TEXT PRIMARY KEY,
+                delivered_at  INTEGER NOT NULL
             )
             """;
 
@@ -54,45 +52,43 @@ public class ScoutDeliveryStore {
         }
     }
 
-    public boolean wasDeliveredSince(String userId, String itemKey, long sinceMillis) {
-        if (userId == null || userId.isBlank() || itemKey == null || itemKey.isBlank()) {
+    public boolean wasDeliveredSince(String itemKey, long sinceMillis) {
+        if (itemKey == null || itemKey.isBlank()) {
             return false;
         }
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement("""
                      SELECT 1 FROM scout_deliveries
-                     WHERE user_id = ? AND item_key = ? AND delivered_at >= ?
+                     WHERE item_key = ? AND delivered_at >= ?
                      LIMIT 1
                      """)) {
-            ps.setString(1, userId);
-            ps.setString(2, itemKey);
-            ps.setLong(3, sinceMillis);
+            ps.setString(1, itemKey);
+            ps.setLong(2, sinceMillis);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
             }
         } catch (SQLException e) {
-            log.error("查询 Scout 投递记录失败 | userId={}", userId, e);
+            log.error("查询 Scout 投递记录失败", e);
             return false;
         }
     }
 
-    public void markDelivered(String userId, String itemKey, long deliveredAt) {
-        if (userId == null || userId.isBlank() || itemKey == null || itemKey.isBlank()) {
+    public void markDelivered(String itemKey, long deliveredAt) {
+        if (itemKey == null || itemKey.isBlank()) {
             return;
         }
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement("""
-                     INSERT INTO scout_deliveries(user_id, item_key, delivered_at)
-                     VALUES (?, ?, ?)
-                     ON CONFLICT(user_id, item_key) DO UPDATE SET
+                     INSERT INTO scout_deliveries(item_key, delivered_at)
+                     VALUES (?, ?)
+                     ON CONFLICT(item_key) DO UPDATE SET
                          delivered_at = excluded.delivered_at
                      """)) {
-            ps.setString(1, userId);
-            ps.setString(2, itemKey);
-            ps.setLong(3, deliveredAt);
+            ps.setString(1, itemKey);
+            ps.setLong(2, deliveredAt);
             ps.executeUpdate();
         } catch (SQLException e) {
-            log.error("记录 Scout 投递失败 | userId={}", userId, e);
+            log.error("记录 Scout 投递失败", e);
         }
     }
 

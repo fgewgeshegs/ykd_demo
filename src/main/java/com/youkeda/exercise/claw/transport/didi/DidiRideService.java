@@ -61,11 +61,10 @@ public class DidiRideService {
      *   <li>返回格式化 JSON 给 LLM</li>
      * </ol>
      *
-     * @param userId 用户标识
      * @param args   LLM 传入的参数（origin_name, destination_name 等）
      * @return 格式化估价结果
      */
-    public String estimate(String userId, JsonNode args) {
+    public String estimate(JsonNode args) {
         String originName = args.path("origin_name").asText("");
         String destinationName = args.path("destination_name").asText("");
 
@@ -77,7 +76,7 @@ public class DidiRideService {
             return errorJson("缺少必填参数: destination_name（目的地名称）");
         }
 
-        log.info("打车估价 | userId={} | from={} | to={}", userId, originName, destinationName);
+        log.info("打车估价 | from={} | to={}", originName, destinationName);
 
         try {
             // 2. 调用 maps_textsearch 获取起点坐标（滴滴 MCP 要求坐标必须来自 maps_textsearch）
@@ -137,16 +136,16 @@ public class DidiRideService {
             TaxiEstimateResponse response = parseEstimateResponse(traceId, data);
 
             // 7. 保存状态
-            stateStore.saveEstimate(userId, request, response);
+            stateStore.saveEstimate(request, response);
 
             // 8. 返回格式化 JSON
             return formatEstimateResult(response, traceId, originName, destinationName);
 
         } catch (DidiMcpException e) {
-            log.error("打车估价失败 | userId={} | error={}", userId, e.getMessage());
+            log.error("打车估价失败 | error={}", e.getMessage());
             return errorJson("打车估价失败：" + e.getMessage());
         } catch (Exception e) {
-            log.error("打车估价异常 | userId={} | error={}", userId, e.getMessage(), e);
+            log.error("打车估价异常 | error={}", e.getMessage(), e);
             return errorJson("打车估价异常：" + e.getMessage());
         }
     }
@@ -159,15 +158,14 @@ public class DidiRideService {
      * <p>必须先调用 {@link #estimate} 并获得用户确认。
      * 状态机检查：ESTIMATED → WAITING_CONFIRM（自动确认）→ 调用 MCP → ORDER_CREATED。
      *
-     * @param userId 用户标识
      * @param args   LLM 传入的参数（product_category 等）
      * @return 订单创建结果
      */
-    public String createOrder(String userId, JsonNode args) {
+    public String createOrder(JsonNode args) {
         // 1. 检查状态：必须有 estimate 记录
         RideState state;
         try {
-            state = stateStore.getRequired(userId);
+            state = stateStore.getRequired();
         } catch (IllegalStateException e) {
             return errorJson(e.getMessage());
         }
@@ -183,9 +181,9 @@ public class DidiRideService {
             // LLM 调用 create_order 即代表用户已在对话中确认
             // 自动完成 ESTIMATED → WAITING_CONFIRM 转型
             try {
-                stateStore.confirmBooking(userId);
-                state = stateStore.get(userId);
-                log.info("用户确认打车 | userId={} | traceId={}", userId, state.traceId());
+                stateStore.confirmBooking();
+                state = stateStore.get();
+                log.info("用户确认打车 | traceId={}", state.traceId());
             } catch (IllegalStateException e) {
                 return errorJson(e.getMessage());
             }
@@ -209,8 +207,7 @@ public class DidiRideService {
 
         String callerCarPhone = args.path("caller_car_phone").asText("");
 
-        log.info("创建订单 | userId={} | productCategory={} | traceId={}",
-                userId, productCategory, state.traceId());
+        log.info("创建订单 | productCategory={} | traceId={}", productCategory, state.traceId());
 
         try {
             // 5. 调用 taxi_create_order
@@ -237,7 +234,7 @@ public class DidiRideService {
             String status = orderData.path("status").asText("created");
 
             // 7. 保存订单
-            stateStore.saveOrder(userId, orderId);
+            stateStore.saveOrder(orderId);
 
             // 8. 返回格式化结果
             TaxiOrderResponse response = new TaxiOrderResponse();
@@ -251,10 +248,10 @@ public class DidiRideService {
             return formatOrderResult(response);
 
         } catch (DidiMcpException e) {
-            log.error("创建订单失败 | userId={} | error={}", userId, e.getMessage());
+            log.error("创建订单失败 | error={}", e.getMessage());
             return errorJson("创建订单失败：" + e.getMessage());
         } catch (Exception e) {
-            log.error("创建订单异常 | userId={} | error={}", userId, e.getMessage(), e);
+            log.error("创建订单异常 | error={}", e.getMessage(), e);
             return errorJson("创建订单异常：" + e.getMessage());
         }
     }
@@ -264,13 +261,13 @@ public class DidiRideService {
     /**
      * 查询订单状态
      */
-    public String queryOrder(String userId, JsonNode args) {
-        String orderId = resolveOrderId(userId, args);
+    public String queryOrder(JsonNode args) {
+        String orderId = resolveOrderId(args);
         if (orderId == null) {
             return errorJson("缺少 order_id，且未找到进行中的订单");
         }
 
-        log.info("查询订单 | userId={} | orderId={}", userId, orderId);
+        log.info("查询订单 | orderId={}", orderId);
 
         try {
             Map<String, Object> queryArgs = new LinkedHashMap<>();
@@ -285,8 +282,8 @@ public class DidiRideService {
             return formatQueryResult(data, orderId);
 
         } catch (DidiMcpException e) {
-            log.error("查询订单失败 | userId={} | orderId={} | error={}",
-                    userId, orderId, e.getMessage());
+            log.error("查询订单失败 | orderId={} | error={}",
+                    orderId, e.getMessage());
             return errorJson("查询订单失败：" + e.getMessage());
         }
     }
@@ -296,13 +293,13 @@ public class DidiRideService {
     /**
      * 取消订单
      */
-    public String cancelOrder(String userId, JsonNode args) {
-        String orderId = resolveOrderId(userId, args);
+    public String cancelOrder(JsonNode args) {
+        String orderId = resolveOrderId(args);
         if (orderId == null) {
             return errorJson("缺少 order_id，且未找到进行中的订单");
         }
 
-        log.info("取消订单 | userId={} | orderId={}", userId, orderId);
+        log.info("取消订单 | orderId={}", orderId);
 
         try {
             Map<String, Object> cancelArgs = new LinkedHashMap<>();
@@ -312,7 +309,7 @@ public class DidiRideService {
             log.debug("taxi_cancel_order 响应 | result={}", result);
 
             // 清除状态
-            stateStore.clear(userId);
+            stateStore.clear();
 
             ObjectNode output = objectMapper.createObjectNode();
             output.put("status", "cancelled");
@@ -321,8 +318,8 @@ public class DidiRideService {
             return objectMapper.writeValueAsString(output);
 
         } catch (Exception e) {
-            log.error("取消订单失败 | userId={} | orderId={} | error={}",
-                    userId, orderId, e.getMessage());
+            log.error("取消订单失败 | orderId={} | error={}",
+                    orderId, e.getMessage());
             return errorJson("取消订单失败：" + e.getMessage());
         }
     }
@@ -332,7 +329,7 @@ public class DidiRideService {
     /**
      * 生成跳转滴滴 App/小程序的深度链接
      */
-    public String generateLink(String userId, JsonNode args) {
+    public String generateLink(JsonNode args) {
         String originName = args.path("origin_name").asText("");
         String destinationName = args.path("destination_name").asText("");
 
@@ -340,7 +337,7 @@ public class DidiRideService {
             return errorJson("生成跳转链接需要 origin_name 和 destination_name");
         }
 
-        log.info("生成跳转链接 | userId={} | from={} | to={}", userId, originName, destinationName);
+        log.info("生成跳转链接 | from={} | to={}", originName, destinationName);
 
         try {
             Map<String, Object> linkArgs = new LinkedHashMap<>();
@@ -359,7 +356,7 @@ public class DidiRideService {
             return objectMapper.writeValueAsString(output);
 
         } catch (Exception e) {
-            log.warn("生成跳转链接失败 | userId={} | error={}", userId, e.getMessage());
+            log.warn("生成跳转链接失败 | error={}", e.getMessage());
             return errorJson("生成跳转链接失败：" + e.getMessage()
                     + "。可提示用户自行打开滴滴 App 叫车");
         }
@@ -601,7 +598,7 @@ public class DidiRideService {
     /**
      * 解析 order_id 参数：优先从 args 中取，其次从 StateStore 中恢复
      */
-    private String resolveOrderId(String userId, JsonNode args) {
+    private String resolveOrderId(JsonNode args) {
         // 优先 LLM 传入
         String orderId = args.path("order_id").asText("");
         if (!orderId.isBlank()) {
@@ -609,7 +606,7 @@ public class DidiRideService {
         }
 
         // 从状态存储中恢复
-        RideState state = stateStore.get(userId);
+        RideState state = stateStore.get();
         if (state != null && state.orderId() != null) {
             return state.orderId();
         }

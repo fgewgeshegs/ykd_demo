@@ -129,7 +129,6 @@ public class GithubCollector implements Collector {
                 }
 
                 InformationItem item = InformationItem.create(
-                        "",
                         title,
                         content.toString(),
                         htmlUrl,

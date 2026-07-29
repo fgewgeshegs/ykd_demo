@@ -73,24 +73,22 @@ public class FileGenerationService {
     /**
      * 生成文件
      *
-     * @param userId   用户标识
      * @param userText 用户请求文本
      * @return 文件生成结果（字节、文件名、描述），失败返回 null
      */
-    public FileGenerationResult generate(String userId, String userText) {
-        return generate(userId, userText, null);
+    public FileGenerationResult generate(String userText) {
+        return generate(userText, null);
     }
 
     /**
      * 生成文件（带格式提示）
      *
-     * @param userId      用户标识
      * @param userText    用户请求文本
      * @param formatHint  格式提示（"pdf" 或 "docx"），不为 null 时优先使用此格式
      * @return 文件生成结果（字节、文件名、描述），失败返回 null
      */
-    public FileGenerationResult generate(String userId, String userText, String formatHint) {
-        log.info("FileGenerationService 开始生成 | user={} | text={} | formatHint={}", userId, userText, formatHint);
+    public FileGenerationResult generate(String userText, String formatHint) {
+        log.info("FileGenerationService 开始生成 | text={} | formatHint={}", userText, formatHint);
 
         // 1. 检测目标格式（优先使用 formatHint）
         FileFormat format;
@@ -106,10 +104,10 @@ public class FileGenerationService {
         log.info("检测到文件格式 | format={}", format);
 
         // 2. 获取对话历史并调用 LLM 生成文档内容
-        List<Message> history = contextStore.getHistory(userId, MAX_HISTORY);
+        List<Message> history = contextStore.getHistory(MAX_HISTORY);
         String content = llmClient.chatWithSystemPrompt(CONTENT_GENERATION_PROMPT, userText, history);
         if (content == null || content.trim().isEmpty()) {
-            log.warn("LLM 生成文档内容为空 | user={}", userId);
+            log.warn("LLM 生成文档内容为空");
             return null;
         }
         log.info("LLM 文档内容生成成功 | length={}", content.length());

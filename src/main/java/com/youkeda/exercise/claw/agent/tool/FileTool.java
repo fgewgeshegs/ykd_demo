@@ -76,16 +76,16 @@ public class FileTool implements WechatMessageHandler {
 
         // 3. 按内容类型分发
         if (mimeType.startsWith("image/")) {
-            return handleImageFile(fileBytes, mimeType, fileName, message.getUserId());
+            return handleImageFile(fileBytes, mimeType, fileName);
         } else {
-            return handleDocumentFile(fileBytes, fileName, message.getUserId());
+            return handleDocumentFile(fileBytes, fileName);
         }
     }
 
     /**
      * 分支 A：图片文件 → VisionService 多模态分析
      */
-    private WechatReply handleImageFile(byte[] fileBytes, String mimeType, String fileName, String userId) {
+    private WechatReply handleImageFile(byte[] fileBytes, String mimeType, String fileName) {
         log.info("FileTool 图片文件路径 | fileName={}", fileName);
 
         // 转 base64 data URL
@@ -100,7 +100,7 @@ public class FileTool implements WechatMessageHandler {
         }
 
         // 保存到上下文（供后续追问参考）
-        contextStore.append(userId, "user", "[文件图片: " + fileName + "]\n" + description);
+        contextStore.append("user", "[文件图片: " + fileName + "]\n" + description);
 
         log.info("FileTool 图片分析完成 | fileName={}", fileName);
         return WechatReply.text(description);
@@ -109,7 +109,7 @@ public class FileTool implements WechatMessageHandler {
     /**
      * 分支 B：文档文件 → Tika 文本提取 + 内嵌图片分析 → LLM 分析
      */
-    private WechatReply handleDocumentFile(byte[] fileBytes, String fileName, String userId) {
+    private WechatReply handleDocumentFile(byte[] fileBytes, String fileName) {
         log.info("FileTool 文档文件路径 | fileName={}", fileName);
 
         // 解析文件：提取文本和内嵌图片
@@ -141,14 +141,14 @@ public class FileTool implements WechatMessageHandler {
         }
 
         // 保存到上下文（供后续追问参考）
-        contextStore.append(userId, "user", contextContent.toString());
+        contextStore.append("user", contextContent.toString());
 
         // 调用 ChatService（带历史上下文）分析文件
-        String analysis = chatService.chat(userId,
+        String analysis = chatService.chat(
                 "请分析用户刚刚发送的文件《" + fileName + "》的内容，给出总结和关键信息。");
 
         if (analysis == null || analysis.isEmpty()) {
-            log.warn("文件分析 LLM 返回空 | userId={}", userId);
+            log.warn("文件分析 LLM 返回空");
             return WechatReply.text(FALLBACK_REPLY);
         }
 

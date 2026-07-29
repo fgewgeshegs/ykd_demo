@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.agent.memory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,7 +15,10 @@ import java.util.List;
 /**
  * SQLite 会话上下文存储
  *
- * 数据结构：
+ * <p>单用户模式下，通过 {@link WechatUserManager} 自动解析当前活跃 userId。
+ * 外部组件若需指定特定 userId 查询，可调用带 userId 参数的重载方法。
+ *
+ * <p>数据结构：
  * - 表: context_messages，每行是一条 Message 的 JSON
  * - 使用 INSERT 追加、DELETE 限长、created_at 做 TTL
  */
@@ -27,16 +31,52 @@ public class SqliteContextStore implements ContextStore {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final StorageProperties props;
+    private final WechatUserManager userManager;
 
-    public SqliteContextStore(JdbcTemplate jdbc, ObjectMapper mapper, StorageProperties props) {
+    public SqliteContextStore(JdbcTemplate jdbc, ObjectMapper mapper,
+                               StorageProperties props, WechatUserManager userManager) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.props = props;
+        this.userManager = userManager;
     }
 
-    // ==================== 查询 ====================
+    // ==================== ContextStore 接口实现（单用户自动兜底） ====================
 
     @Override
+    public List<Message> getHistory(int maxMessages) {
+        return getHistory(resolveUserId(), maxMessages);
+    }
+
+    @Override
+    public void append(String role, String content) {
+        append(resolveUserId(), role, content, null, null, null);
+    }
+
+    @Override
+    public void append(String role, String content,
+                        String mediaEncryptParam, String mediaAesKey,
+                        String mediaUrl) {
+        append(resolveUserId(), role, content, mediaEncryptParam, mediaAesKey, mediaUrl);
+    }
+
+    @Override
+    public Message findLastByPrefix(String contentPrefix) {
+        return findLastByPrefix(resolveUserId(), contentPrefix);
+    }
+
+    @Override
+    public List<Message> findAllByPrefix(String contentPrefix) {
+        return findAllByPrefix(resolveUserId(), contentPrefix);
+    }
+
+    @Override
+    public void clear() {
+        clear(resolveUserId());
+    }
+
+    // ==================== 指定 userId 的查询（供 UserBehaviorAnalyzer 等组件直接调用） ====================
+
     public List<Message> getHistory(String userId, int maxMessages) {
         // 查询最近 maxMessages 条消息（按时间正序）
         String sql = """
@@ -66,7 +106,6 @@ public class SqliteContextStore implements ContextStore {
         return result;
     }
 
-    @Override
     public Message findLastByPrefix(String userId, String contentPrefix) {
         String sql = """
             SELECT message_json FROM context_messages
@@ -86,7 +125,6 @@ public class SqliteContextStore implements ContextStore {
         return null;
     }
 
-    @Override
     public List<Message> findAllByPrefix(String userId, String contentPrefix) {
         String sql = """
             SELECT message_json FROM context_messages
@@ -107,14 +145,10 @@ public class SqliteContextStore implements ContextStore {
         return result;
     }
 
-    // ==================== 写入 ====================
-
-    @Override
     public void append(String userId, String role, String content) {
         append(userId, role, content, null, null, null);
     }
 
-    @Override
     public void append(String userId, String role, String content,
                         String mediaEncryptParam, String mediaAesKey,
                         String mediaUrl) {
@@ -142,11 +176,15 @@ public class SqliteContextStore implements ContextStore {
         }
     }
 
-    // ==================== 清除 ====================
-
-    @Override
     public void clear(String userId) {
         jdbc.update("DELETE FROM context_messages WHERE user_id = ?", userId);
         log.debug("已清除用户 SQLite 上下文 | userId={}", userId);
+    }
+
+    // ==================== 内部方法 ====================
+
+    private String resolveUserId() {
+        String id = userManager.getOwnerUserId();
+        return id != null ? id : "default";
     }
 }

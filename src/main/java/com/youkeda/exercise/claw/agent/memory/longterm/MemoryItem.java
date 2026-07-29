@@ -3,10 +3,9 @@ package com.youkeda.exercise.claw.agent.memory.longterm;
 import java.time.Instant;
 import java.util.UUID;
 
-/** A durable user memory with provenance and a stable semantic topic key. */
+/** A durable memory with provenance and a stable semantic topic key. */
 public record MemoryItem(
         String id,
-        String userId,
         MemoryCategory category,
         String topicKey,
         String content,
@@ -19,35 +18,35 @@ public record MemoryItem(
         int hitCount
 ) {
 
-    public static MemoryItem ofAuto(String userId, MemoryCategory category,
+    public static MemoryItem ofAuto(MemoryCategory category,
                                     String content, float importance) {
-        return ofAuto(userId, category, "", content, content, importance, 0.5f);
+        return ofAuto(category, "", content, content, importance, 0.5f);
     }
 
-    public static MemoryItem ofAuto(String userId, MemoryCategory category,
+    public static MemoryItem ofAuto(MemoryCategory category,
                                     String topicKey, String content, String evidence,
                                     float importance, float confidence) {
         Instant now = Instant.now();
         return new MemoryItem(
-                UUID.randomUUID().toString(), userId, category,
+                UUID.randomUUID().toString(), category,
                 normalizeTopicKey(topicKey), content, evidence,
                 importance, confidence, MemorySource.AUTO, now, now, 0);
     }
 
-    public static MemoryItem ofManual(String userId, String content) {
-        return ofManual(userId, MemoryCategory.PREFERENCE, "", content);
+    public static MemoryItem ofManual(String content) {
+        return ofManual(MemoryCategory.PREFERENCE, "", content);
     }
 
     public static MemoryItem ofManual(
-            String userId, MemoryCategory category, String content) {
-        return ofManual(userId, category, "", content);
+            MemoryCategory category, String content) {
+        return ofManual(category, "", content);
     }
 
     public static MemoryItem ofManual(
-            String userId, MemoryCategory category, String topicKey, String content) {
+            MemoryCategory category, String topicKey, String content) {
         Instant now = Instant.now();
         return new MemoryItem(
-                UUID.randomUUID().toString(), userId, category,
+                UUID.randomUUID().toString(), category,
                 normalizeTopicKey(topicKey), content, content,
                 1.0f, 1.0f, MemorySource.MANUAL, now, now, 0);
     }
@@ -65,7 +64,7 @@ public record MemoryItem(
         float resolvedConfidence = action == MemoryMergeAction.MERGE
                 ? Math.min(confidence, incoming.confidence) : incoming.confidence;
         return new MemoryItem(
-                id, userId, incoming.category, resolvedTopicKey,
+                id, incoming.category, resolvedTopicKey,
                 resolvedContent, resolvedEvidence,
                 Math.max(importance, incoming.importance),
                 resolvedConfidence,
@@ -74,7 +73,7 @@ public record MemoryItem(
 
     public MemoryItem withHit() {
         return new MemoryItem(
-                id, userId, category, topicKey, content, evidence,
+                id, category, topicKey, content, evidence,
                 importance, confidence, source, createdAt, updatedAt, hitCount + 1);
     }
 

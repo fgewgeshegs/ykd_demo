@@ -54,4 +54,17 @@ public class LLMFunctionRegistry {
                 .map(LLMFunction::toDefinition)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * 获取当前用户消息允许使用的工具定义。
+     *
+     * @param context 本轮工具执行上下文
+     * @return 通过各工具可用性校验的定义列表
+     */
+    public List<ToolDefinition> getAvailableDefinitions(FunctionExecutionContext context) {
+        return functions.values().stream()
+                .filter(function -> function.isAvailable(context))
+                .map(LLMFunction::toDefinition)
+                .collect(Collectors.toList());
+    }
 }

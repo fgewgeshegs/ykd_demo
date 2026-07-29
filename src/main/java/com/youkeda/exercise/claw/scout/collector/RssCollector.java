@@ -114,7 +114,6 @@ public class RssCollector implements Collector {
             }
 
             InformationItem item = InformationItem.create(
-                    "",
                     title,
                     content,
                     link,

@@ -48,8 +48,8 @@ public class VisionTool implements WechatMessageHandler {
         }
 
         if (message.getType() == MessageType.TEXT
-                && contextStore.findLastByPrefix(message.getUserId(), "[图片]") != null) {
-            log.info("分析上下文中的最近图片 | user={} | text={}", message.getUserId(), message.getText());
+                && contextStore.findLastByPrefix("[图片]") != null) {
+            log.info("分析上下文中的最近图片 | text={}", message.getText());
             return analyzeImage(message);
         }
 
@@ -57,22 +57,22 @@ public class VisionTool implements WechatMessageHandler {
     }
 
     private WechatReply analyzeImage(WechatMessage message) {
-        log.info("VisionTool 分析图片 | user={}", message.getUserId());
+        log.info("VisionTool 分析图片");
 
         String imageDataUrl = downloadImageAsDataUrl(message);
         if (imageDataUrl == null) {
-            log.warn("无法获取图片数据 | from={}", message.getUserId());
+            log.warn("无法获取图片数据");
             return WechatReply.text(FALLBACK_REPLY);
         }
 
         String reply = visionService.analyze(imageDataUrl, null);
         if (reply == null || reply.isEmpty()) {
-            log.warn("图片分析失败 | from={}", message.getUserId());
+            log.warn("图片分析失败");
             return WechatReply.text(FALLBACK_REPLY);
         }
 
-        contextStore.append(message.getUserId(), "user", "[用户发送了一张图片]");
-        contextStore.append(message.getUserId(), "assistant", reply);
+        contextStore.append("user", "[用户发送了一张图片]");
+        contextStore.append("assistant", reply);
 
         return WechatReply.text(reply);
     }
@@ -85,7 +85,7 @@ public class VisionTool implements WechatMessageHandler {
         String aesKey = message.getAesKey();
 
         if (isEmpty(encryptParam) || isEmpty(aesKey)) {
-            Message lastImage = contextStore.findLastByPrefix(message.getUserId(), "[图片]");
+            Message lastImage = contextStore.findLastByPrefix("[图片]");
             if (lastImage != null && lastImage.hasMedia()) {
                 encryptParam = lastImage.mediaEncryptParam();
                 aesKey = lastImage.mediaAesKey();
@@ -99,7 +99,7 @@ public class VisionTool implements WechatMessageHandler {
             }
         }
 
-        Message lastImage = contextStore.findLastByPrefix(message.getUserId(), "[图片]");
+        Message lastImage = contextStore.findLastByPrefix("[图片]");
         if (lastImage != null && lastImage.mediaUrl() != null && !lastImage.mediaUrl().isEmpty()) {
             byte[] urlBytes = imageClient.downloadImage(lastImage.mediaUrl());
             if (urlBytes != null && urlBytes.length > 0) {

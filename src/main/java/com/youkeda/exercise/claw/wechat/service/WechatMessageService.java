@@ -8,7 +8,6 @@ import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -35,7 +34,6 @@ public class WechatMessageService {
     private final WechatProperties wechatProperties;
     private final MessageRouter messageRouter;
     private final ContextStore contextStore;
-    private final WechatUserManager wechatUserManager;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
@@ -45,13 +43,11 @@ public class WechatMessageService {
     public WechatMessageService(WechatILinkClient wechatClient,
                                 WechatProperties wechatProperties,
                                 MessageRouter messageRouter,
-                                ContextStore contextStore,
-                                WechatUserManager wechatUserManager) {
+                                ContextStore contextStore) {
         this.wechatClient = wechatClient;
         this.wechatProperties = wechatProperties;
         this.messageRouter = messageRouter;
         this.contextStore = contextStore;
-        this.wechatUserManager = wechatUserManager;
     }
 
     @PostConstruct
@@ -96,9 +92,6 @@ public class WechatMessageService {
                         String contextToken = msg.getContext_token();
 
                         if (fromUserId == null || fromUserId.isEmpty()) continue;
-
-                        // 记录/更新用户活跃信息
-                        wechatUserManager.recordInteraction(fromUserId);
 
                         if (msg.getItem_list() != null) {
                             for (var item : msg.getItem_list()) {
@@ -215,11 +208,10 @@ public class WechatMessageService {
      * 统一上下文存储：发一条存一条，文字/语音/图片全部进入对话历史
      */
     private void saveMessageToContext(WechatMessage msg) {
-        String userId = msg.getUserId();
         switch (msg.getType()) {
             case TEXT -> {
                 if (msg.getText() != null && !msg.getText().isEmpty()) {
-                    contextStore.append(userId, "user", msg.getText());
+                    contextStore.append("user", msg.getText());
                 }
             }
             case VOICE -> {
@@ -227,19 +219,19 @@ public class WechatMessageService {
                 String vKey = msg.getVoiceAesKey();
                 String vText = msg.getVoiceText() != null ? msg.getVoiceText() : "";
                 String content = !vText.isEmpty() ? "[语音]" + vText : "[语音消息]";
-                contextStore.append(userId, "user", content, vEnc, vKey, null);
+                contextStore.append("user", content, vEnc, vKey, null);
             }
             case IMAGE -> {
                 String iEnc = msg.getEncryptQueryParam();
                 String iKey = msg.getAesKey();
                 String iUrl = msg.getImageUrl() != null ? msg.getImageUrl() : "";
-                contextStore.append(userId, "user", "[图片]", iEnc, iKey, iUrl);
+                contextStore.append("user", "[图片]", iEnc, iKey, iUrl);
             }
             case FILE -> {
                 String fEnc = msg.getFileEncryptQueryParam();
                 String fKey = msg.getFileAesKey();
                 String fName = msg.getFileName() != null ? msg.getFileName() : "";
-                contextStore.append(userId, "user", "[文件: " + fName + "]", fEnc, fKey, null);
+                contextStore.append("user", "[文件: " + fName + "]", fEnc, fKey, null);
             }
         }
     }

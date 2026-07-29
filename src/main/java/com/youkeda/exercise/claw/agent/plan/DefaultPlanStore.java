@@ -5,34 +5,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.ConcurrentHashMap;
-
 /**
- * 基于 {@link ConcurrentHashMap} 的 PlanStore 实现。
- *
- * <p>线程安全，Session 隔离通过 {@code userId} key。
+ * PlanStore 的内存实现。
  */
 @Component
 public class DefaultPlanStore implements PlanStore {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultPlanStore.class);
 
-    private final ConcurrentHashMap<String, PlanState> store = new ConcurrentHashMap<>();
+    private volatile PlanState store;
 
     @Override
-    public PlanState get(String userId) {
-        return store.get(userId);
+    public PlanState get() {
+        return store;
     }
 
     @Override
-    public void save(String userId, PlanState state) {
-        store.put(userId, state);
-        log.debug("PlanState 已保存 | user={} | version={}", userId, state != null ? state.getVersion() : "null");
+    public void save(PlanState state) {
+        this.store = state;
+        log.debug("PlanState 已保存 | version={}", state != null ? state.getVersion() : "null");
     }
 
     @Override
-    public void clear(String userId) {
-        store.remove(userId);
-        log.debug("PlanState 已清除 | user={}", userId);
+    public void clear() {
+        this.store = null;
+        log.debug("PlanState 已清除");
     }
 }

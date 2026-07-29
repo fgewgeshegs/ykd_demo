@@ -60,23 +60,21 @@ public class LLMClient {
     /**
      * 调用大模型生成回复（无历史消息，单轮对话）
      *
-     * @param userId 用户标识（用于日志）
      * @param text   用户消息
      * @return 模型回复内容，调用失败时返回 null
      */
-    public String chat(String userId, String text) {
-        return chat(userId, text, List.of());
+    public String chat(String text) {
+        return chat(text, List.of());
     }
 
     /**
      * 调用大模型生成回复（带历史消息，多轮对话）
      *
-     * @param userId  用户标识（用于日志）
      * @param text    用户消息
      * @param history 历史消息列表（按时间正序）
      * @return 模型回复内容，调用失败时返回 null
      */
-    public String chat(String userId, String text, List<Message> history) {
+    public String chat(String text, List<Message> history) {
         return callLLM(systemPrompt, text, history);
     }
 

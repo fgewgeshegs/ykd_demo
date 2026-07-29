@@ -73,10 +73,10 @@ public class SearchPlanner {
                 return defaultTasks(profile);
             }
 
-            log.info("搜索任务生成成功 | userId={} | count={}", profile.userId(), tasks.size());
+            log.info("搜索任务生成成功 | count={}", tasks.size());
             return tasks;
         } catch (Exception e) {
-            log.error("搜索任务生成失败，使用默认任务 | userId={}", profile.userId(), e);
+            log.error("搜索任务生成失败，使用默认任务", e);
             return defaultTasks(profile);
         }
     }

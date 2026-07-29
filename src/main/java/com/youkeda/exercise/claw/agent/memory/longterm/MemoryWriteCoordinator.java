@@ -23,11 +23,10 @@ public class MemoryWriteCoordinator {
         }
     }
 
-    public <T> T withTopicLock(String userId, String topicKey, Supplier<T> operation) {
+    public <T> T withTopicLock(String topicKey, Supplier<T> operation) {
         String normalizedTopic = topicKey == null || topicKey.isBlank()
                 ? UNRESOLVED_TOPIC : topicKey;
-        String lockKey = String.valueOf(userId) + '\0' + normalizedTopic;
-        ReentrantLock lock = stripes[Math.floorMod(lockKey.hashCode(), stripes.length)];
+        ReentrantLock lock = stripes[Math.floorMod(normalizedTopic.hashCode(), stripes.length)];
         lock.lock();
         try {
             return operation.get();

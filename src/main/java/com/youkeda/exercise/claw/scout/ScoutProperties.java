@@ -42,6 +42,9 @@ public class ScoutProperties {
 
     private Qdrant qdrant = new Qdrant();
     private Rss rss = new Rss();
+    private Kaggle kaggle = new Kaggle();
+    private Adzuna adzuna = new Adzuna();
+    private Proxy proxy = new Proxy();
 
     // Getters & Setters
     public boolean isEnabled() { return enabled; }
@@ -66,6 +69,12 @@ public class ScoutProperties {
     public void setQdrant(Qdrant qdrant) { this.qdrant = qdrant; }
     public Rss getRss() { return rss; }
     public void setRss(Rss rss) { this.rss = rss; }
+    public Kaggle getKaggle() { return kaggle; }
+    public void setKaggle(Kaggle kaggle) { this.kaggle = kaggle; }
+    public Adzuna getAdzuna() { return adzuna; }
+    public void setAdzuna(Adzuna adzuna) { this.adzuna = adzuna; }
+    public Proxy getProxy() { return proxy; }
+    public void setProxy(Proxy proxy) { this.proxy = proxy; }
 
     public static class Qdrant {
         private String collection = "scout_information";
@@ -85,5 +94,42 @@ public class ScoutProperties {
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public List<String> getFeeds() { return feeds; }
         public void setFeeds(List<String> feeds) { this.feeds = feeds; }
+    }
+
+    public static class Kaggle {
+        private String username = "";
+        private String apiKey = "";
+
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+    }
+
+    public static class Adzuna {
+        private String appId = "";
+        private String appKey = "";
+        private String country = "cn";
+
+        public String getAppId() { return appId; }
+        public void setAppId(String appId) { this.appId = appId; }
+        public String getAppKey() { return appKey; }
+        public void setAppKey(String appKey) { this.appKey = appKey; }
+        public String getCountry() { return country; }
+        public void setCountry(String country) { this.country = country; }
+    }
+
+    public static class Proxy {
+        private String host = "";
+        private int port = 0;
+
+        public String getHost() { return host; }
+        public void setHost(String host) { this.host = host; }
+        public int getPort() { return port; }
+        public void setPort(int port) { this.port = port; }
+
+        public boolean isEnabled() {
+            return host != null && !host.isBlank() && port > 0;
+        }
     }
 }
