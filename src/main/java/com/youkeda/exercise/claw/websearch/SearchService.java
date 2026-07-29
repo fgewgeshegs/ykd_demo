@@ -108,6 +108,13 @@ public class SearchService {
      * @return 搜索结果 JSON，按发布时间排序
      */
     public String searchByDate(String query, int maxResults) {
+        return searchByDate(query, maxResults, 0);
+    }
+
+    /**
+     * 按时间搜索，并限定最近天数。
+     */
+    public String searchByDate(String query, int maxResults, int freshnessDays) {
         try {
             ObjectNode body = objectMapper.createObjectNode();
             body.put("api_key", config.getKey());
@@ -118,6 +125,10 @@ public class SearchService {
             body.put("include_raw_content", false);
             body.put("include_images", false);
             body.put("sort_by", "date"); // 按时间排序
+            if (freshnessDays > 0) {
+                body.put("topic", "news");
+                body.put("days", freshnessDays);
+            }
 
             String requestBody = objectMapper.writeValueAsString(body);
             log.info("Tavily 搜索（按时间）| query={} | maxResults={}", query, maxResults);
@@ -182,6 +193,10 @@ public class SearchService {
                     item.put("content", content);
                     if (r.has("score")) {
                         item.put("score", r.get("score").asDouble());
+                    }
+                    String publishedDate = safeText(r, "published_date");
+                    if (!publishedDate.isBlank()) {
+                        item.put("published_date", publishedDate);
                     }
                 }
             }

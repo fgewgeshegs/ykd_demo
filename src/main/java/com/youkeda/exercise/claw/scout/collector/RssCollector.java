@@ -88,8 +88,9 @@ public class RssCollector implements Collector {
         List<InformationItem> items = new ArrayList<>();
         String sourceName = feed.getTitle() != null ? feed.getTitle() : feedUrl;
 
-        // 只保留最近 48 小时的条目
-        long cutoff = System.currentTimeMillis() - 48 * 3600 * 1000L;
+        // RSS 发布时间通常可靠，使用独立窗口，避免 48 小时窗口导致周末或低频源无结果。
+        int freshnessDays = Math.max(1, props.getRss().getFreshnessDays());
+        long cutoff = System.currentTimeMillis() - freshnessDays * 24L * 3600 * 1000L;
 
         for (SyndEntry entry : feed.getEntries()) {
             long publishedAt = entry.getPublishedDate() != null

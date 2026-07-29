@@ -56,11 +56,14 @@ com/lth/
 # 忽略Claude的项目文档
 CLAUDE.md
 AGENTS.md
-memory/
+/memory/
 !src/main/java/com/youkeda/exercise/claw/agent/memory/
 !src/main/java/com/youkeda/exercise/claw/agent/memory/**
 !src/test/java/com/youkeda/exercise/claw/agent/memory/
 !src/test/java/com/youkeda/exercise/claw/agent/memory/**
+
+# 忽略 SQLite 数据库文件
+data/
 
 # 忽略设计文档（仅供 AI 参考，不应提交）
 docs/
@@ -74,3 +77,6 @@ META-INF/
 # SQLite 数据库文件
 data/
 *.sqlite
+.claude/
+.agents/
+.hermes/

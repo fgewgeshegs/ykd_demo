@@ -56,4 +56,11 @@ public final class ScoutTriggerPolicy {
         return EXPLICIT_REQUESTS.stream()
                 .anyMatch(pattern -> pattern.matcher(normalized).find());
     }
+
+    public static boolean isCancellation(String currentMessage) {
+        if (currentMessage == null || currentMessage.isBlank()) return false;
+        String normalized = currentMessage.replaceAll("\\s+", "");
+        return NEGATED_REQUEST.matcher(normalized).find()
+                || normalized.matches(".*(?:算了|取消|不用了|不查了|别查了).*");
+    }
 }

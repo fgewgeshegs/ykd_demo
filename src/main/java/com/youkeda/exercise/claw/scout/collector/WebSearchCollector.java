@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.scout.ScoutProperties;
 import com.youkeda.exercise.claw.scout.planner.SearchTask;
+import com.youkeda.exercise.claw.scout.processor.InformationFreshness;
 import com.youkeda.exercise.claw.scout.processor.InformationItem;
 import com.youkeda.exercise.claw.websearch.SearchService;
 import org.slf4j.Logger;
@@ -45,7 +46,8 @@ public class WebSearchCollector implements Collector {
         List<InformationItem> items = new ArrayList<>();
         try {
             // 信息猎手用 searchByDate 获取最新信息
-            String resultJson = searchService.searchByDate(task.query(), props.getMaxResultsPerTask());
+            String resultJson = searchService.searchByDate(
+                    task.query(), props.getMaxResultsPerTask(), props.getFreshnessDays());
             items = parseResults(task, resultJson);
             log.info("WebSearch 采集完成 | query={} | count={}", task.query(), items.size());
         } catch (Exception e) {
@@ -75,7 +77,11 @@ public class WebSearchCollector implements Collector {
                         getType(),
                         task.category()
                 );
-                items.add(item);
+                item.setPublishedAt(InformationFreshness.parsePublishedAt(
+                        safeText(r, "published_date")));
+                if (InformationFreshness.isFresh(item, props.getFreshnessDays())) {
+                    items.add(item);
+                }
             }
         } catch (Exception e) {
             log.error("WebSearch 结果解析失败", e);

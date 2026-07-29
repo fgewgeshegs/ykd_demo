@@ -1,0 +1,7 @@
+claw:
+  skill-routing:
+    triggers:
+      travel: [旅游, 旅行, 出游, 路线, 攻略, 方案]
+      transport: [打车, 叫车, 代驾, 怎么去, 坐车]
+      weather: [天气, 气温, 多少度, 下雨, 下雪, 刮风, 降温]
+      information-scout: [帮我找, 有什么新消息, 搜搜看, 关注]

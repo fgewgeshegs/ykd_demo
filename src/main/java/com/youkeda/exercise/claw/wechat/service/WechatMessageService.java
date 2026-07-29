@@ -8,6 +8,7 @@ import com.youkeda.exercise.claw.wechat.config.WechatProperties;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ public class WechatMessageService {
     private final WechatProperties wechatProperties;
     private final MessageRouter messageRouter;
     private final ContextStore contextStore;
+    private final WechatUserManager userManager;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
@@ -43,11 +45,13 @@ public class WechatMessageService {
     public WechatMessageService(WechatILinkClient wechatClient,
                                 WechatProperties wechatProperties,
                                 MessageRouter messageRouter,
-                                ContextStore contextStore) {
+                                ContextStore contextStore,
+                                WechatUserManager userManager) {
         this.wechatClient = wechatClient;
         this.wechatProperties = wechatProperties;
         this.messageRouter = messageRouter;
         this.contextStore = contextStore;
+        this.userManager = userManager;
     }
 
     @PostConstruct
@@ -92,6 +96,7 @@ public class WechatMessageService {
                         String contextToken = msg.getContext_token();
 
                         if (fromUserId == null || fromUserId.isEmpty()) continue;
+                        recordSender(fromUserId);
 
                         if (msg.getItem_list() != null) {
                             for (var item : msg.getItem_list()) {
@@ -133,6 +138,10 @@ public class WechatMessageService {
             }
         }
         log.info("微信消息轮询服务已停止");
+    }
+
+    void recordSender(String fromUserId) {
+        userManager.recordInteraction(fromUserId);
     }
 
     /**

@@ -74,10 +74,15 @@ public class ScoutOrchestrator {
 
     // ==================== 手动触发：完整流程 ====================
 
+
     /**
      * 执行信息猎手完整流程（手动触发时使用）
      */
     public ScoutReport run() {
+        return run(null);
+    }
+
+    public ScoutReport run(String explicitQuery) {
         log.info("========== 信息猎手启动（完整流程）==========");
 
         try {
@@ -87,7 +92,7 @@ public class ScoutOrchestrator {
 
             // 2. 生成搜索任务
             log.info("[2/7] 生成搜索任务...");
-            List<SearchTask> tasks = planner.plan(profile);
+            List<SearchTask> tasks = planner.plan(profile, explicitQuery);
             log.info("搜索任务 | count={}", tasks.size());
 
             // 3. 多源采集
@@ -111,7 +116,7 @@ public class ScoutOrchestrator {
 
             // 6. 语义匹配
             log.info("[6/7] 语义匹配...");
-            List<MatchedCandidate> candidates = matcher.match(profile, processed);
+            List<MatchedCandidate> candidates = matcher.match(profile, explicitQuery, processed);
             log.info("匹配结果 | count={}", candidates.size());
 
             // 7. LLM 价值判断 + 推送
@@ -120,7 +125,7 @@ public class ScoutOrchestrator {
             log.info("推荐结果 | count={}", recommendations.size());
 
             // 推送
-            notifier.notify(recommendations);
+            notifier.notifyWithSummary(recommendations);
 
             ScoutReport report = new ScoutReport(tasks.size(), processed.size(), recommendations.size());
             log.info("========== 信息猎手完成 | report={} ==========", report);
@@ -188,7 +193,7 @@ public class ScoutOrchestrator {
             List<Recommendation> recommendations = decisionMaker.judge(profile, candidates);
 
             // 推送
-            notifier.notify(recommendations);
+            notifier.notifyWithSummary(recommendations);
             log.info("推荐完成 | candidates={} | recommended={}", candidates.size(), recommendations.size());
         } catch (Exception e) {
             log.error("定时推荐失败", e);

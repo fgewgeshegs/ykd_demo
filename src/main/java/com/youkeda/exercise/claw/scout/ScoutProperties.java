@@ -17,13 +17,25 @@ public class ScoutProperties {
     private boolean enabled = false;
 
     /** 语义匹配最低分数（0.0-1.0） */
-    private float minMatchScore = 0.60f;
+    private float minMatchScore = 0.45f;
+
+    /** 严格阈值无命中时的最低兜底分数 */
+    private float fallbackMatchScore = 0.25f;
+
+    /** 兜底候选数量上限 */
+    private int fallbackCandidateCount = 8;
+
+    /** 信息新鲜度窗口（天） */
+    private int freshnessDays = 14;
 
     /** 每次最大候选信息数 */
-    private int maxCandidates = 10;
+    private int maxCandidates = 20;
 
     /** 每次最大推荐数 */
-    private int maxRecommendations = 5;
+    private int maxRecommendations = 10;
+
+    /** 候选充足时的最少推荐数 */
+    private int minRecommendations = 8;
 
     /** 信息保留天数 */
     private int ttlDays = 7;
@@ -35,7 +47,7 @@ public class ScoutProperties {
     private int searchTaskCount = 5;
 
     /** 每个搜索任务最大结果数 */
-    private int maxResultsPerTask = 5;
+    private int maxResultsPerTask = 10;
 
     /** 同一信息再次允许推送前的冷却天数 */
     private int deliveryCooldownDays = 30;
@@ -43,7 +55,6 @@ public class ScoutProperties {
     private Qdrant qdrant = new Qdrant();
     private Rss rss = new Rss();
     private Kaggle kaggle = new Kaggle();
-    private Adzuna adzuna = new Adzuna();
     private Proxy proxy = new Proxy();
 
     // Getters & Setters
@@ -51,10 +62,18 @@ public class ScoutProperties {
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public float getMinMatchScore() { return minMatchScore; }
     public void setMinMatchScore(float minMatchScore) { this.minMatchScore = minMatchScore; }
+    public float getFallbackMatchScore() { return fallbackMatchScore; }
+    public void setFallbackMatchScore(float fallbackMatchScore) { this.fallbackMatchScore = fallbackMatchScore; }
+    public int getFallbackCandidateCount() { return fallbackCandidateCount; }
+    public void setFallbackCandidateCount(int fallbackCandidateCount) { this.fallbackCandidateCount = fallbackCandidateCount; }
+    public int getFreshnessDays() { return freshnessDays; }
+    public void setFreshnessDays(int freshnessDays) { this.freshnessDays = freshnessDays; }
     public int getMaxCandidates() { return maxCandidates; }
     public void setMaxCandidates(int maxCandidates) { this.maxCandidates = maxCandidates; }
     public int getMaxRecommendations() { return maxRecommendations; }
     public void setMaxRecommendations(int maxRecommendations) { this.maxRecommendations = maxRecommendations; }
+    public int getMinRecommendations() { return minRecommendations; }
+    public void setMinRecommendations(int minRecommendations) { this.minRecommendations = minRecommendations; }
     public int getTtlDays() { return ttlDays; }
     public void setTtlDays(int ttlDays) { this.ttlDays = ttlDays; }
     public String getCron() { return cron; }
@@ -71,8 +90,6 @@ public class ScoutProperties {
     public void setRss(Rss rss) { this.rss = rss; }
     public Kaggle getKaggle() { return kaggle; }
     public void setKaggle(Kaggle kaggle) { this.kaggle = kaggle; }
-    public Adzuna getAdzuna() { return adzuna; }
-    public void setAdzuna(Adzuna adzuna) { this.adzuna = adzuna; }
     public Proxy getProxy() { return proxy; }
     public void setProxy(Proxy proxy) { this.proxy = proxy; }
 
@@ -88,10 +105,13 @@ public class ScoutProperties {
 
     public static class Rss {
         private boolean enabled = false;
+        private int freshnessDays = 7;
         private List<String> feeds = new ArrayList<>();
 
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public int getFreshnessDays() { return freshnessDays; }
+        public void setFreshnessDays(int freshnessDays) { this.freshnessDays = freshnessDays; }
         public List<String> getFeeds() { return feeds; }
         public void setFeeds(List<String> feeds) { this.feeds = feeds; }
     }
@@ -104,19 +124,6 @@ public class ScoutProperties {
         public void setUsername(String username) { this.username = username; }
         public String getApiKey() { return apiKey; }
         public void setApiKey(String apiKey) { this.apiKey = apiKey; }
-    }
-
-    public static class Adzuna {
-        private String appId = "";
-        private String appKey = "";
-        private String country = "cn";
-
-        public String getAppId() { return appId; }
-        public void setAppId(String appId) { this.appId = appId; }
-        public String getAppKey() { return appKey; }
-        public void setAppKey(String appKey) { this.appKey = appKey; }
-        public String getCountry() { return country; }
-        public void setCountry(String country) { this.country = country; }
     }
 
     public static class Proxy {

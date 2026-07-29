@@ -94,6 +94,19 @@ place-image.provider=pexels
 pexels.api-key=
 
 # ============================================
+# SQLite DataSource (Spring JDBC + SqliteContextStore)
+# ============================================
+spring.datasource.url=jdbc:sqlite:data/claw.db
+spring.datasource.driver-class-name=org.sqlite.JDBC
+
+# ============================================
+# Campus Exam Reminder（考试提醒）
+# ============================================
+campus.enabled=true
+
+storage.enabled=true
+
+# ============================================
 # Long-Term Memory (Qdrant + BGE-M3)
 # ============================================
 # 总开关
@@ -145,17 +158,25 @@ didi.mcp.timeout=15000
 # 总开关
 scout.enabled=true
 # 语义匹配最低分数（0.0-1.0）
-scout.min-match-score=0.60
+scout.min-match-score=0.45
+# 严格阈值无结果时，候选仍需达到该分数
+scout.fallback-match-score=0.25
+# 兜底候选最多保留几条
+scout.fallback-candidate-count=8
+# 只推荐最近多少天内发布的信息
+scout.freshness-days=14
 # 每次最大候选信息数
-scout.max-candidates=10
+scout.max-candidates=20
 # 每次最大推荐数
-scout.max-recommendations=5
+scout.max-recommendations=10
+# 候选充足时至少输出的推荐数量
+scout.min-recommendations=8
 # 信息保留天数
 scout.ttl-days=7
 # 搜索任务数
 scout.search-task-count=5
 # 每个搜索任务最大结果数
-scout.max-results-per-task=5
+scout.max-results-per-task=10
 # 同一信息多少天内不重复推送
 scout.delivery-cooldown-days=30
 # 定时任务 cron 表达式（每天早8点）
@@ -166,4 +187,9 @@ scout.qdrant.collection=scout_information
 scout.qdrant.vector-dimension=1024
 
 # RSS 订阅源（Phase 2）
-scout.rss.enabled=false
+scout.rss.enabled=true
+scout.rss.freshness-days=7
+scout.rss.feeds[0]=https://openai.com/news/rss.xml
+scout.rss.feeds[1]=https://spring.io/blog.atom
+scout.rss.feeds[2]=https://github.blog/feed/
+scout.rss.feeds[3]=https://hnrss.org/frontpage

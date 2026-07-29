@@ -4,6 +4,7 @@ import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
 import com.youkeda.exercise.claw.map.PlaceImageFunction;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
 import jakarta.annotation.PostConstruct;
@@ -35,18 +36,21 @@ public class ChatTool implements WechatMessageHandler {
     private final ImageGenerationTool imageGenerationTool;
     private final PlaceImageFunction placeImageFunction;
     private final WechatILinkClient wechatClient;
+    private final WechatUserManager wechatUserManager;
 
     public ChatTool(ReActAgentExecutor agentExecutor,
                     VoiceFunction voiceTool, FileGenerationTool fileGenerationTool,
                     ImageGenerationTool imageGenerationTool,
                     PlaceImageFunction placeImageFunction,
-                    WechatILinkClient wechatClient) {
+                    WechatILinkClient wechatClient,
+                    WechatUserManager wechatUserManager) {
         this.agentExecutor = agentExecutor;
         this.voiceTool = voiceTool;
         this.fileGenerationTool = fileGenerationTool;
         this.imageGenerationTool = imageGenerationTool;
         this.placeImageFunction = placeImageFunction;
         this.wechatClient = wechatClient;
+        this.wechatUserManager = wechatUserManager;
     }
 
     @Override
@@ -57,9 +61,19 @@ public class ChatTool implements WechatMessageHandler {
 
         log.debug("ChatTool.handle 处理消息 | from={} | text={}", message.getUserId(), message.getText());
 
-        String reply = agentExecutor.execute(new com.youkeda.exercise.claw.agent.AgentContext()
+        String userId = wechatUserManager.getOwnerUserId();
+        com.youkeda.exercise.claw.agent.AgentContext context = new com.youkeda.exercise.claw.agent.AgentContext()
+                .setUserId(userId)
+                .setContextToken(message.getContextToken())
+                .setRawMessage(message)
                 .setMessage(message.getText())
-                .setMessageType(MessageType.TEXT));
+                .setMessageType(MessageType.TEXT);
+        String reply = agentExecutor.execute(context);
+
+        if (ReActAgentExecutor.SILENT_REPLY.equals(reply)) {
+            log.info("Agent 请求已处理，本轮无需发送回复 | from={}", message.getUserId());
+            return WechatReply.silent();
+        }
 
         if (reply == null || reply.isEmpty()) {
             log.warn("AI 回复为空，使用降级回复 | from={}", message.getUserId());

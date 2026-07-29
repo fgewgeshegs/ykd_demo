@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.nio.charset.Charset;
@@ -13,6 +14,7 @@ import java.nio.charset.Charset;
  */
 @SpringBootApplication
 @EnableScheduling
+@ConfigurationPropertiesScan("com.youkeda.exercise.claw")
 public class ClawAssistantApplication {
 
     public static void main(String[] args) {

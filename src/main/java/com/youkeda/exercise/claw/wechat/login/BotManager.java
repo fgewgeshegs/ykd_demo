@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wechat.ilink.sdk.core.context.ResumeContext;
 import com.github.wechat.ilink.sdk.core.login.LoginContext;
+import com.youkeda.exercise.claw.agent.activity.AgentActivityStore;
 import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -29,18 +30,24 @@ public class BotManager {
     private final BotSessionStore botSessionStore;
     private final ObjectMapper objectMapper;
     private final BotSessionManager botSessionManager;
+    private final AgentActivityStore activityStore;
     private BotInstance bot;
+    private volatile LoginPageServer pageServer;
 
     public BotManager(BotSessionStore botSessionStore, ObjectMapper objectMapper,
-                      BotSessionManager botSessionManager) {
+                      BotSessionManager botSessionManager,
+                      AgentActivityStore activityStore) {
         this.botSessionStore = botSessionStore;
         this.objectMapper = objectMapper;
         this.botSessionManager = botSessionManager;
+        this.activityStore = activityStore;
     }
 
     @PostConstruct
     public void init() {
-        // 1. 恢复旧 session，机器人立即开始工作
+        LoginStateManager stateManager = new LoginStateManager();
+
+        // 1. 仅恢复仍在七天有效期内、且 SDK 确认有效的 session
         List<BotSessionStore.BotSessionRow> sessions = botSessionStore.getActiveBotSessions();
         for (BotSessionStore.BotSessionRow row : sessions) {
             try {
@@ -48,7 +55,11 @@ public class BotManager {
                 BotInstance instance = new BotInstance(ctx);
                 if (instance.isLoggedIn()) {
                     bot = instance;
-                    log.info("Bot 会话恢复成功 | botId={}", row.botId());
+                    botSessionManager.markConnected();
+                    stateManager.updateStatus(LoginStatus.SUCCESS);
+                    log.info("Bot 会话恢复成功 | botId={} | expiresAt={}",
+                            row.botId(), row.expiresAt());
+                    break;
                 } else {
                     log.warn("Bot 会话已过期 | botId={}", row.botId());
                     botSessionStore.disableBotSession(row.botId());
@@ -59,19 +70,22 @@ public class BotManager {
             }
         }
 
-        // 2. 后台弹二维码供换号用（不阻塞启动，超时不影响旧 session）
-        log.info("后台弹出二维码（扫码可切换微信账号）");
-        startLoginFlow();
+        // 2. 恢复成功直接进入控制台；否则才申请二维码
+        if (bot != null) {
+            startPageServer(stateManager, "/dashboard");
+        } else {
+            log.info("没有可恢复的有效会话，进入扫码登录");
+            startLoginFlow(stateManager);
+        }
     }
 
     /**
      * 后台线程获取二维码并等待扫码。
      * 扫码成功则替换当前 bot；超时不影响现有会话。
      */
-    private void startLoginFlow() {
+    private void startLoginFlow(LoginStateManager stateManager) {
         Thread t = new Thread(() -> {
             BotInstance qrBot = new BotInstance();
-            LoginPageServer pageServer = null;
             String qrResult;
             try {
                 qrResult = qrBot.executeLogin();
@@ -82,13 +96,10 @@ public class BotManager {
 
             try {
                 if (qrResult.startsWith("http")) {
-                    LoginStateManager stateManager = new LoginStateManager();
                     stateManager.updateQrUrl(qrResult);
                     stateManager.updateStatus(LoginStatus.WAITING_SCAN);
 
-                    pageServer = new LoginPageServer(stateManager, botSessionManager);
-                    int port = pageServer.start();
-                    openBrowser("http://127.0.0.1:" + port + "/login");
+                    startPageServer(stateManager, "/login");
 
                     long deadline = System.currentTimeMillis() + 120_000;
                     while (!qrBot.isLoggedIn() && System.currentTimeMillis() < deadline) {
@@ -98,7 +109,7 @@ public class BotManager {
                         stateManager.updateStatus(LoginStatus.SUCCESS);
                         log.info("扫码成功，切换账号");
                         replaceSession(qrBot);
-                        Thread.sleep(3000);
+                        botSessionManager.markConnected();
                     } else {
                         stateManager.updateStatus(LoginStatus.TIMEOUT);
                         log.info("扫码超时，保持当前 session");
@@ -126,14 +137,21 @@ public class BotManager {
                 }
             } catch (Exception e) {
                 log.error("扫码流程异常", e);
-            } finally {
-                if (pageServer != null) {
-                    pageServer.stop();
-                }
             }
         }, "qr-login");
         t.setDaemon(true);
         t.start();
+    }
+
+    private void startPageServer(LoginStateManager stateManager, String initialPath) {
+        try {
+            pageServer = new LoginPageServer(
+                    stateManager, botSessionManager, activityStore, objectMapper);
+            int port = pageServer.start();
+            openBrowser("http://127.0.0.1:" + port + initialPath);
+        } catch (IOException e) {
+            log.error("启动 ClawBot 本地页面失败", e);
+        }
     }
 
     /** 用新扫码的 bot 替换当前 session，旧 bot 关闭并禁用 */
@@ -216,6 +234,9 @@ public class BotManager {
 
     @PreDestroy
     public void destroy() {
+        if (pageServer != null) {
+            pageServer.stop();
+        }
         if (bot != null) {
             bot.close();
         }

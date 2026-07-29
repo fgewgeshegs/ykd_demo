@@ -77,6 +77,9 @@ public class MessageRouter {
             textMsg.setText(voiceText);
 
             WechatReply textReply = chatTool.handle(textMsg);
+            if (textReply != null && textReply.isSilent()) {
+                return textReply;
+            }
             if (textReply == null || !textReply.hasContent()) {
                 return fallbackIfEmpty(null, message);
             }
@@ -119,6 +122,9 @@ public class MessageRouter {
      * 如果 Handler 返回空或没有内容，使用兜底回复
      */
     private WechatReply fallbackIfEmpty(WechatReply reply, WechatMessage message) {
+        if (reply != null && reply.isSilent()) {
+            return reply;
+        }
         if (reply != null && reply.hasContent()) {
             return reply;
         }

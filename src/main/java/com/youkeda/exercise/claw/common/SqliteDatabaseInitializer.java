@@ -56,12 +56,74 @@ public class SqliteDatabaseInitializer {
             CREATE INDEX IF NOT EXISTS idx_context_user_id ON context_messages(user_id)
         """);
 
-        // 创建团建方案草稿表
+        // 创建旅游方案草稿表
         jdbcTemplate.execute("""
-            CREATE TABLE IF NOT EXISTS team_trip_plans (
+            CREATE TABLE IF NOT EXISTS travel_plans (
                 user_id TEXT PRIMARY KEY,
                 plan_json TEXT NOT NULL,
                 updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+
+        // 创建校园配置表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS campus_config (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                school      TEXT NOT NULL,
+                class_name  TEXT NOT NULL DEFAULT '',
+                enabled     INTEGER NOT NULL DEFAULT 1,
+                extra_config TEXT,
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+
+        // 创建校园通知表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS campus_notice (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                title             TEXT NOT NULL,
+                url               TEXT NOT NULL UNIQUE,
+                publish_at        TEXT,
+                content           TEXT DEFAULT '',
+                type              TEXT DEFAULT 'UNKNOWN',
+                confidence        REAL DEFAULT 0,
+                score_source      TEXT DEFAULT 'NONE',
+                classifier_reason TEXT DEFAULT '',
+                status            TEXT DEFAULT 'UNPROCESSED',
+                processed_at      INTEGER,
+                created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_url ON campus_notice(url)");
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_status ON campus_notice(status)");
+
+        // 创建待确认通知表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS campus_pending_ask (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                notice_type   TEXT NOT NULL,
+                question      TEXT NOT NULL,
+                answer        TEXT DEFAULT '',
+                status        TEXT DEFAULT 'PENDING',
+                asked_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                answered_at   INTEGER
+            )
+        """);
+        jdbcTemplate.execute("""
+            CREATE INDEX IF NOT EXISTS idx_pending_type ON campus_pending_ask(notice_type, status)
+        """);
+
+        // 创建技能会话表
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS skill_sessions (
+                user_id TEXT PRIMARY KEY,
+                active_skill TEXT NOT NULL,
+                previous_skill TEXT,
+                context_json TEXT NOT NULL DEFAULT '{}',
+                activated_at INTEGER NOT NULL,
+                last_activity_at INTEGER NOT NULL,
+                inactivity_count INTEGER NOT NULL DEFAULT 0
             )
         """);
 
@@ -80,9 +142,9 @@ public class SqliteDatabaseInitializer {
         // 清理 30 天前的团建方案（团建方案保留更长时间）
         long planExpireTime = System.currentTimeMillis() / 1000 - 30 * 24 * 3600;
         int planDeleted = jdbcTemplate.update(
-            "DELETE FROM team_trip_plans WHERE updated_at < ?", planExpireTime);
+            "DELETE FROM travel_plans WHERE updated_at < ?", planExpireTime);
         if (planDeleted > 0) {
-            log.info("已清理 {} 条过期团建方案", planDeleted);
+            log.info("已清理 {} 条过期旅游方案", planDeleted);
         }
     }
 
