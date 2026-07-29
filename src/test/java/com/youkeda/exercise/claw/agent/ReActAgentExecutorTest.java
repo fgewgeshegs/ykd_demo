@@ -11,6 +11,7 @@ import com.youkeda.exercise.claw.agent.skill.*;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.agent.skill.SkillKnowledgeService;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
@@ -179,7 +180,8 @@ class ReActAgentExecutorTest {
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
                 planStore, planValidator, safetyPolicy, longTermMemoryService,
-                skillRouter, skillSessionStore, skillRegistry, skillsProperties, wechatUserManager);
+                skillRouter, skillSessionStore, skillRegistry, skillsProperties, wechatUserManager,
+                mock(SkillKnowledgeService.class));
         return new Fixture(llmClient, executor, contextStore);
     }
 

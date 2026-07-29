@@ -83,6 +83,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final SkillRegistry skillRegistry;
     private final SkillsProperties skillsProperties;
     private final WechatUserManager wechatUserManager;
+    private final SkillKnowledgeService skillKnowledgeService;
 
     public ReActAgentExecutor(LLMClient llmClient,
                                LLMFunctionRegistry functionRegistry,
@@ -96,7 +97,8 @@ public class ReActAgentExecutor implements AgentExecutor {
                                SkillSessionStore skillSessionStore,
                                SkillRegistry skillRegistry,
                                SkillsProperties skillsProperties,
-                               WechatUserManager wechatUserManager) {
+                               WechatUserManager wechatUserManager,
+                               SkillKnowledgeService skillKnowledgeService) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
@@ -110,6 +112,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.skillRegistry = skillRegistry;
         this.skillsProperties = skillsProperties;
         this.wechatUserManager = wechatUserManager;
+        this.skillKnowledgeService = skillKnowledgeService;
     }
 
     @Override
@@ -597,7 +600,19 @@ public class ReActAgentExecutor implements AgentExecutor {
                 sb.append("[/SKILL_CONTEXT]\n\n");
             }
         }
-        // Release 2: knowledge context will go here
+        // RAG knowledge context
+        if (skillKnowledgeService != null && activeSkill != null
+                && activeSkill.knowledge() != null && activeSkill.knowledge().enabled()) {
+            try {
+                String knowledge = skillKnowledgeService.recall(context.getMessage(), activeSkill.name());
+                if (knowledge != null && !knowledge.isEmpty()) {
+                    sb.append(knowledge).append("\n\n");
+                }
+            } catch (Exception e) {
+                log.warn("Failed to recall skill knowledge for: {}", activeSkill.name(), e);
+            }
+        }
+
         return sb.toString();
     }
 
