@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -51,6 +52,25 @@ public class LLMFunctionRegistry {
      */
     public List<ToolDefinition> getAllDefinitions() {
         return functions.values().stream()
+                .map(LLMFunction::toDefinition)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按白名单 + 可用性过滤获取工具定义
+     * <p>计算公式：{@code allowedNames ∩ registered ∩ isAvailable(context)}
+     *
+     * @param allowedNames 允许的工具名集合
+     * @param context      执行上下文
+     * @return 过滤后的工具定义列表
+     */
+    public List<ToolDefinition> getAvailableDefinitions(
+            Set<String> allowedNames,
+            FunctionExecutionContext context) {
+        if (allowedNames == null || allowedNames.isEmpty()) return List.of();
+        return functions.values().stream()
+                .filter(fn -> allowedNames.contains(fn.getName()))
+                .filter(fn -> fn.isAvailable(context))
                 .map(LLMFunction::toDefinition)
                 .collect(Collectors.toList());
     }

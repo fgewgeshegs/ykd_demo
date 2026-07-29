@@ -47,6 +47,14 @@ public interface LLMFunction {
     }
 
     /**
+     * 检查此函数在当前上下文中是否可用
+     * <p>默认返回 true（始终可用）。Skill 场景下可通过覆写实现动态可用性检查。
+     */
+    default boolean isAvailable(FunctionExecutionContext context) {
+        return true;
+    }
+
+    /**
      * 快捷方法：生成发给 LLM 的 {@link ToolDefinition}
      */
     default ToolDefinition toDefinition() {
