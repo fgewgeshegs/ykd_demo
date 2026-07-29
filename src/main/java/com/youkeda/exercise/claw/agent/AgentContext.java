@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.agent;
 
 import com.youkeda.exercise.claw.agent.model.PlanState;
+import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 
@@ -11,6 +12,16 @@ import com.youkeda.exercise.claw.wechat.model.WechatMessage;
  * {@link #planState} 为可选字段——非多步骤任务时为 null，0 额外开销。
  */
 public class AgentContext {
+
+    /**
+     * 用户 ID
+     */
+    private String userId;
+
+    /**
+     * 上下文 Token
+     */
+    private String contextToken;
 
     /**
      * 用户消息文本（TEXT 类型时有效）
@@ -32,6 +43,38 @@ public class AgentContext {
      */
     private PlanState planState;
 
+    /**
+     * 当前 Skill 会话状态（可选，非 skill 任务时为 null）
+     */
+    private SkillSession skillSession;
+
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public AgentContext setUserId(String userId) {
+        this.userId = userId;
+        return this;
+    }
+
+    public String getContextToken() {
+        return contextToken;
+    }
+
+    public AgentContext setContextToken(String contextToken) {
+        this.contextToken = contextToken;
+        return this;
+    }
+
+    public SkillSession getSkillSession() {
+        return skillSession;
+    }
+
+    public AgentContext setSkillSession(SkillSession skillSession) {
+        this.skillSession = skillSession;
+        return this;
+    }
 
     public String getMessage() {
         return message;
