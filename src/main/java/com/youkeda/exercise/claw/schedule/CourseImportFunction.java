@@ -46,19 +46,28 @@ public class CourseImportFunction implements LLMFunction {
     private final CourseRepository courseRepository;
     private final SemesterConfig semesterConfig;
     private final CourseImportStateManager importStateManager;
+    private final SemesterDetector semesterDetector;
+    private final SemesterRepository semesterRepository;
+    private final SemesterService semesterService;
 
     public CourseImportFunction(ObjectMapper objectMapper,
                                 LLMFunctionRegistry functionRegistry,
                                 CourseService courseService,
                                 CourseRepository courseRepository,
                                 SemesterConfig semesterConfig,
-                                CourseImportStateManager importStateManager) {
+                                CourseImportStateManager importStateManager,
+                                SemesterDetector semesterDetector,
+                                SemesterRepository semesterRepository,
+                                SemesterService semesterService) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
         this.courseService = courseService;
         this.courseRepository = courseRepository;
         this.semesterConfig = semesterConfig;
         this.importStateManager = importStateManager;
+        this.semesterDetector = semesterDetector;
+        this.semesterRepository = semesterRepository;
+        this.semesterService = semesterService;
     }
 
     @PostConstruct
@@ -96,10 +105,12 @@ public class CourseImportFunction implements LLMFunction {
         action.put("type", "string");
         action.put("description", "操作类型：import(开始导入), parse(解析并预览), confirm(确认保存), "
                 + "cancel(取消), query_today(今日课程), query_free_time(空闲时间), "
-                + "query_all(全部课程), query_weekday(指定星期), delete(删除), update(修改), clear(清空)");
+                + "query_all(全部课程), query_weekday(指定星期), delete(删除), update(修改), clear(清空), "
+                + "confirm_semester(确认学期), set_semester(设置学期)");
         action.putArray("enum").add("import").add("parse").add("confirm").add("cancel")
                 .add("query_today").add("query_free_time").add("query_all").add("query_weekday")
-                .add("delete").add("update").add("clear");
+                .add("delete").add("update").add("clear")
+                .add("confirm_semester").add("set_semester");
 
         ObjectNode courses = properties.putObject("courses");
         courses.put("type", "array");
@@ -138,6 +149,26 @@ public class CourseImportFunction implements LLMFunction {
         dayOfWeek.put("type", "integer");
         dayOfWeek.put("description", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日");
 
+        ObjectNode academicYear = properties.putObject("academic_year");
+        academicYear.put("type", "integer");
+        academicYear.put("description", "学年（可选），如2026。用于 parse/import/set_semester 操作。"
+                + "当用户提到'下学期'、'2026年秋季'等学期信息时填写。"
+                + "如用户未明确说明学期，不要猜测，留空即可。");
+
+        ObjectNode term = properties.putObject("term");
+        term.put("type", "string");
+        term.put("description", "学期类型（可选）。用于 parse/import/set_semester 操作。"
+                + "SPRING=春季学期, FALL=秋季学期。"
+                + "从用户说'下学期'推断为FALL，'春季'推断为SPRING。"
+                + "如用户未明确说明学期，不要猜测，留空即可。");
+        term.putArray("enum").add("SPRING").add("FALL");
+
+        ObjectNode startDate = properties.putObject("start_date");
+        startDate.put("type", "string");
+        startDate.put("description", "学期起始日期（可选），格式 yyyy-MM-dd。"
+                + "仅 set_semester 操作使用，用于用户指定具体第1周周一日期。"
+                + "如果未提供，系统会根据学年和学期自动计算。");
+
         params.putArray("required").add("action");
 
         return params;
@@ -166,6 +197,8 @@ public class CourseImportFunction implements LLMFunction {
                 case "parse" -> handleParse(args, userId);
                 case "confirm" -> handleConfirm(userId);
                 case "cancel" -> handleCancel(userId);
+                case "confirm_semester" -> handleConfirmSemester(userId);
+                case "set_semester" -> handleSetSemester(args, userId);
                 case "delete" -> handleDelete(args, userId);
                 case "update" -> handleUpdate(args, userId);
                 case "clear" -> handleClear(userId);
@@ -235,15 +268,37 @@ public class CourseImportFunction implements LLMFunction {
         // 冲突检测（与已有课表）
         List<CourseService.ConflictInfo> conflicts = courseService.detectConflicts(userId, courses);
 
-        importStateManager.setWaitingConfirm(userId, jsonStr);
+        // ====================  Semester 检测 ====================
+        // 从 LLM 参数中尝试提取学期信息
+        int academicYear = args.path("academic_year").asInt(0);
+        String term = args.path("term").asText("");
+
+        SemesterEntity detectedSemester = null;
+        if (academicYear > 0 && !term.isBlank()) {
+            detectedSemester = semesterDetector.detectFromParams(userId, academicYear, term);
+        }
+        if (detectedSemester == null) {
+            // LLM 未提供学期信息，尝试自动推算
+            detectedSemester = semesterDetector.detectAuto(userId);
+            if (detectedSemester != null) {
+                log.info("parse 时自动推算学期 | userId={} | display={}",
+                        userId, detectedSemester.getDisplayName());
+            }
+        }
+
+        // 存储待确认的学期（未持久化）
+        if (detectedSemester != null) {
+            importStateManager.setPendingSemester(userId, detectedSemester);
+        }
         importStateManager.setPendingCourses(userId, courses);
+        importStateManager.setWaitingConfirm(userId, jsonStr);
 
         ObjectNode result = objectMapper.createObjectNode();
         result.put("action", "parse");
         result.put("status", "preview");
         result.put("count", courses.size());
 
-        int currentWeek = semesterConfig.getCurrentWeek();
+        int currentWeek = resolveCurrentWeek(userId);
         result.put("current_week", currentWeek);
         result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "学期未开始");
 
@@ -256,6 +311,20 @@ public class CourseImportFunction implements LLMFunction {
             item.put("weeks", c.getWeekDisplay());
             if (!c.getClassroom().isBlank()) item.put("classroom", c.getClassroom());
             if (!c.getTeacher().isBlank()) item.put("teacher", c.getTeacher());
+        }
+
+        // Semester 信息
+        if (detectedSemester != null) {
+            ObjectNode semesterInfo = result.putObject("semester");
+            semesterInfo.put("academic_year", detectedSemester.getAcademicYear());
+            semesterInfo.put("term", detectedSemester.getTerm());
+            semesterInfo.put("start_date", detectedSemester.getStartDateString());
+            semesterInfo.put("start_date_display", detectedSemester.getStartDateDisplay());
+            semesterInfo.put("source", detectedSemester.getSource());
+            semesterInfo.put("source_display", detectedSemester.getSourceDisplay());
+            semesterInfo.put("display_name", detectedSemester.getDisplayName());
+            result.put("semester_display", detectedSemester.getDisplayName()
+                    + "（第1周：" + detectedSemester.getStartDateDisplay() + "）");
         }
 
         // 冲突信息
@@ -310,27 +379,172 @@ public class CourseImportFunction implements LLMFunction {
                     + "\"message\":\"没有待确认的课程数据，请先上传课表。\"}";
         }
 
-        // 保存到数据库（通过 CourseRepository 写入 course_schedule 表）
-        List<CourseEntity> saved = courseService.saveCourses(userId, pending);
-        importStateManager.clear(userId);
+        List<CourseEntity> saved;
+        SemesterEntity pendingSemester = importStateManager.getPendingSemester(userId);
 
-        ObjectNode result = objectMapper.createObjectNode();
-        result.put("action", "confirm");
-        result.put("status", "success");
-        result.put("count", saved.size());
+        if (pendingSemester != null) {
+            // 有学期信息：检查是否已存在同一学期 → 复用，避免重复创建
+            SemesterEntity existing = semesterService.findExistingSemester(
+                    userId, pendingSemester.getAcademicYear(), pendingSemester.getTerm()).orElse(null);
+            SemesterEntity savedSemester;
+            if (existing != null) {
+                savedSemester = existing;
+                log.info("学期已存在，复用 | id={} | display={}", savedSemester.getId(), savedSemester.getDisplayName());
+            } else {
+                savedSemester = semesterRepository.save(pendingSemester);
+                log.info("学期已创建 | id={} | display={}", savedSemester.getId(), savedSemester.getDisplayName());
+            }
 
-        int currentWeek = semesterConfig.getCurrentWeek();
-        result.put("current_week", currentWeek);
-        result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "学期未开始");
+            // 为每条课程绑定 semesterId 并按学期保存
+            pending.forEach(c -> c.setSemesterId(savedSemester.getId()));
+            saved = courseRepository.replaceAllBySemester(userId, savedSemester.getId(), pending);
 
-        result.put("message", "课表导入成功！共 " + saved.size() + " 门课程。"
-                + "你可以问我「今天有什么课」来查看今日课程。");
-        return result.toString();
+            importStateManager.clear(userId);
+
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "confirm");
+            result.put("status", "success");
+            result.put("count", saved.size());
+            result.put("semester_id", savedSemester.getId());
+            result.put("semester_display", savedSemester.getDisplayName());
+
+            int currentWeek = resolveCurrentWeek(userId);
+            result.put("current_week", currentWeek);
+            result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "学期未开始");
+
+            result.put("message", "课表导入成功！共 " + saved.size() + " 门课程（"
+                    + savedSemester.getDisplayName() + "）。"
+                    + "你可以问我「今天有什么课」来查看今日课程。");
+            return result.toString();
+        } else {
+            // 无学期信息：保持旧行为（兼容）
+            saved = courseService.saveCourses(userId, pending);
+            importStateManager.clear(userId);
+
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "confirm");
+            result.put("status", "success");
+            result.put("count", saved.size());
+
+            int currentWeek = resolveCurrentWeek(userId);
+            result.put("current_week", currentWeek);
+            result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "学期未开始");
+
+            result.put("message", "课表导入成功！共 " + saved.size() + " 门课程。"
+                    + "你可以问我「今天有什么课」来查看今日课程。");
+            return result.toString();
+        }
     }
 
     private String handleCancel(String userId) {
         importStateManager.clear(userId);
         return "{\"action\":\"cancel\",\"status\":\"success\",\"message\":\"已取消课表导入。\"}";
+    }
+
+    // ==================== 学期确认 ====================
+
+    /**
+     * 用户确认系统自动检测的学期
+     *
+     * <p>学期信息已通过 handleParse 或 handler 保存为 pendingSemester，
+     * 用户确认后转移到 WAITING_CONFIRM 状态，等待最终确认导入。
+     */
+    private String handleConfirmSemester(String userId) {
+        if (importStateManager.getPhase(userId) != CourseImportStateManager.Phase.WAITING_SEMESTER) {
+            return "{\"action\":\"confirm_semester\",\"status\":\"error\","
+                    + "\"message\":\"当前状态不需要确认学期。\"}";
+        }
+
+        SemesterEntity pending = importStateManager.getPendingSemester(userId);
+        if (pending == null) {
+            return "{\"action\":\"confirm_semester\",\"status\":\"error\","
+                    + "\"message\":\"没有待确认的学期信息，请先上传课表。\"}";
+        }
+
+        List<CourseEntity> pendingCourses = importStateManager.getPendingCourses(userId);
+        if (pendingCourses.isEmpty()) {
+            return "{\"action\":\"confirm_semester\",\"status\":\"error\","
+                    + "\"message\":\"没有待确认的课程数据，请先上传课表。\"}";
+        }
+
+        // 学期信息不需要持久化（等 confirm 时一起处理），直接进入 WAITING_CONFIRM
+        importStateManager.setWaitingConfirm(userId, "semester_confirmed");
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("action", "confirm_semester");
+        result.put("status", "success");
+        result.put("semester_display", pending.getDisplayName());
+        result.put("start_date", pending.getStartDateString());
+        result.put("course_count", pendingCourses.size());
+        result.put("message", "已确认" + pending.getDisplayName() + "（第1周：" + pending.getStartDateDisplay() + "），"
+                + "共 " + pendingCourses.size() + " 门课程等待导入。回复「确认」保存课表。");
+        return result.toString();
+    }
+
+    /**
+     * 用户手动指定学期信息
+     *
+     * <p>当系统无法自动检测学期时，用户可通过此操作指定学期。
+     * 支持参数：academic_year、term、start_date（可选）
+     */
+    private String handleSetSemester(JsonNode args, String userId) {
+        int academicYear = args.path("academic_year").asInt(0);
+        String term = args.path("term").asText("");
+
+        if (academicYear <= 0 || term.isBlank()) {
+            return "{\"action\":\"set_semester\",\"status\":\"error\","
+                    + "\"message\":\"请提供学年和学期信息，如：academic_year=2026, term=FALL\"}";
+        }
+
+        // 尝试从用户传入的学期参数检测
+        SemesterEntity semester = semesterDetector.detectFromParams(userId, academicYear, term);
+
+        // 如果用户提供了 start_date，则覆盖
+        String startDateStr = args.path("start_date").asText("");
+        if (semester != null && !startDateStr.isBlank()) {
+            try {
+                semester.setStartDateFromString(startDateStr);
+                log.info("用户指定学期起始日期 | startDate={}", startDateStr);
+            } catch (Exception e) {
+                return "{\"action\":\"set_semester\",\"status\":\"error\","
+                        + "\"message\":\"日期格式错误，请使用 yyyy-MM-dd 格式，如 2026-09-07\"}";
+            }
+        } else if (semester == null) {
+            return "{\"action\":\"set_semester\",\"status\":\"error\","
+                    + "\"message\":\"无法识别的学期参数，请提供正确的学年（如2026）和学期（SPRING/FALL）\"}";
+        }
+
+        // 保存待确认学期
+        importStateManager.setPendingSemester(userId, semester);
+
+        List<CourseEntity> pendingCourses = importStateManager.getPendingCourses(userId);
+
+        // 如果已有待确认课程，直接进入 WAITING_CONFIRM
+        if (!pendingCourses.isEmpty()) {
+            importStateManager.setWaitingConfirm(userId, "semester_set");
+
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "set_semester");
+            result.put("status", "success");
+            result.put("semester_display", semester.getDisplayName());
+            result.put("start_date", semester.getStartDateString());
+            result.put("course_count", pendingCourses.size());
+            result.put("message", "已设置" + semester.getDisplayName() + "（第1周：" + semester.getStartDateDisplay() + "），"
+                    + "共 " + pendingCourses.size() + " 门课程等待导入。回复「确认」保存课表。");
+            return result.toString();
+        } else {
+            // 无待确认课程，进入 WAITING_SEMESTER
+            importStateManager.setWaitingSemester(userId);
+
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("action", "set_semester");
+            result.put("status", "semester_ready");
+            result.put("semester_display", semester.getDisplayName());
+            result.put("start_date", semester.getStartDateString());
+            result.put("message", "已设置" + semester.getDisplayName() + "（第1周：" + semester.getStartDateDisplay() + "）。"
+                    + "请发送课表文件或图片。");
+            return result.toString();
+        }
     }
 
     // ==================== 课程管理 ====================
@@ -417,7 +631,7 @@ public class CourseImportFunction implements LLMFunction {
     // ==================== 查询 ====================
 
     private String handleQueryToday(String userId) {
-        int currentWeek = semesterConfig.getCurrentWeek();
+        int currentWeek = resolveCurrentWeek(userId);
         if (currentWeek <= 0) {
             return buildQueryResult("query_today", List.of(),
                     "学期尚未开始（当前日期早于学期起始日）", currentWeek);
@@ -427,7 +641,7 @@ public class CourseImportFunction implements LLMFunction {
 
         if (todayCourses.isEmpty()) {
             List<CourseEntity> allDayCourses = courseRepository.findByUserIdAndDay(
-                    userId, semesterConfig.getCurrentDayOfWeek());
+                    userId, semesterService.getCurrentDayOfWeek());
             if (allDayCourses.isEmpty()) {
                 return buildQueryResult("query_today", List.of(),
                         "今天没有安排课程，好好休息吧！😊", currentWeek);
@@ -465,7 +679,7 @@ public class CourseImportFunction implements LLMFunction {
             return "{\"action\":\"query_all\",\"courses\":[],\"message\":\"你还没有导入课表，快上传课表文件或告诉我课程信息吧！\"}";
         }
         return buildQueryResult("query_all", allCourses,
-                "共有 " + allCourses.size() + " 门课程", semesterConfig.getCurrentWeek());
+                "共有 " + allCourses.size() + " 门课程", resolveCurrentWeek(userId));
     }
 
     private String handleQueryWeekday(JsonNode args, String userId) {
@@ -474,7 +688,7 @@ public class CourseImportFunction implements LLMFunction {
             return "{\"error\":\"无效的 day_of_week 参数，请输入 1（周一）~ 7（周日）\"}";
         }
 
-        int currentWeek = semesterConfig.getCurrentWeek();
+        int currentWeek = resolveCurrentWeek(userId);
         if (currentWeek <= 0) {
             return buildQueryResult("query_weekday", List.of(),
                     "学期尚未开始", currentWeek);
@@ -516,6 +730,20 @@ public class CourseImportFunction implements LLMFunction {
         result.put("formatted", formatted);
 
         return result.toString();
+    }
+
+    /**
+     * 解析用户当前教学周
+     *
+     * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
+     * 无学期记录时回退 {@link SemesterConfig#getCurrentWeek()}。
+     */
+    private int resolveCurrentWeek(String userId) {
+        int week = semesterService.getCurrentWeek(userId);
+        if (week > 0) {
+            return week;
+        }
+        return semesterConfig.getCurrentWeek();
     }
 
     private String errorJson(String message) {

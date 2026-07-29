@@ -30,6 +30,8 @@ public class CourseEntity {
     private int endWeek;
     /** 单双周：ALL / ODD / EVEN */
     private String weekType;
+    /** 所属学期 ID（nullable，兼容历史数据） */
+    private Long semesterId;
 
     public CourseEntity() {
     }
@@ -101,6 +103,9 @@ public class CourseEntity {
 
     public String getWeekType() { return weekType; }
     public void setWeekType(String weekType) { this.weekType = weekType; }
+
+    public Long getSemesterId() { return semesterId; }
+    public void setSemesterId(Long semesterId) { this.semesterId = semesterId; }
 
     /** 课表显示节次范围，如 "3-4" */
     public String getPeriodDisplay() {

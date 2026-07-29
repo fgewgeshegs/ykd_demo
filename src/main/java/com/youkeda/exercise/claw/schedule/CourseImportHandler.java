@@ -144,6 +144,8 @@ public class CourseImportHandler {
     private final ContextStore contextStore;
     private final ObjectMapper objectMapper;
     private final PdfTableExtractor pdfTableExtractor;
+    private final SemesterDetector semesterDetector;
+    private final SemesterService semesterService;
 
     public CourseImportHandler(WechatILinkClient wechatClient,
                                VisionService visionService,
@@ -155,7 +157,9 @@ public class CourseImportHandler {
                                LLMClient llmClient,
                                ContextStore contextStore,
                                ObjectMapper objectMapper,
-                               PdfTableExtractor pdfTableExtractor) {
+                               PdfTableExtractor pdfTableExtractor,
+                               SemesterDetector semesterDetector,
+                               SemesterService semesterService) {
         this.wechatClient = wechatClient;
         this.visionService = visionService;
         this.courseParser = courseParser;
@@ -167,6 +171,8 @@ public class CourseImportHandler {
         this.contextStore = contextStore;
         this.objectMapper = objectMapper;
         this.pdfTableExtractor = pdfTableExtractor;
+        this.semesterDetector = semesterDetector;
+        this.semesterService = semesterService;
     }
 
     // ==================== IMAGE 处理 ====================
@@ -204,6 +210,9 @@ public class CourseImportHandler {
         }
 
         importStateManager.setPendingCourses(userId, courses);
+
+        // 学期检测（从文件名）
+        detectAndStoreSemester(userId, null, null);
         importStateManager.setWaitingConfirm(userId, visionResult);
 
         contextStore.append("user", "[课表导入图片解析完成] 共 " + courses.size() + " 门课程");
@@ -256,6 +265,9 @@ public class CourseImportHandler {
         }
 
         importStateManager.setPendingCourses(userId, courses);
+
+        // 学期检测（从文件名）
+        detectAndStoreSemester(userId, fileName, null);
         importStateManager.setWaitingConfirm(userId, "[Excel 解析] " + fileName);
 
         contextStore.append("user", "[课表导入 Excel 解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
@@ -281,6 +293,9 @@ public class CourseImportHandler {
         }
 
         importStateManager.setPendingCourses(userId, courses);
+
+        // 学期检测（从文件名）
+        detectAndStoreSemester(userId, fileName, null);
         importStateManager.setWaitingConfirm(userId, visionResult);
 
         contextStore.append("user", "[课表导入图片解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
@@ -316,6 +331,10 @@ public class CourseImportHandler {
         }
 
         importStateManager.setPendingCourses(userId, courses);
+
+        // 学期检测（从文件名和内容）
+        String contentPreview = result != null ? result.text() : null;
+        detectAndStoreSemester(userId, fileName, contentPreview);
         importStateManager.setWaitingConfirm(userId, llmResult);
 
         contextStore.append("user", "[课表导入文档解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
@@ -365,6 +384,9 @@ public class CourseImportHandler {
         }
 
         importStateManager.setPendingCourses(userId, courses);
+
+        // 学期检测（从文件名）
+        detectAndStoreSemester(userId, fileName, null);
         importStateManager.setWaitingConfirm(userId, "[PDF 解析] " + fileName);
 
         contextStore.append("user", "[课表导入 PDF 解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
@@ -444,11 +466,22 @@ public class CourseImportHandler {
     // ==================== 预览构建 ====================
 
     private String buildPreview(String userId, List<CourseEntity> courses) {
-        int currentWeek = semesterConfig.getCurrentWeek();
+        int currentWeek = resolveCurrentWeek(userId);
         String weekInfo = currentWeek > 0 ? "（当前第 " + currentWeek + " 周）" : "";
+
+        // 获取学期信息
+        SemesterEntity pendingSemester = importStateManager.getPendingSemester(userId);
+        String semesterInfo = "";
+        if (pendingSemester != null) {
+            semesterInfo = "【" + pendingSemester.getDisplayName() + "】\n"
+                    + "第1周：" + pendingSemester.getStartDateDisplay() + "\n\n";
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append("📋 已识别出以下 ").append(courses.size()).append(" 门课程").append(weekInfo).append("：\n\n");
+        if (!semesterInfo.isEmpty()) {
+            sb.append(semesterInfo);
+        }
 
         for (int i = 0; i < courses.size(); i++) {
             CourseEntity c = courses.get(i);
@@ -467,9 +500,40 @@ public class CourseImportHandler {
         return sb.toString();
     }
 
+    /**
+     * 解析用户当前教学周
+     *
+     * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
+     * 无学期记录时回退 {@link SemesterConfig#getCurrentWeek()}。
+     */
+    private int resolveCurrentWeek(String userId) {
+        int week = semesterService.getCurrentWeek(userId);
+        if (week > 0) {
+            return week;
+        }
+        return semesterConfig.getCurrentWeek();
+    }
+
     private String buildPreviewText(String userId, List<CourseEntity> courses) {
         return "已识别 " + courses.size() + " 门课程等待确认导入："
                 + courses.stream().map(CourseEntity::getCourseName).reduce((a, b) -> a + "、" + b).orElse("");
+    }
+
+    /**
+     * 从文件名和内容检测学期并存储到状态管理器
+     *
+     * @param userId         用户标识
+     * @param fileName       文件名
+     * @param contentPreview 文件内容预览（可为 null）
+     */
+    private void detectAndStoreSemester(String userId, String fileName, String contentPreview) {
+        SemesterEntity detected = semesterDetector.detectFromFile(userId, fileName, contentPreview);
+        if (detected == null) {
+            // 无法从文件信息检测，使用自动推算作为 fallback
+            detected = semesterDetector.detectAuto(userId);
+            log.info("自动推算学期作为 fallback | userId={} | display={}", userId, detected.getDisplayName());
+        }
+        importStateManager.setPendingSemester(userId, detected);
     }
 
     // ==================== 文件下载 ====================

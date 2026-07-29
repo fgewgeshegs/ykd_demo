@@ -38,20 +38,31 @@ public class CourseRepository {
                 start_week   INTEGER NOT NULL DEFAULT 1,
                 end_week     INTEGER NOT NULL DEFAULT 20,
                 week_type    TEXT NOT NULL DEFAULT 'ALL',
+                semester_id  INTEGER,
                 created_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             )
+            """;
+
+    /** 旧数据库迁移：新增 semester_id 列（兼容已有数据库） */
+    private static final String MIGRATE_ADD_SEMESTER_ID = """
+            ALTER TABLE course_schedule ADD COLUMN semester_id INTEGER
             """;
 
     private static final String INDEX_USER = """
             CREATE INDEX IF NOT EXISTS idx_course_schedule_user ON course_schedule(user_id)
             """;
 
+    /** 学期课程查询索引 */
+    private static final String INDEX_USER_SEMESTER = """
+            CREATE INDEX IF NOT EXISTS idx_course_user_semester ON course_schedule(user_id, semester_id)
+            """;
+
     private static final String INSERT_SQL = """
             INSERT INTO course_schedule
                 (user_id, course_name, teacher, day_of_week,
                  start_period, end_period, classroom,
-                 start_week, end_week, week_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 start_week, end_week, week_type, semester_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     private static final String SELECT_BY_USER = """
@@ -63,8 +74,17 @@ public class CourseRepository {
             ORDER BY start_period
             """;
 
+    private static final String SELECT_BY_USER_AND_SEMESTER = """
+            SELECT * FROM course_schedule WHERE user_id = ? AND semester_id = ?
+            ORDER BY day_of_week, start_period
+            """;
+
     private static final String DELETE_BY_USER = """
             DELETE FROM course_schedule WHERE user_id = ?
+            """;
+
+    private static final String DELETE_BY_USER_AND_SEMESTER = """
+            DELETE FROM course_schedule WHERE user_id = ? AND semester_id = ?
             """;
 
     private static final String DELETE_BY_ID = """
@@ -75,7 +95,8 @@ public class CourseRepository {
             UPDATE course_schedule SET
                 course_name = ?, teacher = ?, day_of_week = ?,
                 start_period = ?, end_period = ?, classroom = ?,
-                start_week = ?, end_week = ?, week_type = ?
+                start_week = ?, end_week = ?, week_type = ?,
+                semester_id = ?
             WHERE id = ? AND user_id = ?
             """;
 
@@ -104,6 +125,20 @@ public class CourseRepository {
              Statement stmt = conn.createStatement()) {
             stmt.execute(TABLE_DDL);
             stmt.execute(INDEX_USER);
+            // 学期查询索引
+            try {
+                stmt.execute(INDEX_USER_SEMESTER);
+            } catch (SQLException e) {
+                log.debug("idx_course_user_semester 索引已存在，跳过创建");
+            }
+            // 迁移：为已有数据库添加 semester_id 列（字段已存在时忽略）
+            try {
+                stmt.execute(MIGRATE_ADD_SEMESTER_ID);
+                log.info("数据库迁移完成：已添加 semester_id 列 | table={}", TABLE_NAME);
+            } catch (SQLException e) {
+                // 列已存在时忽略（SQLite 不支持 IF NOT EXISTS）
+                log.debug("semester_id 列已存在，跳过迁移 | table={}", TABLE_NAME);
+            }
             log.info("课表数据库表初始化完成 | table={} | path={}", TABLE_NAME, dbPath);
         } catch (SQLException e) {
             log.error("课表数据库表初始化失败 | path={}", dbPath, e);
@@ -165,6 +200,11 @@ public class CourseRepository {
             ps.setInt(8, course.getStartWeek());
             ps.setInt(9, course.getEndWeek());
             ps.setString(10, course.getWeekType());
+            if (course.getSemesterId() != null) {
+                ps.setLong(11, course.getSemesterId());
+            } else {
+                ps.setNull(11, Types.INTEGER);
+            }
             ps.executeUpdate();
 
             try (ResultSet rs = ps.getGeneratedKeys()) {
@@ -243,6 +283,31 @@ public class CourseRepository {
     }
 
     /**
+     * 按学期查询用户课程
+     *
+     * @param userId     用户标识
+     * @param semesterId 学期 ID
+     * @return 该学期的课程列表
+     */
+    public List<CourseEntity> findByUserIdAndSemester(String userId, Long semesterId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_BY_USER_AND_SEMESTER)) {
+            ps.setString(1, userId);
+            ps.setLong(2, semesterId);
+            List<CourseEntity> results = new ArrayList<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    results.add(mapCourse(rs));
+                }
+            }
+            return results;
+        } catch (SQLException e) {
+            log.error("按学期查询课程失败 | userId={} | semesterId={}", userId, semesterId, e);
+            return List.of();
+        }
+    }
+
+    /**
      * 统计用户课程数量
      */
     public int countByUserId(String userId) {
@@ -298,8 +363,13 @@ public class CourseRepository {
             ps.setInt(7, course.getStartWeek());
             ps.setInt(8, course.getEndWeek());
             ps.setString(9, course.getWeekType());
-            ps.setLong(10, course.getId());
-            ps.setString(11, course.getUserId());
+            if (course.getSemesterId() != null) {
+                ps.setLong(10, course.getSemesterId());
+            } else {
+                ps.setNull(10, Types.INTEGER);
+            }
+            ps.setLong(11, course.getId());
+            ps.setString(12, course.getUserId());
             int rows = ps.executeUpdate();
             if (rows > 0) {
                 log.info("课程已更新 | id={} | userId={} | name={}",
@@ -343,6 +413,69 @@ public class CourseRepository {
         }
     }
 
+    /**
+     * 删除用户特定学期全部课程（按 userId + semesterId 隔离）
+     *
+     * @param userId     用户标识
+     * @param semesterId 学期 ID
+     * @return 删除数量
+     */
+    public int deleteByUserIdAndSemester(String userId, Long semesterId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(DELETE_BY_USER_AND_SEMESTER)) {
+            ps.setString(1, userId);
+            ps.setLong(2, semesterId);
+            int count = ps.executeUpdate();
+            log.info("已删除用户学期课程 | userId={} | semesterId={} | count={}", userId, semesterId, count);
+            return count;
+        } catch (SQLException e) {
+            log.error("删除用户学期课程失败 | userId={} | semesterId={}", userId, semesterId, e);
+            return 0;
+        }
+    }
+
+    /**
+     * 按学期覆盖保存课程（先删除该用户该学期旧数据，再批量插入）
+     *
+     * <p>只影响指定学期内的课程，不影响该用户其他学期的数据。
+     *
+     * @param userId     用户标识
+     * @param semesterId 学期 ID
+     * @param courses    课程列表
+     * @return 保存后的课程列表（含 ID）
+     */
+    public List<CourseEntity> replaceAllBySemester(String userId, Long semesterId, List<CourseEntity> courses) {
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                // 删除该用户该学期旧数据
+                try (PreparedStatement ps = conn.prepareStatement(DELETE_BY_USER_AND_SEMESTER)) {
+                    ps.setString(1, userId);
+                    ps.setLong(2, semesterId);
+                    int deleted = ps.executeUpdate();
+                    log.debug("已删除用户学期旧课程 | userId={} | semesterId={} | count={}", userId, semesterId, deleted);
+                }
+
+                // 批量插入（绑定 semesterId）
+                for (CourseEntity course : courses) {
+                    course.setUserId(userId);
+                    course.setSemesterId(semesterId);
+                    insert(conn, course);
+                }
+
+                conn.commit();
+                log.info("课表按学期导入完成 | userId={} | semesterId={} | courses={}", userId, semesterId, courses.size());
+                return findByUserIdAndSemester(userId, semesterId);
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } catch (SQLException e) {
+            log.error("课表按学期导入失败 | userId={} | semesterId={} | error={}", userId, semesterId, e.getMessage(), e);
+            throw new RuntimeException("课表按学期导入失败", e);
+        }
+    }
+
     // ==================== 内部方法 ====================
 
     private CourseEntity mapCourse(ResultSet rs) throws SQLException {
@@ -358,6 +491,10 @@ public class CourseRepository {
         c.setStartWeek(rs.getInt("start_week"));
         c.setEndWeek(rs.getInt("end_week"));
         c.setWeekType(rs.getString("week_type"));
+        long semesterId = rs.getLong("semester_id");
+        if (!rs.wasNull()) {
+            c.setSemesterId(semesterId);
+        }
         return c;
     }
 

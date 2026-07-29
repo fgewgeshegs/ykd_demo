@@ -26,13 +26,16 @@ public class CourseService {
     private final CourseRepository courseRepository;
     private final CourseParser courseParser;
     private final SemesterConfig semesterConfig;
+    private final SemesterService semesterService;
 
     public CourseService(CourseRepository courseRepository,
                          CourseParser courseParser,
-                         SemesterConfig semesterConfig) {
+                         SemesterConfig semesterConfig,
+                         SemesterService semesterService) {
         this.courseRepository = courseRepository;
         this.courseParser = courseParser;
         this.semesterConfig = semesterConfig;
+        this.semesterService = semesterService;
     }
 
     // ==================== 导入 ====================
@@ -106,18 +109,23 @@ public class CourseService {
 
     /**
      * 获取用户今日课程（已过滤当前教学周和单双周）
+     *
+     * <p>优先使用用户自身 {@link SemesterService} 计算的周次，
+     * 仅当用户无学期记录时回退 {@link SemesterConfig}。
+     * 查询课程时按当前学期（{@code semester_id}）隔离。</p>
      */
     public List<CourseEntity> getTodayCourses(String userId) {
-        int currentWeek = semesterConfig.getCurrentWeek();
-        int today = semesterConfig.getCurrentDayOfWeek();
+        int currentWeek = resolveCurrentWeek(userId);
+        int today = semesterService.getCurrentDayOfWeek();
 
         if (currentWeek <= 0) {
             log.debug("学期未开始，无今日课程 | userId={} | currentWeek={}", userId, currentWeek);
             return List.of();
         }
 
-        List<CourseEntity> dayCourses = courseRepository.findByUserIdAndDay(userId, today);
+        List<CourseEntity> dayCourses = findSemesterScopedCourses(userId);
         return dayCourses.stream()
+                .filter(c -> c.getDayOfWeek() == today)
                 .filter(c -> c.isActiveInWeek(currentWeek))
                 .collect(Collectors.toList());
     }
@@ -126,10 +134,12 @@ public class CourseService {
      * 获取指定星期几的课程
      */
     public List<CourseEntity> getCoursesByDay(String userId, int dayOfWeek) {
-        int currentWeek = semesterConfig.getCurrentWeek();
+        int currentWeek = resolveCurrentWeek(userId);
         if (currentWeek <= 0) return List.of();
 
-        return courseRepository.findByUserIdAndDay(userId, dayOfWeek).stream()
+        List<CourseEntity> courses = findSemesterScopedCourses(userId);
+        return courses.stream()
+                .filter(c -> c.getDayOfWeek() == dayOfWeek)
                 .filter(c -> c.isActiveInWeek(currentWeek))
                 .collect(Collectors.toList());
     }
@@ -169,8 +179,10 @@ public class CourseService {
      * 获取下周课程列表
      */
     public List<CourseEntity> getNextWeekCourses(String userId) {
-        int nextWeek = semesterConfig.getCurrentWeek() + 1;
-        return courseRepository.findByUserId(userId).stream()
+        int currentWeek = resolveCurrentWeek(userId);
+        int nextWeek = currentWeek + 1;
+        List<CourseEntity> courses = findSemesterScopedCourses(userId);
+        return courses.stream()
                 .filter(c -> c.isActiveInWeek(nextWeek))
                 .collect(Collectors.toList());
     }
@@ -211,6 +223,44 @@ public class CourseService {
      */
     public CourseEntity findCourseById(Long id) {
         return courseRepository.findById(id);
+    }
+
+    // ==================== 内部辅助方法 ====================
+
+    /**
+     * 解析用户当前教学周
+     *
+     * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
+     * 当用户无学期记录或学期未开始时，回退到 {@link SemesterConfig#getCurrentWeek()}。
+     *
+     * @param userId 用户标识
+     * @return 当前教学周（>0 表示学期进行中）
+     */
+    private int resolveCurrentWeek(String userId) {
+        int week = semesterService.getCurrentWeek(userId);
+        if (week > 0) {
+            return week;
+        }
+        // Fallback: 系统默认配置
+        return semesterConfig.getCurrentWeek();
+    }
+
+    /**
+     * 按学期范围获取用户课程
+     *
+     * <p>优先按当前学期（{@code semester_id}）查询课程，避免不同学期课程混淆。
+     * 仅当用户无学期记录时回退到全量查询（兼容旧数据）。
+     *
+     * @param userId 用户标识
+     * @return 课程列表
+     */
+    private List<CourseEntity> findSemesterScopedCourses(String userId) {
+        Optional<SemesterEntity> semester = semesterService.getCurrentSemester(userId);
+        if (semester.isPresent()) {
+            return courseRepository.findByUserIdAndSemester(userId, semester.get().getId());
+        }
+        // Fallback: 无学期记录时查询全部（兼容 semester_id 为 null 的旧数据）
+        return courseRepository.findByUserId(userId);
     }
 
     // ==================== 内部类 ====================

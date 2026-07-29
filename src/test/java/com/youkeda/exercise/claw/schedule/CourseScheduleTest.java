@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -848,6 +849,490 @@ class CourseScheduleTest {
             byte[] invalidBytes = "这不是Excel文件内容".getBytes();
             List<CourseEntity> courses = parser.parseFromExcel(invalidBytes);
             assertTrue(courses.isEmpty());
+        }
+    }
+
+    // ==================== SemesterEntity 测试 ====================
+
+    @Nested
+    @DisplayName("SemesterEntity - 学期模型")
+    class SemesterEntityTest {
+
+        @Test
+        @DisplayName("构造学期实体")
+        void createSemester() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), SemesterEntity.SOURCE_USER_CONFIRM);
+            assertEquals("u1", s.getUserId());
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, s.getTerm());
+            assertEquals(LocalDate.of(2026, 9, 7), s.getStartDate());
+            assertEquals(SemesterEntity.SOURCE_USER_CONFIRM, s.getSource());
+        }
+
+        @Test
+        @DisplayName("显示名称：2026秋季学期")
+        void displayNameFall() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), null);
+            assertEquals("2026秋季学期", s.getDisplayName());
+        }
+
+        @Test
+        @DisplayName("显示名称：2026春季学期")
+        void displayNameSpring() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_SPRING,
+                    LocalDate.of(2026, 3, 2), null);
+            assertEquals("2026春季学期", s.getDisplayName());
+        }
+
+        @Test
+        @DisplayName("起始日显示：2026年9月7日（周一）")
+        void startDateDisplay() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), null);
+            assertEquals("2026年9月7日（周一）", s.getStartDateDisplay());
+        }
+
+        @Test
+        @DisplayName("来源显示：用户确认")
+        void sourceDisplayUserConfirm() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), SemesterEntity.SOURCE_USER_CONFIRM);
+            assertEquals("用户确认", s.getSourceDisplay());
+        }
+
+        @Test
+        @DisplayName("来源显示：自动检测")
+        void sourceDisplayAutoDetect() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), SemesterEntity.SOURCE_AUTO_DETECT);
+            assertEquals("自动检测", s.getSourceDisplay());
+        }
+
+        @Test
+        @DisplayName("来源显示：系统默认")
+        void sourceDisplaySystemDefault() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), SemesterEntity.SOURCE_SYSTEM_DEFAULT);
+            assertEquals("系统默认", s.getSourceDisplay());
+        }
+
+        @Test
+        @DisplayName("学期第一天为第 1 周")
+        void firstWeek() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.now(), SemesterEntity.SOURCE_AUTO_DETECT);
+            assertEquals(1, s.getCurrentWeek());
+        }
+
+        @Test
+        @DisplayName("学期前返回 -1")
+        void beforeSemester() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.now().plusDays(7), SemesterEntity.SOURCE_AUTO_DETECT);
+            assertEquals(-1, s.getCurrentWeek());
+        }
+
+        @Test
+        @DisplayName("学期第 2 周返回 2")
+        void secondWeek() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.now().minusDays(7), SemesterEntity.SOURCE_AUTO_DETECT);
+            assertEquals(2, s.getCurrentWeek());
+        }
+
+        @Test
+        @DisplayName("isOddWeek / isEvenWeek 正确")
+        void oddEvenWeek() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.now().minusDays(7), SemesterEntity.SOURCE_AUTO_DETECT);
+            int week = s.getCurrentWeek();
+            if (week % 2 == 1) {
+                assertTrue(s.isOddWeek());
+                assertFalse(s.isEvenWeek());
+            } else {
+                assertFalse(s.isOddWeek());
+                assertTrue(s.isEvenWeek());
+            }
+        }
+
+        @Test
+        @DisplayName("学期前 isOddWeek 返回 false")
+        void beforeSemesterOddWeek() {
+            SemesterEntity s = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.now().plusDays(365), SemesterEntity.SOURCE_AUTO_DETECT);
+            assertFalse(s.isOddWeek());
+            assertFalse(s.isEvenWeek());
+        }
+
+        @Test
+        @DisplayName("startDate 与 startDateString 互相转换")
+        void startDateStringConversion() {
+            SemesterEntity s = new SemesterEntity();
+            s.setStartDateFromString("2026-09-07");
+            assertEquals(LocalDate.of(2026, 9, 7), s.getStartDate());
+            assertEquals("2026-09-07", s.getStartDateString());
+        }
+
+        @Test
+        @DisplayName("无 startDate 时 getStartDateString 返回空字符串")
+        void emptyStartDateString() {
+            SemesterEntity s = new SemesterEntity();
+            assertEquals("", s.getStartDateString());
+        }
+
+        @Test
+        @DisplayName("无 startDate 时 getCurrentWeek 返回 -1")
+        void noStartDateReturnsMinusOne() {
+            SemesterEntity s = new SemesterEntity();
+            assertEquals(-1, s.getCurrentWeek());
+        }
+    }
+
+    // ==================== SemesterService 测试 ====================
+
+    @Nested
+    @DisplayName("SemesterService - 学期推算与工具方法")
+    class SemesterServiceTest {
+
+        @Test
+        @DisplayName("getMondayOfWeek：周一返回自身")
+        void mondayOfWeekReturnsItself() {
+            // 2026-03-02 是周一
+            LocalDate monday = LocalDate.of(2026, 3, 2);
+            assertEquals(monday, SemesterService.getMondayOfWeek(monday));
+        }
+
+        @Test
+        @DisplayName("getMondayOfWeek：周日返回当周周一")
+        void sundayReturnsMonday() {
+            // 2026-03-08 是周日，当周周一为 2026-03-02
+            LocalDate sunday = LocalDate.of(2026, 3, 8);
+            assertEquals(LocalDate.of(2026, 3, 2), SemesterService.getMondayOfWeek(sunday));
+        }
+
+        @Test
+        @DisplayName("getMondayOfWeek：周三返回当周周一")
+        void wednesdayReturnsMonday() {
+            // 2026-03-04 是周三，当周周一为 2026-03-02
+            LocalDate wednesday = LocalDate.of(2026, 3, 4);
+            assertEquals(LocalDate.of(2026, 3, 2), SemesterService.getMondayOfWeek(wednesday));
+        }
+
+        @Test
+        @DisplayName("3月1日所在周为春季学期第1周")
+        void springSemesterFromMarch() {
+            // 2026-03-01 是周日，所在周周一为 2026-02-23
+            SemesterEntity s = SemesterService.detectSemester("u1", LocalDate.of(2026, 3, 15));
+            assertEquals("u1", s.getUserId());
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_SPRING, s.getTerm());
+            assertEquals(LocalDate.of(2026, 2, 23), s.getStartDate());
+            assertEquals(SemesterEntity.SOURCE_AUTO_DETECT, s.getSource());
+        }
+
+        @Test
+        @DisplayName("8月推算春季学期（3~8月为春季学期范围）")
+        void springSemesterFromAugust() {
+            // 2026-08-15 → 仍在春季学期范围（3~8月）
+            SemesterEntity s = SemesterService.detectSemester("u1", LocalDate.of(2026, 8, 15));
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_SPRING, s.getTerm());
+            assertEquals(LocalDate.of(2026, 2, 23), s.getStartDate());
+        }
+
+        @Test
+        @DisplayName("9月推算秋季学期")
+        void autumnSemesterFromSeptember() {
+            // 2026-09-10 → 秋季学期，9月1日所在周一为 2026-08-31
+            SemesterEntity s = SemesterService.detectSemester("u1", LocalDate.of(2026, 9, 10));
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, s.getTerm());
+            assertEquals(LocalDate.of(2026, 8, 31), s.getStartDate());
+        }
+
+        @Test
+        @DisplayName("1月推算上学期秋季学期（跨年）")
+        void autumnSemesterFromJanuary() {
+            // 2027-01-10 → 秋季学期跨年，academicYear 应为 2026
+            SemesterEntity s = SemesterService.detectSemester("u1", LocalDate.of(2027, 1, 10));
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, s.getTerm());
+            assertEquals(LocalDate.of(2026, 8, 31), s.getStartDate());
+        }
+
+        @Test
+        @DisplayName("2月推算上学期秋季学期（2月属于9~2月范围）")
+        void autumnSemesterFromFebruary() {
+            // 2026-02-20 → 上学期秋季学期，academicYear 为 2025
+            SemesterEntity s = SemesterService.detectSemester("u1", LocalDate.of(2026, 2, 20));
+            assertEquals(2025, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, s.getTerm());
+            assertEquals(LocalDate.of(2025, 9, 1), s.getStartDate());
+        }
+
+        @Test
+        @DisplayName("7月推算春季学期（暑假期间）")
+        void springSemesterFromJuly() {
+            // 2026-07-15 → 仍在春季学期范围（3~8月）
+            SemesterEntity s = SemesterService.detectSemester("u1", LocalDate.of(2026, 7, 15));
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_SPRING, s.getTerm());
+        }
+
+        @Test
+        @DisplayName("9月1日为周二时周一为8月31日")
+        void septemberFirstIsTuesday() {
+            // 验证：2026年9月1日是周二
+            LocalDate sep1 = LocalDate.of(2026, 9, 1);
+            assertEquals(DayOfWeek.TUESDAY, sep1.getDayOfWeek());
+            // 周一应为 2026-08-31
+            assertEquals(LocalDate.of(2026, 8, 31), SemesterService.getMondayOfWeek(sep1));
+        }
+    }
+
+    // ==================== SemesterDetector 测试 ====================
+
+    @Nested
+    @DisplayName("SemesterDetector - 学期检测")
+    class SemesterDetectorTest {
+
+        private SemesterDetector detector;
+
+        @BeforeEach
+        void setUp() {
+            detector = new SemesterDetector();
+        }
+
+        // ====== 文件名检测 ======
+
+        @Test
+        @DisplayName("文件名含「2026秋季」识别为 FALL")
+        void fileNameFallChinese() {
+            Integer year = detector.extractYear("2026秋季课表.xlsx");
+            String term = detector.extractTerm("2026秋季课表.xlsx");
+            assertEquals(2026, year);
+            assertEquals(SemesterEntity.TERM_FALL, term);
+        }
+
+        @Test
+        @DisplayName("文件名含「2026春」识别为 SPRING")
+        void fileNameSpringChinese() {
+            Integer year = detector.extractYear("2026春季课表.xlsx");
+            String term = detector.extractTerm("2026春季课表.xlsx");
+            assertEquals(2026, year);
+            assertEquals(SemesterEntity.TERM_SPRING, term);
+        }
+
+        @Test
+        @DisplayName("文件名含「Fall 2026」识别为 FALL")
+        void fileNameFallEnglish() {
+            String term = detector.extractTerm("Fall_2026_Schedule.pdf");
+            assertEquals(SemesterEntity.TERM_FALL, term);
+        }
+
+        @Test
+        @DisplayName("文件名含「Spring2026」识别为 SPRING")
+        void fileNameSpringEnglish() {
+            String term = detector.extractTerm("Spring2026.xlsx");
+            assertEquals(SemesterEntity.TERM_SPRING, term);
+        }
+
+        @Test
+        @DisplayName("文件名无学期信息返回 null")
+        void fileNameNoTermInfo() {
+            Integer year = detector.extractYear("课表.pdf");
+            String term = detector.extractTerm("课表.pdf");
+            assertNull(year);
+            assertNull(term);
+        }
+
+        @Test
+        @DisplayName("文件名含纯数字但不是年份")
+        void fileNameNumberNotYear() {
+            // "课表2024.xlsx" → 2024 可以被检测为年份（正确行为）
+            Integer year = detector.extractYear("课表2024.xlsx");
+            assertEquals(Integer.valueOf(2024), year);
+        }
+
+        // ====== detectFromParams ======
+
+        @Test
+        @DisplayName("detectFromParams 正确创建学期")
+        void detectFromParamsValid() {
+            SemesterEntity s = detector.detectFromParams("u1", 2026, SemesterEntity.TERM_FALL);
+            assertNotNull(s);
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, s.getTerm());
+            assertEquals(SemesterEntity.SOURCE_USER_CONFIRM, s.getSource());
+            assertEquals(LocalDate.of(2026, 8, 31), s.getStartDate()); // 9月1日周二，周一为8月31日
+        }
+
+        @Test
+        @DisplayName("detectFromParams 参数无效返回 null")
+        void detectFromParamsInvalid() {
+            assertNull(detector.detectFromParams("u1", 0, SemesterEntity.TERM_FALL));
+            assertNull(detector.detectFromParams("u1", 2026, ""));
+            assertNull(detector.detectFromParams("u1", 2026, "INVALID"));
+        }
+
+        // ====== detectFromFile ======
+
+        @Test
+        @DisplayName("detectFromFile 从文件名检测学期")
+        void detectFromFileWithFileName() {
+            SemesterEntity s = detector.detectFromFile("u1", "2026秋季课表.xlsx", null);
+            assertNotNull(s);
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, s.getTerm());
+            assertEquals(SemesterEntity.SOURCE_AUTO_DETECT, s.getSource());
+        }
+
+        @Test
+        @DisplayName("detectFromFile 文件名无学期信息返回 null")
+        void detectFromFileNoInfo() {
+            SemesterEntity s = detector.detectFromFile("u1", "课表.pdf", null);
+            assertNull(s);
+        }
+
+        @Test
+        @DisplayName("detectFromFile 从文件内容检测学期")
+        void detectFromFileWithContent() {
+            String content = "2026-2027学年第一学期课程表";
+            SemesterEntity s = detector.detectFromFile("u1", "课表.xlsx", content);
+            assertNotNull(s);
+            assertEquals(2026, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, s.getTerm());
+        }
+
+        @Test
+        @DisplayName("detectFromFile 内容含第二学期识别为 SPRING")
+        void detectFromFileContentSecondTerm() {
+            String content = "2026-2027学年第二学期";
+            SemesterEntity s = detector.detectFromFile("u1", "课表.xlsx", content);
+            assertNotNull(s);
+            assertEquals(2027, s.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_SPRING, s.getTerm());
+        }
+
+        // ====== detectAuto ======
+
+        @Test
+        @DisplayName("detectAuto 自动推算不返回 null")
+        void detectAutoNotNull() {
+            SemesterEntity s = detector.detectAuto("u1");
+            assertNotNull(s);
+            assertNotNull(s.getStartDate());
+        }
+
+        // ====== calculateStartDate ======
+
+        @Test
+        @DisplayName("calculateStartDate 秋季学期取9月1日所在周一")
+        void calculateStartDateFall() {
+            // 2026年9月1日是周二，周一为2026-08-31
+            LocalDate start = SemesterDetector.calculateStartDate(2026, SemesterEntity.TERM_FALL);
+            assertEquals(LocalDate.of(2026, 8, 31), start);
+        }
+
+        @Test
+        @DisplayName("calculateStartDate 春季学期取3月1日所在周一")
+        void calculateStartDateSpring() {
+            // 2026年3月1日是周日，周一为2026-02-23
+            LocalDate start = SemesterDetector.calculateStartDate(2026, SemesterEntity.TERM_SPRING);
+            assertEquals(LocalDate.of(2026, 2, 23), start);
+        }
+    }
+
+    // ==================== ImportStateManager 状态扩展测试 ====================
+
+    @Nested
+    @DisplayName("CourseImportStateManager - 学期状态管理")
+    class ImportStateManagerSemesterTest {
+
+        private CourseImportStateManager stateManager;
+
+        @BeforeEach
+        void setUp() {
+            stateManager = new CourseImportStateManager();
+        }
+
+        @Test
+        @DisplayName("WAITING_SEMESTER 状态设置")
+        void waitingSemesterState() {
+            stateManager.setWaitingSemester("user1");
+            assertEquals(CourseImportStateManager.Phase.WAITING_SEMESTER, stateManager.getPhase("user1"));
+        }
+
+        @Test
+        @DisplayName("设置和获取待确认学期")
+        void pendingSemester() {
+            SemesterEntity semester = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), SemesterEntity.SOURCE_AUTO_DETECT);
+            stateManager.setPendingSemester("user1", semester);
+
+            SemesterEntity retrieved = stateManager.getPendingSemester("user1");
+            assertNotNull(retrieved);
+            assertEquals(2026, retrieved.getAcademicYear());
+            assertEquals(SemesterEntity.TERM_FALL, retrieved.getTerm());
+        }
+
+        @Test
+        @DisplayName("清除状态同时清除待确认学期")
+        void clearRemovesPendingSemester() {
+            SemesterEntity semester = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), SemesterEntity.SOURCE_AUTO_DETECT);
+            stateManager.setPendingSemester("user1", semester);
+            stateManager.clear("user1");
+
+            assertNull(stateManager.getPendingSemester("user1"));
+        }
+
+        @Test
+        @DisplayName("setWaitingFile 清除待确认学期")
+        void waitingFileClearsSemester() {
+            SemesterEntity semester = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), SemesterEntity.SOURCE_AUTO_DETECT);
+            stateManager.setPendingSemester("user1", semester);
+            stateManager.setWaitingFile("user1");
+
+            assertNull(stateManager.getPendingSemester("user1"));
+            assertEquals(CourseImportStateManager.Phase.WAITING_FILE, stateManager.getPhase("user1"));
+        }
+
+        @Test
+        @DisplayName("无待确认学期时返回 null")
+        void noPendingSemesterReturnsNull() {
+            assertNull(stateManager.getPendingSemester("unknown_user"));
+        }
+
+        @Test
+        @DisplayName("不同用户学期隔离")
+        void isolatedSemesters() {
+            SemesterEntity s1 = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), null);
+            SemesterEntity s2 = new SemesterEntity("u2", 2026, SemesterEntity.TERM_SPRING,
+                    LocalDate.of(2026, 3, 2), null);
+
+            stateManager.setPendingSemester("user1", s1);
+            stateManager.setPendingSemester("user2", s2);
+
+            assertEquals(SemesterEntity.TERM_FALL, stateManager.getPendingSemester("user1").getTerm());
+            assertEquals(SemesterEntity.TERM_SPRING, stateManager.getPendingSemester("user2").getTerm());
+        }
+
+        @Test
+        @DisplayName("pendingSemester 在 clearPendingSemester 后清除")
+        void clearPendingSemesterRemoves() {
+            SemesterEntity semester = new SemesterEntity("u1", 2026, SemesterEntity.TERM_FALL,
+                    LocalDate.of(2026, 9, 7), null);
+            stateManager.setPendingSemester("user1", semester);
+
+            assertNotNull(stateManager.getPendingSemester("user1"));
+
+            stateManager.clearPendingSemester("user1");
+            assertNull(stateManager.getPendingSemester("user1"));
         }
     }
 }

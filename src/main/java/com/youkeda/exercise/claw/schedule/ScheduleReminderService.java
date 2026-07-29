@@ -8,10 +8,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * 课前提醒服务
@@ -53,16 +56,19 @@ public class ScheduleReminderService {
     private final CourseRepository courseRepository;
     private final SemesterConfig semesterConfig;
     private final WechatILinkClient wechatClient;
+    private final SemesterService semesterService;
 
     /** 已发送提醒的课程 ID 缓存（避免重复发送），key = userId:courseId:yyyyMMdd */
     private final ConcurrentHashMap<String, Boolean> notifiedCache = new ConcurrentHashMap<>();
 
     public ScheduleReminderService(CourseRepository courseRepository,
                                    SemesterConfig semesterConfig,
-                                   WechatILinkClient wechatClient) {
+                                   WechatILinkClient wechatClient,
+                                   SemesterService semesterService) {
         this.courseRepository = courseRepository;
         this.semesterConfig = semesterConfig;
         this.wechatClient = wechatClient;
+        this.semesterService = semesterService;
     }
 
     @PostConstruct
@@ -79,27 +85,35 @@ public class ScheduleReminderService {
      */
     public void checkReminders() {
         try {
-            int currentWeek = semesterConfig.getCurrentWeek();
-            if (currentWeek <= 0) {
-                return; // 学期未开始
-            }
-
             List<CourseEntity> allCourseEntitys = courseRepository.findAll();
             if (allCourseEntitys.isEmpty()) {
                 return;
             }
 
             LocalDateTime now = LocalDateTime.now();
-            int today = semesterConfig.getCurrentDayOfWeek();
+            int today = LocalDate.now().getDayOfWeek().getValue();
+
+            // 按用户分组，每个用户独立计算当前教学周
+            Map<String, List<CourseEntity>> coursesByUser = allCourseEntitys.stream()
+                    .collect(Collectors.groupingBy(CourseEntity::getUserId));
 
             int sentCount = 0;
-            for (CourseEntity course : allCourseEntitys) {
-                try {
-                    if (checkCourseEntity(course, currentWeek, today, now)) {
-                        sentCount++;
+            for (Map.Entry<String, List<CourseEntity>> entry : coursesByUser.entrySet()) {
+                String userId = entry.getKey();
+                int currentWeek = resolveCurrentWeek(userId);
+                if (currentWeek <= 0) {
+                    continue; // 该用户学期未开始
+                }
+
+                for (CourseEntity course : entry.getValue()) {
+                    try {
+                        if (checkCourseEntity(course, currentWeek, today, now)) {
+                            sentCount++;
+                        }
+                    } catch (Exception e) {
+                        log.warn("检查课程提醒异常 | userId={} | courseId={} | error={}",
+                                userId, course.getId(), e.getMessage());
                     }
-                } catch (Exception e) {
-                    log.warn("检查课程提醒异常 | courseId={} | error={}", course.getId(), e.getMessage());
                 }
             }
 
@@ -113,6 +127,17 @@ public class ScheduleReminderService {
         } catch (Exception e) {
             log.error("课前提醒扫描异常", e);
         }
+    }
+
+    /**
+     * 解析用户当前教学周（优先 SemesterService，回退 SemesterConfig）
+     */
+    private int resolveCurrentWeek(String userId) {
+        int week = semesterService.getCurrentWeek(userId);
+        if (week > 0) {
+            return week;
+        }
+        return semesterConfig.getCurrentWeek();
     }
 
     /**
