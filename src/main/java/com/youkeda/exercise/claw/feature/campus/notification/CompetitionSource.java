@@ -1,12 +1,12 @@
-package com.youkeda.exercise.claw.notification.source;
+package com.youkeda.exercise.claw.feature.campus.notification;
 import com.youkeda.exercise.claw.notification.NotificationSource;
 
-import com.youkeda.exercise.claw.feature.campus.classifier.JobClassifier;
+import com.youkeda.exercise.claw.feature.campus.classifier.CompetitionClassifier;
 import com.youkeda.exercise.claw.feature.campus.collector.CompetitionCollector;
 import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import com.youkeda.exercise.claw.feature.campus.policy.DefaultPolicy;
 import com.youkeda.exercise.claw.feature.campus.policy.NotificationPolicy;
-import com.youkeda.exercise.claw.feature.campus.policy.rule.JobRules;
+import com.youkeda.exercise.claw.feature.campus.policy.rule.CompetitionRules;
 import com.youkeda.exercise.claw.feature.campus.store.CampusNotificationStore;
 import com.youkeda.exercise.claw.feature.campus.store.PendingAskStore;
 import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
@@ -19,32 +19,28 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-/**
- * 就业通知 Source。
- * 复用教务处通知列表，通过 JobClassifier 筛选就业相关通知。
- */
 @Component
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
-public class JobInfoSource implements NotificationSource {
+public class CompetitionSource implements NotificationSource {
 
-    private static final Logger log = LoggerFactory.getLogger(JobInfoSource.class);
-    private static final JobRules RULES = new JobRules();
+    private static final Logger log = LoggerFactory.getLogger(CompetitionSource.class);
+    private static final CompetitionRules RULES = new CompetitionRules();
 
     private final CompetitionCollector collector;
     private final CampusNotificationStore store;
-    private final JobClassifier classifier;
+    private final CompetitionClassifier classifier;
     private final DefaultPolicy policy;
     private final PendingAskStore pendingAskStore;
     private final NotificationService notificationService;
     private final WechatUserManager userManager;
 
-    public JobInfoSource(CompetitionCollector collector,
-                         CampusNotificationStore store,
-                         JobClassifier classifier,
-                         DefaultPolicy policy,
-                         PendingAskStore pendingAskStore,
-                         NotificationService notificationService,
-                         WechatUserManager userManager) {
+    public CompetitionSource(CompetitionCollector collector,
+                             CampusNotificationStore store,
+                             CompetitionClassifier classifier,
+                             DefaultPolicy policy,
+                             PendingAskStore pendingAskStore,
+                             NotificationService notificationService,
+                             WechatUserManager userManager) {
         this.collector = collector;
         this.store = store;
         this.classifier = classifier;
@@ -55,17 +51,17 @@ public class JobInfoSource implements NotificationSource {
     }
 
     @Override
-    public String getName() { return "JOB"; }
+    public String getName() { return "COMPETITION"; }
 
     @Override
     public void check() {
-        log.info("===== JobInfoSource 检查 =====");
+        log.info("===== CompetitionSource 检查 =====");
 
-        // 1. 采集（复用教务处通知列表）
+        // 1. 采集
         List<NotificationItem> items = collector.collect();
         if (items.isEmpty()) return;
 
-        // 2. 去重（按 url + source 联合键）
+        // 2. 去重
         List<NotificationItem> newItems = store.deduplicate(items);
         if (newItems.isEmpty()) return;
 
@@ -74,15 +70,15 @@ public class JobInfoSource implements NotificationSource {
             processItem(item);
         }
 
-        log.info("===== JobInfoSource 完成 | new={} =====", newItems.size());
+        log.info("===== CompetitionSource 完成 | new={} =====", newItems.size());
     }
 
     private void processItem(NotificationItem item) {
         // 分类
         String type = classifier.classify(item);
         if (type == null) {
-            log.debug("非就业通知，跳过 | title={}", item.getTitle());
-            return;
+            log.debug("非比赛通知，跳过 | title={}", item.getTitle());
+            return; // 不是比赛通知
         }
         item.setType(type);
 
@@ -95,8 +91,8 @@ public class JobInfoSource implements NotificationSource {
         switch (decision) {
             case NOTIFY -> notifyUser(item);
             case ASK -> askUser(item);
-            case SKIP -> log.debug("用户已忽略就业 {}，跳过", type);
-            case IGNORE -> log.debug("忽略就业通知");
+            case SKIP -> log.debug("用户已忽略比赛 {}，跳过", type);
+            case IGNORE -> log.debug("忽略比赛通知");
         }
     }
 
@@ -104,7 +100,7 @@ public class JobInfoSource implements NotificationSource {
         String userId = userManager.getOwnerUserId();
         String typeDisplayName = typeDisplayName(item.getType());
 
-        String message = "💼 就业提醒\n"
+        String message = "🏆 比赛提醒\n"
             + "「" + item.getTitle() + "」\n"
             + "类型: " + typeDisplayName + "\n"
             + (item.getPublishAt() != null && !item.getPublishAt().isBlank()
@@ -112,27 +108,27 @@ public class JobInfoSource implements NotificationSource {
             + "详情: " + item.getUrl();
 
         notificationService.notify(List.of(new Recommendation(
-            "job_" + item.getType(),
+            "comp_" + item.getType(),
             item.getTitle(),
-            typeDisplayName + "就业通知",
+            typeDisplayName + "比赛通知",
             item.getClassifierReason(),
             message,
             item.getUrl(),
             1.0f,
             System.currentTimeMillis()
         )));
-        log.info("就业通知已推送 | title={}", item.getTitle());
+        log.info("比赛通知已推送 | title={}", item.getTitle());
     }
 
     private void askUser(NotificationItem item) {
         String userId = userManager.getOwnerUserId();
         String typeDisplayName = typeDisplayName(item.getType());
 
-        String question = "检测到新的「" + typeDisplayName + "」信息："
-            + item.getTitle() + "，\n需要关注这类就业信息吗？（回复 需要/不需要）";
+        String question = "检测到新的「" + typeDisplayName + "」比赛通知："
+            + item.getTitle() + "，\n需要关注这类比赛吗？（回复 需要/不需要）";
 
         notificationService.notify(List.of(new Recommendation(
-            "ask_job_" + item.getType(),
+            "ask_comp_" + item.getType(),
             item.getTitle() + " - 是否需要关注",
             "需要用户确认",
             item.getClassifierReason(),
@@ -142,18 +138,19 @@ public class JobInfoSource implements NotificationSource {
             System.currentTimeMillis()
         )));
 
-        pendingAskStore.save("JOB", item.getType(), question, "PENDING");
-        log.info("已询问用户是否关注就业信息 | type={} | title={}", item.getType(), item.getTitle());
+        pendingAskStore.save("COMPETITION", item.getType(), question, "PENDING");
+        log.info("已询问用户是否关注比赛 | type={} | title={}", item.getType(), item.getTitle());
     }
 
     private String typeDisplayName(String type) {
         if (type == null) return "未知";
         return switch (type) {
-            case "CAREER_FAIR" -> "招聘会/双选会";
-            case "ELITE_TALK" -> "名企宣讲";
-            case "INTERN_RECRUIT" -> "实习/校招";
-            case "JOB_GUIDANCE" -> "就业指导";
-            case "OTHER_JOB" -> "其他就业";
+            case "CHALLENGE_CUP" -> "挑战杯";
+            case "INTERNET_PLUS" -> "互联网+";
+            case "INNOVATION_EXPO" -> "大创";
+            case "ACADEMIC_COMPETITION" -> "学科竞赛";
+            case "SKILL_COMPETITION" -> "技能大赛";
+            case "OTHER_COMPETITION" -> "其他比赛";
             default -> type;
         };
     }

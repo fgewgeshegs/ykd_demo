@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.notification.source;
+package com.youkeda.exercise.claw.feature.campus.notification;
 import com.youkeda.exercise.claw.notification.NotificationSource;
 
 import org.slf4j.Logger;

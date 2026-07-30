@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.notification.source;
+package com.youkeda.exercise.claw.feature.campus.notification;
 import com.youkeda.exercise.claw.notification.NotificationSource;
 
 import com.youkeda.exercise.claw.feature.campus.classifier.ActivityClassifier;
