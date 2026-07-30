@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.UUID;
 import java.util.concurrent.*;
 
 @Component("scoutWorkflowWorker")
@@ -45,8 +44,7 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
 
     @Override
     public WorkflowResult execute(WorkflowRequest request) {
-        String taskId = UUID.randomUUID().toString();
-        taskManager.createTask(taskId, request.userId(), request.payload());
+        String taskId = request.taskId();
 
         Duration timeout = Duration.ofMinutes(timeoutMinutes);
         Exception lastError = null;
@@ -61,7 +59,8 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
 
             try {
                 Future<WorkflowResult> future = executor.submit(() -> {
-                    com.youkeda.exercise.claw.scout.ScoutReport report = orchestrator.runForUser(request.userId());
+                    com.youkeda.exercise.claw.scout.ScoutReport report =
+                            orchestrator.run(request.payload());
                     String summary = report.toString();
                     return new WorkflowResult(taskId, WorkflowResult.WorkflowStatus.COMPLETED,
                             Instant.now(), summary, null);

@@ -83,11 +83,17 @@ public class BotInstance {
     }
 
     /** 发送文本 */
-    public void sendText(String toUserId, String text) {
+    public boolean sendText(String toUserId, String text) {
+        if (toUserId == null || toUserId.isBlank()) {
+            log.error("发送文本失败 | 收件人为空");
+            return false;
+        }
         try {
             client.sendText(toUserId, text);
+            return true;
         } catch (Exception e) {
             log.error("发送文本失败 | to={}", toUserId, e);
+            return false;
         }
     }
 

@@ -31,10 +31,9 @@ public final class InformationIdentity {
     }
 
     public static String pointUuid(InformationItem item) {
-        String owner = item.getUserId() == null ? "" : item.getUserId();
         String key = stableKey(item.getSource(), item.getTitle());
         return UUID.nameUUIDFromBytes(
-                (owner + "\0" + key).getBytes(StandardCharsets.UTF_8)).toString();
+                key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     static String canonicalSource(String source) {

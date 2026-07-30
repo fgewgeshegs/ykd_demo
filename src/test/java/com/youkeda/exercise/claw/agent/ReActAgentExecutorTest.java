@@ -6,7 +6,9 @@ import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.model.PlanTask;
 import com.youkeda.exercise.claw.agent.plan.DefaultPlanStore;
+import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
+import com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder;
 import com.youkeda.exercise.claw.agent.skill.*;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
@@ -158,7 +160,7 @@ class ReActAgentExecutorTest {
             }
         });
 
-        DefaultPlanStore planStore = new DefaultPlanStore();
+        PlanStore planStore = new DefaultPlanStore();
         PlanValidator planValidator = new PlanValidator();
         SafetyPolicy safetyPolicy = new SafetyPolicy();
         LongTermMemoryService longTermMemoryService = mock(LongTermMemoryService.class);
@@ -181,7 +183,11 @@ class ReActAgentExecutorTest {
                 llmClient, registry, contextStore, objectMapper,
                 planStore, planValidator, safetyPolicy, longTermMemoryService,
                 skillRouter, skillSessionStore, skillRegistry, skillsProperties, wechatUserManager,
-                mock(SkillKnowledgeService.class));
+                mock(SkillKnowledgeService.class),
+                mock(AgentActivityRecorder.class),
+                mock(SkillPendingCoordinator.class),
+                mock(SkillToolFallbackPolicy.class),
+                mock(ToolResultStatusParser.class));
         return new Fixture(llmClient, executor, contextStore);
     }
 

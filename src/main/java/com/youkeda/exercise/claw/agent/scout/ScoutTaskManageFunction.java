@@ -57,9 +57,6 @@ public class ScoutTaskManageFunction implements LLMFunction {
         ObjectNode taskId = properties.putObject("taskId");
         taskId.put("type", "string");
         taskId.put("description", "任务ID（status/cancel/retry时需要）");
-        ObjectNode userId = properties.putObject("userId");
-        userId.put("type", "string");
-        userId.put("description", "用户ID（list时需要）");
         params.putArray("required").add("action");
         return params;
     }
@@ -101,8 +98,7 @@ public class ScoutTaskManageFunction implements LLMFunction {
     }
 
     private String handleList(JsonNode args) {
-        String userId = args.has("userId") ? args.get("userId").asText() : "default";
-        List<ScoutTask> tasks = taskManager.listTasks(userId);
+        List<ScoutTask> tasks = taskManager.listTasks();
         String tasksJson = tasks.stream()
                 .map(t -> String.format(
                     "{\"taskId\":\"%s\",\"query\":\"%s\",\"status\":\"%s\"}",

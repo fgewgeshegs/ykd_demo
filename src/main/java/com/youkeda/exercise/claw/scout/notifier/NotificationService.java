@@ -4,6 +4,7 @@ import com.youkeda.exercise.claw.scout.ScoutProperties;
 import com.youkeda.exercise.claw.scout.judge.Recommendation;
 import com.youkeda.exercise.claw.scout.processor.InformationIdentity;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -22,25 +23,44 @@ import java.util.List;
 public class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+    private static final int MAX_REPORT_CHARS = 1800;
+    private static final String REPORT_FOOTER = "---\n由 AI 信息猎手 Agent 自动生成";
 
     private final WechatILinkClient wechatClient;
     private final ScoutDeliveryStore deliveryStore;
     private final ScoutProperties props;
+    private final WechatUserManager userManager;
+    private final RecommendationSummaryService summaryService;
 
     public NotificationService(WechatILinkClient wechatClient,
                                ScoutDeliveryStore deliveryStore,
-                               ScoutProperties props) {
+                               ScoutProperties props,
+                               WechatUserManager userManager,
+                               RecommendationSummaryService summaryService) {
         this.wechatClient = wechatClient;
         this.deliveryStore = deliveryStore;
         this.props = props;
+        this.userManager = userManager;
+        this.summaryService = summaryService;
     }
 
     /**
-     * 推送推荐结果给用户
+     * 普通单条推送入口，供校园提醒等调用方使用。
      */
-    public void notify(String userId, List<Recommendation> recommendations) {
+    public void notify(List<Recommendation> recommendations) {
+        deliver(recommendations, false);
+    }
+
+    /**
+     * 信息猎手专用入口：先发送推荐明细，再发送本轮综合总结。
+     */
+    public void notifyWithSummary(List<Recommendation> recommendations) {
+        deliver(recommendations, true);
+    }
+
+    private void deliver(List<Recommendation> recommendations, boolean sendSummary) {
         if (recommendations == null || recommendations.isEmpty()) {
-            log.info("无推荐结果，跳过推送 | userId={}", userId);
+            log.info("无推荐结果，跳过推送");
             return;
         }
 
@@ -52,59 +72,122 @@ public class NotificationService {
         for (Recommendation recommendation : recommendations) {
             String itemKey = InformationIdentity.stableKey(
                     recommendation.source(), recommendation.title());
-            if (!deliveryStore.wasDeliveredSince(userId, itemKey, cooldownStart)) {
+            if (!deliveryStore.wasDeliveredSince(itemKey, cooldownStart)) {
                 eligible.add(recommendation);
             }
         }
 
         if (eligible.isEmpty()) {
-            log.info("推荐均在冷却期内，跳过重复推送 | userId={} | count={}",
-                    userId, recommendations.size());
+            log.info("推荐均在冷却期内，跳过重复推送 | count={}", recommendations.size());
             return;
         }
 
-        String report = formatReport(eligible);
+        List<String> reportChunks = formatReportChunks(eligible);
+        String ownerUserId = userManager.getOwnerUserId();
+        if (ownerUserId == null || ownerUserId.isBlank()) {
+            log.error("推荐推送失败 | 未找到微信收件人，不记录投递状态");
+            return;
+        }
 
         try {
-            wechatClient.sendTextMessage(userId, report);
+            for (int i = 0; i < reportChunks.size(); i++) {
+                if (!wechatClient.sendTextMessage(ownerUserId, reportChunks.get(i))) {
+                    log.error("推荐明细第 {}/{} 段发送失败，不记录投递状态",
+                            i + 1, reportChunks.size());
+                    return;
+                }
+            }
             for (Recommendation recommendation : eligible) {
                 String itemKey = InformationIdentity.stableKey(
                         recommendation.source(), recommendation.title());
-                deliveryStore.markDelivered(userId, itemKey, now);
+                deliveryStore.markDelivered(itemKey, now);
             }
-            log.info("推荐推送成功 | userId={} | count={} | suppressed={}",
-                    userId, eligible.size(), recommendations.size() - eligible.size());
+
+            if (sendSummary) {
+                String summary = summaryService.summarize(eligible);
+                if (summary != null && !summary.isBlank()
+                        && !wechatClient.sendTextMessage(ownerUserId, summary)) {
+                    log.error("推荐明细已发送，但综合总结发送失败");
+                }
+            }
+            log.info("推荐推送成功 | count={} | chunks={} | suppressed={}",
+                    eligible.size(), reportChunks.size(),
+                    recommendations.size() - eligible.size());
         } catch (Exception e) {
-            log.error("推荐推送失败 | userId={}", userId, e);
+            log.error("推荐推送失败", e);
         }
     }
 
     /**
      * 格式化推荐报告
      */
-    private String formatReport(List<Recommendation> recs) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("🔍 信息猎手发现 ").append(recs.size()).append(" 条有价值的信息：\n\n");
+    private List<String> formatReportChunks(List<Recommendation> recs) {
+        List<Recommendation> strong = recs.stream()
+                .filter(rec -> rec.tier() == Recommendation.Tier.STRONG)
+                .toList();
+        List<Recommendation> worthScanning = recs.stream()
+                .filter(rec -> rec.tier() == Recommendation.Tier.DISCOVERY)
+                .toList();
 
-        for (int i = 0; i < recs.size(); i++) {
-            Recommendation r = recs.get(i);
-            sb.append(i + 1).append(". ").append(r.title()).append("\n");
-            sb.append("   📝 ").append(r.summary()).append("\n");
-            if (r.reason() != null && !r.reason().isBlank()) {
-                sb.append("   💡 ").append(r.reason()).append("\n");
+        List<Recommendation> ordered = new ArrayList<>(strong.size() + worthScanning.size());
+        ordered.addAll(strong);
+        ordered.addAll(worthScanning);
+
+        List<String> chunks = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        current.append("🔍 信息猎手发现 ").append(recs.size())
+                .append(" 条有价值的信息：\n\n");
+
+        int index = 1;
+        boolean hasEntry = false;
+        Recommendation.Tier activeTier = null;
+
+        for (Recommendation recommendation : ordered) {
+            String sectionHeader = activeTier == recommendation.tier()
+                    ? ""
+                    : tierHeader(recommendation.tier());
+            String entry = formatRecommendation(index, recommendation);
+
+            if (hasEntry && current.length() + sectionHeader.length()
+                    + entry.length() + REPORT_FOOTER.length() > MAX_REPORT_CHARS) {
+                chunks.add(current.toString().stripTrailing());
+                current = new StringBuilder("🔍 信息猎手推荐（续）\n\n");
+                hasEntry = false;
+                activeTier = null;
+                sectionHeader = tierHeader(recommendation.tier());
             }
-            if (r.suggestion() != null && !r.suggestion().isBlank()) {
-                sb.append("   🎯 ").append(r.suggestion()).append("\n");
-            }
-            if (r.source() != null && !r.source().isBlank()) {
-                sb.append("   🔗 ").append(r.source()).append("\n");
-            }
-            sb.append("\n");
+
+            current.append(sectionHeader).append(entry);
+            activeTier = recommendation.tier();
+            hasEntry = true;
+            index++;
         }
 
-        sb.append("---\n");
-        sb.append("由 AI 信息猎手 Agent 自动生成");
+        current.append(REPORT_FOOTER);
+        chunks.add(current.toString());
+        return chunks;
+    }
 
+    private String tierHeader(Recommendation.Tier tier) {
+        return tier == Recommendation.Tier.STRONG
+                ? "🔥 强推荐\n\n"
+                : "👀 值得扫一眼\n\n";
+    }
+
+    private String formatRecommendation(int index, Recommendation recommendation) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(index).append(". ").append(recommendation.title()).append("\n");
+        sb.append("   📝 ").append(recommendation.summary()).append("\n");
+        if (recommendation.reason() != null && !recommendation.reason().isBlank()) {
+            sb.append("   💡 ").append(recommendation.reason()).append("\n");
+        }
+        if (recommendation.suggestion() != null && !recommendation.suggestion().isBlank()) {
+            sb.append("   🎯 ").append(recommendation.suggestion()).append("\n");
+        }
+        if (recommendation.source() != null && !recommendation.source().isBlank()) {
+            sb.append("   🔗 ").append(recommendation.source()).append("\n");
+        }
+        sb.append("\n");
         return sb.toString();
     }
 }

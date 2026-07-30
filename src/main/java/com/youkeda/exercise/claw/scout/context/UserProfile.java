@@ -8,7 +8,6 @@ import java.util.List;
  * 从长期记忆中提取，用于驱动搜索规划和语义匹配
  */
 public record UserProfile(
-        String userId,
         List<String> interests,
         List<String> currentProjects,
         List<String> techStack,

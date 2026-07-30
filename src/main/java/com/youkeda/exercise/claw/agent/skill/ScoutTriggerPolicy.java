@@ -6,27 +6,15 @@ import java.util.Optional;
 @Component("scoutTriggerPolicy")
 public class ScoutTriggerPolicy implements SkillTriggerPolicy {
 
-    private static final java.util.Set<String> TRIGGERS = java.util.Set.of(
-            "帮我找", "有什么新消息", "搜搜看", "关注", "搜索", "查一下", "帮我查查");
-
-    private static final java.util.Set<String> EXCLUDE = java.util.Set.of(
-            "天气", "旅游", "路线", "打车", "怎么去", "多少钱", "价格");
-
     @Override
     public SkillTriggerMatch match(String message, Optional<SkillSession> session) {
         if (message == null || message.isBlank()) return SkillTriggerMatch.noMatch();
 
-        // Check exclusion first — "帮我查一下天气" should not trigger scout
-        for (String ex : EXCLUDE) {
-            if (message.contains(ex)) return SkillTriggerMatch.noMatch();
+        // 委托给旧的高精度策略（正则 + 否定检测 + 非请求过滤）
+        boolean triggered = com.youkeda.exercise.claw.scout.ScoutTriggerPolicy.hasExplicitRequest(message);
+        if (triggered) {
+            return new SkillTriggerMatch(true, 0.9, "scout explicit request", false);
         }
-
-        for (String trigger : TRIGGERS) {
-            if (message.contains(trigger)) {
-                return new SkillTriggerMatch(true, 0.8, "scout trigger: " + trigger, false);
-            }
-        }
-
         return SkillTriggerMatch.noMatch();
     }
 }

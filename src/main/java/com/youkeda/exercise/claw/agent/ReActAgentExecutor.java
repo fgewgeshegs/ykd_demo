@@ -8,6 +8,7 @@ import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.memory.longterm.MemoryItem;
+import com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder;
 import com.youkeda.exercise.claw.agent.model.*;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
@@ -70,6 +71,8 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
 
+    public static final String SILENT_REPLY = "__HANDLED_WITHOUT_USER_REPLY__";
+
     private final LLMClient llmClient;
     private final LLMFunctionRegistry functionRegistry;
     private final ContextStore contextStore;
@@ -84,6 +87,10 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final SkillsProperties skillsProperties;
     private final WechatUserManager wechatUserManager;
     private final SkillKnowledgeService skillKnowledgeService;
+    private final AgentActivityRecorder activityRecorder;
+    private final SkillPendingCoordinator skillPendingCoordinator;
+    private final SkillToolFallbackPolicy skillToolFallbackPolicy;
+    private final ToolResultStatusParser toolResultStatusParser;
 
     public ReActAgentExecutor(LLMClient llmClient,
                                LLMFunctionRegistry functionRegistry,
@@ -98,7 +105,11 @@ public class ReActAgentExecutor implements AgentExecutor {
                                SkillRegistry skillRegistry,
                                SkillsProperties skillsProperties,
                                WechatUserManager wechatUserManager,
-                               SkillKnowledgeService skillKnowledgeService) {
+                               SkillKnowledgeService skillKnowledgeService,
+                               AgentActivityRecorder activityRecorder,
+                               SkillPendingCoordinator skillPendingCoordinator,
+                               SkillToolFallbackPolicy skillToolFallbackPolicy,
+                               ToolResultStatusParser toolResultStatusParser) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
@@ -113,10 +124,16 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.skillsProperties = skillsProperties;
         this.wechatUserManager = wechatUserManager;
         this.skillKnowledgeService = skillKnowledgeService;
+        this.activityRecorder = activityRecorder;
+        this.skillPendingCoordinator = skillPendingCoordinator;
+        this.skillToolFallbackPolicy = skillToolFallbackPolicy;
+        this.toolResultStatusParser = toolResultStatusParser;
     }
 
     @Override
     public String execute(AgentContext context) {
+        long requestStartedAt = System.currentTimeMillis();
+        String activityRequestId = activityRecorder.beginRequest();
         String userMessage = context.getMessage();
 
         log.info("AgentExecutor 执行 | message={}", userMessage);
@@ -136,6 +153,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         // Get active SkillDefinition
         String activeSkillName = session.activeSkill();
         SkillDefinition activeSkill = skillRegistry.find(activeSkillName).orElse(null);
+        activityRecorder.skillSelected(activityRequestId, activeSkillName);
 
         // Build effective tool set
         Set<String> effectiveTools = new LinkedHashSet<>();
@@ -193,6 +211,8 @@ public class ReActAgentExecutor implements AgentExecutor {
                     longTermMemoryService.processAndStoreAsync(fastUserMsg, fastReply);
                     // Update session after fast path
                     skillSessionStore.save(userId, session);
+                    activityRecorder.requestCompleted(
+                            activityRequestId, System.currentTimeMillis() - requestStartedAt);
                     return reply;
                 }
                 log.warn("快速对话路径异常，回退到工具循环");
@@ -200,7 +220,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
 
         // 4. 按 Skill 过滤可用工具
-        FunctionExecutionContext execContext = new FunctionExecutionContext(userMessage);
+        FunctionExecutionContext execContext = new FunctionExecutionContext(userMessage, session, userId);
         List<ToolDefinition> tools = functionRegistry.getAvailableDefinitions(effectiveTools, execContext);
         log.debug("可用工具: {}", tools.stream().map(ToolDefinition::name).toList());
 
@@ -225,6 +245,8 @@ public class ReActAgentExecutor implements AgentExecutor {
                 }
                 if (response == null) {
                     log.warn("LLM 调用失败，结束循环");
+                    activityRecorder.requestFailed(
+                            activityRequestId, "LLM 返回空", System.currentTimeMillis() - requestStartedAt);
                     return handleError();
                 }
             }
@@ -270,15 +292,28 @@ public class ReActAgentExecutor implements AgentExecutor {
 
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
-                String reply = response.getContent();
-                log.info("LLM 直接回复 | reply={}", reply);
-                contextStore.append("assistant", reply);
-                // 异步提取长期记忆
-                final String directUserMsg = userMessage;
-                final String directReply = reply;
-                longTermMemoryService.processAndStoreAsync(directUserMsg, directReply);
-                skillSessionStore.save(userId, session);
-                return reply;
+                var fallbackCall = skillToolFallbackPolicy.createFallback(
+                        routingResult, userMessage, execContext, toolCallCount);
+                if (fallbackCall.isPresent()) {
+                    log.info("LLM 未调用已选中的信息猎手，Runtime 执行兜底调用");
+                    response = new LLMResponse(
+                            null, List.of(fallbackCall.get()), "tool_calls");
+                } else {
+                    String reply = response.getContent();
+                    log.info("LLM 直接回复 | reply={}", reply);
+                    contextStore.append("assistant", reply);
+                    if (toolCallCount == 0) {
+                        session = skillPendingCoordinator.afterDirectReply(session, routingResult);
+                    }
+                    // 异步提取长期记忆
+                    final String directUserMsg = userMessage;
+                    final String directReply = reply;
+                    longTermMemoryService.processAndStoreAsync(directUserMsg, directReply);
+                    skillSessionStore.save(userId, session);
+                    activityRecorder.requestCompleted(
+                            activityRequestId, System.currentTimeMillis() - requestStartedAt);
+                    return reply;
+                }
             }
 
             // === 分支 3：工具调用 ===
@@ -302,24 +337,57 @@ public class ReActAgentExecutor implements AgentExecutor {
                 if (fn == null) {
                     log.warn("未找到工具: {}", toolName);
                     result = "{\"error\":\"未知工具: " + toolName + "\"}";
+                    activityRecorder.toolBlocked(
+                            activityRequestId, activeSkillName, toolName, "未知工具");
+                }
+                // 当前消息不满足工具的严格触发条件
+                else if (!fn.isAvailable(execContext)) {
+                    log.warn("工具调用被可用性策略阻止 | name={} | message={}", toolName, userMessage);
+                    String reason = fn.getUnavailableReason(execContext);
+                    result = policyBlocked(reason);
+                    activityRecorder.toolBlocked(
+                            activityRequestId, activeSkillName, toolName, reason);
                 }
                 // 安全检查阻止
                 else if (blockedReason != null) {
                     result = policyBlocked(blockedReason);
+                    activityRecorder.toolBlocked(
+                            activityRequestId, activeSkillName, toolName, blockedReason);
                 }
                 // 工具调用数量上限
                 else if (toolCallCount >= MAX_TOOL_CALLS) {
                     result = policyBlocked("本次请求工具调用数量已达上限，请使用已有结果生成答复。");
+                    activityRecorder.toolBlocked(
+                            activityRequestId, activeSkillName, toolName, "工具调用数量已达上限");
                 }
                 // 去重（相同工具 + 相同参数）
                 else if (!executedCalls.add(callSignature)) {
                     result = policyBlocked("相同工具和参数已经执行过，请使用已有结果，不要重复调用。");
+                    activityRecorder.toolBlocked(
+                            activityRequestId, activeSkillName, toolName, "重复工具调用");
                 }
                 // 执行
                 else {
                     toolCallCount++;
                     executedInBatch = true;
-                    result = fn.execute(tc.arguments(), new FunctionExecutionContext(userMessage, context.getUserId()));
+                    long toolStartedAt = System.currentTimeMillis();
+                    activityRecorder.toolStarted(
+                            activityRequestId, activeSkillName, toolName);
+                    try {
+                        result = fn.execute(tc.arguments(), execContext);
+                        session = skillPendingCoordinator.afterToolExecution(session, toolName);
+                        ResultStatus resultStatus = parseResultStatus(result);
+                        boolean succeeded = resultStatus == ResultStatus.SUCCESS
+                                || resultStatus == ResultStatus.PARTIAL;
+                        activityRecorder.toolFinished(
+                                activityRequestId, activeSkillName, toolName, succeeded,
+                                System.currentTimeMillis() - toolStartedAt);
+                    } catch (RuntimeException e) {
+                        activityRecorder.toolFinished(
+                                activityRequestId, activeSkillName, toolName, false,
+                                System.currentTimeMillis() - toolStartedAt);
+                        throw e;
+                    }
                     log.info("工具执行完成 | name={} | result={}", toolName, truncate(result, 200));
 
                     // 更新 PlanState（如果有）
@@ -336,6 +404,14 @@ public class ReActAgentExecutor implements AgentExecutor {
                     }
                 }
                 toolResults.add(result);
+            }
+
+            if (isStartedInformationScout(toolCalls, toolResults)) {
+                skillSessionStore.save(userId, session);
+                activityRecorder.requestCompleted(
+                        activityRequestId, System.currentTimeMillis() - requestStartedAt);
+                log.info("信息猎手后台任务已受理，本轮保持静默");
+                return SILENT_REPLY;
             }
 
             // 添加 assistant 消息（合并本轮所有 tool_calls）
@@ -392,6 +468,8 @@ public class ReActAgentExecutor implements AgentExecutor {
         final String synthReply = synthesizedReply;
         longTermMemoryService.processAndStoreAsync(synthUserMsg, synthReply);
         skillSessionStore.save(userId, session);
+        activityRecorder.requestCompleted(
+                activityRequestId, System.currentTimeMillis() - requestStartedAt);
         return synthesizedReply;
     }
 
@@ -483,20 +561,23 @@ public class ReActAgentExecutor implements AgentExecutor {
      * 从工具返回的 JSON 字符串中解析 ResultStatus。
      */
     private ResultStatus parseResultStatus(String resultJson) {
-        if (resultJson == null || resultJson.isBlank()) return ResultStatus.FAILED;
-        try {
-            JsonNode node = objectMapper.readTree(resultJson);
-            if (node.has("error")) return ResultStatus.FAILED;
-            String status = node.path("status").asText("SUCCESS").toUpperCase();
-            return switch (status) {
-                case "SUCCESS" -> ResultStatus.SUCCESS;
-                case "PARTIAL" -> ResultStatus.PARTIAL;
-                case "BLOCKED" -> ResultStatus.BLOCKED;
-                default -> ResultStatus.FAILED;
-            };
-        } catch (Exception e) {
-            return ResultStatus.SUCCESS; // 非 JSON 工具输出视为成功
+        return toolResultStatusParser.parse(resultJson);
+    }
+
+    private boolean isStartedInformationScout(
+            List<LLMResponse.ToolCall> toolCalls, List<String> toolResults) {
+        for (int i = 0; i < toolCalls.size(); i++) {
+            if (!"information_scout".equals(toolCalls.get(i).name())) continue;
+            try {
+                JsonNode result = objectMapper.readTree(toolResults.get(i));
+                if ("started".equalsIgnoreCase(result.path("status").asText())) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+                // 非 JSON 结果不能视为已受理后台任务。
+            }
         }
+        return false;
     }
 
     // ==================== 工具方法 ====================
@@ -610,6 +691,14 @@ public class ReActAgentExecutor implements AgentExecutor {
                 sb.append(skillPrompt).append("\n");
                 sb.append("[/SKILL_CONTEXT]\n\n");
             }
+        }
+        if (context.getSkillSession() != null
+                && context.getSkillSession().hasPendingAction(
+                        SkillPendingCoordinator.START_INFORMATION_SCOUT)) {
+            sb.append("[RUNTIME_STATE]\n");
+            sb.append("用户当前消息是对信息猎手搜索方向追问的补充回答。\n");
+            sb.append("请将当前消息作为 query 调用 information_scout，不要再次追问方向。\n");
+            sb.append("[/RUNTIME_STATE]\n\n");
         }
         // RAG knowledge context
         if (skillKnowledgeService != null && activeSkill != null

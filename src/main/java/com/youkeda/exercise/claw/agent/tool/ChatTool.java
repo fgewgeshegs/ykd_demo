@@ -70,6 +70,11 @@ public class ChatTool implements WechatMessageHandler {
                 .setMessageType(MessageType.TEXT);
         String reply = agentExecutor.execute(context);
 
+        if (ReActAgentExecutor.SILENT_REPLY.equals(reply)) {
+            log.info("Agent 请求已处理，本轮无需发送回复 | from={}", message.getUserId());
+            return WechatReply.silent();
+        }
+
         if (reply == null || reply.isEmpty()) {
             log.warn("AI 回复为空，使用降级回复 | from={}", message.getUserId());
             return WechatReply.text(FALLBACK_REPLY);

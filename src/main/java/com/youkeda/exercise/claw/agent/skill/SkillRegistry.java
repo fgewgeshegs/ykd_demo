@@ -4,6 +4,8 @@ import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +28,7 @@ public class SkillRegistry {
         this.functionRegistry = functionRegistry;
     }
 
-    @PostConstruct
+    @EventListener(ApplicationReadyEvent.class)
     public void init() {
         // Collect registered tool names at PostConstruct time, AFTER all
         // LLMFunction implementations have registered themselves.
@@ -34,7 +36,8 @@ public class SkillRegistry {
                 .map(td -> td.name())
                 .collect(Collectors.toSet());
 
-        properties.getSkills().forEach((name, def) -> {
+        properties.getSkills().forEach((name, configuredDef) -> {
+            SkillDefinition def = withName(name, configuredDef);
             if (!def.enabled()) return;
             SkillHealth health = validate(name, def);
             healthCache.put(name, health);
@@ -43,6 +46,21 @@ public class SkillRegistry {
             }
             log.info("Skill [{}]: {}", name, health.status());
         });
+    }
+
+    private SkillDefinition withName(String name, SkillDefinition def) {
+        return new SkillDefinition(
+                name,
+                def.description(),
+                def.priority(),
+                def.tags(),
+                def.requiredTools(),
+                def.optionalTools(),
+                def.systemPromptResource(),
+                def.triggerPolicyName(),
+                def.knowledge(),
+                def.enabled()
+        );
     }
 
     private SkillHealth validate(String name, SkillDefinition def) {

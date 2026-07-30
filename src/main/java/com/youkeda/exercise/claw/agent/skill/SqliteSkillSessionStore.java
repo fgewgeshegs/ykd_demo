@@ -55,7 +55,7 @@ public class SqliteSkillSessionStore implements SkillSessionStore {
     @Override
     public void save(String userId, SkillSession session) {
         try {
-            String contextJson = objectMapper.writeValueAsString(new HashMap<>());
+            String contextJson = objectMapper.writeValueAsString(session.context());
             jdbcTemplate.update(
                 "INSERT OR REPLACE INTO skill_sessions " +
                 "(user_id, active_skill, previous_skill, context_json, " +
@@ -86,7 +86,18 @@ public class SqliteSkillSessionStore implements SkillSessionStore {
                 rs.getString("previous_skill"),
                 Instant.ofEpochSecond(rs.getLong("activated_at")),
                 Instant.ofEpochSecond(rs.getLong("last_activity_at")),
-                rs.getInt("inactivity_count")
+                rs.getInt("inactivity_count"),
+                parseContext(rs.getString("context_json"))
         );
+    }
+
+    private Map<String, String> parseContext(String contextJson) {
+        if (contextJson == null || contextJson.isBlank()) return Map.of();
+        try {
+            return objectMapper.readValue(contextJson, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to parse skill session context, using empty context", e);
+            return Map.of();
+        }
     }
 }

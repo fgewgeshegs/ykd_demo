@@ -122,9 +122,8 @@ public class CampusNoticeProcessor {
     private void notifyUser(NoticeItem notice, ExamClassification classification) {
         String userId = userManager.getOwnerUserId();
         String richMessage = formatNotification(notice, classification);
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "exam_" + classification.type().name(),
-            userId,
             notice.getTitle(),
             typeDisplayName(classification.type()) + "考试提醒",
             classification.reason(),
@@ -141,9 +140,8 @@ public class CampusNoticeProcessor {
         String question = "检测到新的「" + typeDisplayName(classification.type()) + "」通知："
             + notice.getTitle() + "，\n需要提醒你吗？（回复 需要/不需要）";
 
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "ask_" + classification.type().name(),
-            userId,
             notice.getTitle() + " - 是否需要提醒",
             "需要用户确认",
             classification.reason(),

@@ -1,7 +1,9 @@
 package com.youkeda.exercise.claw.wechat.login;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.youkeda.exercise.claw.agent.activity.AgentActivityStore;
 import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +12,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 微信 ClawBot 控制台 Dashboard。
@@ -30,14 +35,20 @@ public class LoginPageServer {
 
     private final LoginStateManager stateManager;
     private final BotSessionManager botSessionManager;
+    private final AgentActivityStore activityStore;
+    private final ObjectMapper objectMapper;
 
     private HttpServer server;
     private volatile int port = -1;
 
     public LoginPageServer(LoginStateManager stateManager,
-                           BotSessionManager botSessionManager) {
+                           BotSessionManager botSessionManager,
+                           AgentActivityStore activityStore,
+                           ObjectMapper objectMapper) {
         this.stateManager = stateManager;
         this.botSessionManager = botSessionManager;
+        this.activityStore = activityStore;
+        this.objectMapper = objectMapper.copy().findAndRegisterModules();
     }
 
     /** 启动 HTTP 服务，返回实际绑定端口 */
@@ -45,6 +56,9 @@ public class LoginPageServer {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/login", this::handleLogin);
         server.createContext("/login/status", this::handleStatus);
+        server.createContext("/dashboard", this::handleDashboard);
+        server.createContext("/api/dashboard/summary", this::handleDashboardSummary);
+        server.createContext("/api/activities", this::handleActivities);
         server.createContext("/api/bot/status", this::handleBotStatus);
         server.setExecutor(null);
         server.start();
@@ -66,8 +80,58 @@ public class LoginPageServer {
 
     /** GET /login — 控制台 HTML */
     private void handleLogin(HttpExchange exchange) throws IOException {
+        if (isConnected()) {
+            redirect(exchange, "/dashboard");
+            return;
+        }
         String qrUrl = stateManager.getQrUrl();
-        String html = buildDashboardHtml(qrUrl);
+        String html = LoginPageRenderer.render(qrUrl, objectMapper);
+        sendHtml(exchange, html);
+    }
+
+    /** GET /dashboard — 登录后的 Agent 运行控制台 */
+    private void handleDashboard(HttpExchange exchange) throws IOException {
+        if (!isConnected()) {
+            redirect(exchange, "/login");
+            return;
+        }
+        sendHtml(exchange, DashboardPageRenderer.render());
+    }
+
+    /** GET /api/dashboard/summary — 控制台指标 */
+    private void handleDashboardSummary(HttpExchange exchange) throws IOException {
+        var summary = activityStore.getSummary();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("requestCount", summary.requestCount());
+        body.put("toolCallCount", summary.toolCallCount());
+        body.put("failureCount", summary.failureCount());
+        body.put("lastActivityAt", summary.lastActivityAt() == null
+                ? null : summary.lastActivityAt().toEpochMilli());
+        sendJson(exchange, objectMapper.writeValueAsBytes(body));
+    }
+
+    /** GET /api/activities?limit=80 — 最近的 Skill 与 Tool 活动 */
+    private void handleActivities(HttpExchange exchange) throws IOException {
+        int limit = parseLimit(exchange.getRequestURI().getQuery(), 80);
+        List<Map<String, Object>> body = activityStore.findRecent(limit).stream()
+                .map(activity -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("id", activity.id());
+                    item.put("requestId", activity.requestId());
+                    item.put("eventType", activity.eventType().name());
+                    item.put("skillName", activity.skillName());
+                    item.put("toolName", activity.toolName());
+                    item.put("status", activity.status());
+                    item.put("summary", activity.summary());
+                    item.put("durationMs", activity.durationMs());
+                    item.put("createdAt", activity.createdAt().toEpochMilli());
+                    return item;
+                })
+                .toList();
+        sendJson(exchange, objectMapper.writeValueAsBytes(body));
+    }
+
+    private void sendHtml(HttpExchange exchange, String html) throws IOException {
         byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -75,6 +139,41 @@ public class LoginPageServer {
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
         }
+    }
+
+    private void sendJson(HttpExchange exchange, byte[] bytes) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+
+    private void redirect(HttpExchange exchange, String location) throws IOException {
+        exchange.getResponseHeaders().set("Location", location);
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.sendResponseHeaders(302, -1);
+        exchange.close();
+    }
+
+    private boolean isConnected() {
+        return stateManager.getStatus() == LoginStatus.SUCCESS;
+    }
+
+    private static int parseLimit(String query, int fallback) {
+        if (query == null || query.isBlank()) return fallback;
+        for (String part : query.split("&")) {
+            String[] pair = part.split("=", 2);
+            if (pair.length == 2 && "limit".equals(pair[0])) {
+                try {
+                    return Integer.parseInt(pair[1]);
+                } catch (NumberFormatException ignored) {
+                    return fallback;
+                }
+            }
+        }
+        return fallback;
     }
 
     /** GET /login/status — 登录过程状态（向后兼容） */

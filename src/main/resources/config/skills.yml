@@ -79,7 +79,7 @@ claw:
       priority: 3
       tags: [信息, 搜索]
       requiredTools: [information_scout]
-      optionalTools: [web_search]
+      optionalTools: [scout_rss]
       systemPromptResource: prompts/skills/information-scout.txt
       triggerPolicyName: scoutTriggerPolicy
       knowledge:

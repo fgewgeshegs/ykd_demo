@@ -16,13 +16,13 @@ public class ScoutTaskStore {
     public ScoutTaskStore(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
         ensureTable();
+        migrateLegacyUserScopedTable();
     }
 
     private void ensureTable() {
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS scout_tasks (
                 task_id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
                 query TEXT,
                 status TEXT NOT NULL,
                 skill_name TEXT,
@@ -35,12 +35,28 @@ public class ScoutTaskStore {
         """);
     }
 
+    private void migrateLegacyUserScopedTable() {
+        boolean hasUserId = jdbcTemplate.queryForList("PRAGMA table_info(scout_tasks)").stream()
+                .anyMatch(column -> "user_id".equals(column.get("name")));
+        if (!hasUserId) return;
+
+        jdbcTemplate.execute("ALTER TABLE scout_tasks RENAME TO scout_tasks_legacy");
+        ensureTable();
+        jdbcTemplate.execute("""
+            INSERT INTO scout_tasks
+            (task_id, query, status, created_at, completed_at, summary)
+            SELECT task_id, query, status, created_at, completed_at, summary
+            FROM scout_tasks_legacy
+        """);
+        jdbcTemplate.execute("DROP TABLE scout_tasks_legacy");
+    }
+
     public void save(ScoutTask task) {
         jdbcTemplate.update(
             "INSERT OR REPLACE INTO scout_tasks " +
-            "(task_id, user_id, query, status, created_at, completed_at, summary) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            task.taskId(), task.userId(), task.query(),
+            "(task_id, query, status, created_at, completed_at, summary) " +
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            task.taskId(), task.query(),
             task.status().name(),
             task.createdAt().getEpochSecond(),
             task.completedAt() != null ? task.completedAt().getEpochSecond() : null,
@@ -54,10 +70,10 @@ public class ScoutTaskStore {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
-    public List<ScoutTask> findByUser(String userId) {
+    public List<ScoutTask> findAll() {
         return jdbcTemplate.query(
-            "SELECT * FROM scout_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
-            this::mapRow, userId);
+            "SELECT * FROM scout_tasks ORDER BY created_at DESC LIMIT 20",
+            this::mapRow);
     }
 
     public void updateStatus(String taskId, ScoutTaskStatus status) {
@@ -78,7 +94,6 @@ public class ScoutTaskStore {
         boolean wasNull = rs.wasNull();
         return new ScoutTask(
             rs.getString("task_id"),
-            rs.getString("user_id"),
             rs.getString("query"),
             ScoutTaskStatus.valueOf(rs.getString("status")),
             Instant.ofEpochSecond(rs.getLong("created_at")),

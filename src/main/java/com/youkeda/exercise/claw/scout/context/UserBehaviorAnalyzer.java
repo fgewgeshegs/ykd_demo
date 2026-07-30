@@ -59,11 +59,11 @@ public class UserBehaviorAnalyzer {
      *
      * @return 新增的兴趣数量
      */
-    public int analyzeAndStore(String userId) {
+    public int analyzeAndStore() {
         // 1. 获取最近 20 条对话
-        List<Message> history = contextStore.getHistory(userId, 20);
+        List<Message> history = contextStore.getHistory(20);
         if (history.isEmpty()) {
-            log.debug("无对话历史，跳过行为分析 | userId={}", userId);
+            log.debug("无对话历史，跳过行为分析");
             return 0;
         }
 
@@ -73,7 +73,7 @@ public class UserBehaviorAnalyzer {
         // 3. LLM 提取新兴趣
         List<String> newInterests = extractInterests(conversationText);
         if (newInterests.isEmpty()) {
-            log.debug("未发现新兴趣 | userId={}", userId);
+            log.debug("未发现新兴趣");
             return 0;
         }
 
@@ -82,15 +82,14 @@ public class UserBehaviorAnalyzer {
         for (String interest : newInterests) {
             try {
                 boolean success = memoryService.saveManual(
-                        userId, MemoryCategory.PREFERENCE, interest);
+                        MemoryCategory.PREFERENCE, interest);
                 if (success) saved++;
             } catch (Exception e) {
-                log.error("保存兴趣失败 | userId={} | interest={}", userId, interest, e);
+                log.error("保存兴趣失败 | interest={}", interest, e);
             }
         }
 
-        log.info("用户行为分析完成 | userId={} | newInterests={} | saved={}",
-                userId, newInterests.size(), saved);
+        log.info("用户行为分析完成 | newInterests={} | saved={}", newInterests.size(), saved);
         return saved;
     }
 

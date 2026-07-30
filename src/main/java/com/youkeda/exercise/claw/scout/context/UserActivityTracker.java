@@ -9,8 +9,6 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 用户活跃时间追踪器
@@ -22,23 +20,20 @@ public class UserActivityTracker {
 
     private static final Logger log = LoggerFactory.getLogger(UserActivityTracker.class);
 
-    /** 每个用户保留最近 100 条活跃记录 */
+    /** 保留最近 100 条活跃记录 */
     private static final int MAX_RECORDS = 100;
 
-    /** 用户活跃记录：userId → 时间戳列表 */
-    private final ConcurrentHashMap<String, List<Long>> activityLog = new ConcurrentHashMap<>();
+    private final List<Long> activityLog = new ArrayList<>();
 
     /**
      * 记录用户活跃时间戳
      */
-    public void record(String userId) {
-        activityLog.computeIfAbsent(userId, k -> new ArrayList<>())
-                .add(System.currentTimeMillis());
+    public synchronized void record() {
+        activityLog.add(System.currentTimeMillis());
 
         // 限制记录数量
-        List<Long> records = activityLog.get(userId);
-        if (records.size() > MAX_RECORDS) {
-            records.subList(0, records.size() - MAX_RECORDS).clear();
+        if (activityLog.size() > MAX_RECORDS) {
+            activityLog.subList(0, activityLog.size() - MAX_RECORDS).clear();
         }
     }
 
@@ -49,15 +44,14 @@ public class UserActivityTracker {
      *
      * @return 最活跃小时，无记录时返回默认值 8（早 8 点）
      */
-    public int getMostActiveHour(String userId) {
-        List<Long> records = activityLog.get(userId);
-        if (records == null || records.isEmpty()) {
+    public synchronized int getMostActiveHour() {
+        if (activityLog.isEmpty()) {
             return 8; // 默认早 8 点
         }
 
         // 统计每个小时的消息数
         int[] hourCount = new int[24];
-        for (Long timestamp : records) {
+        for (Long timestamp : activityLog) {
             LocalTime time = Instant.ofEpochMilli(timestamp)
                     .atZone(ZoneId.systemDefault())
                     .toLocalTime();
@@ -74,15 +68,15 @@ public class UserActivityTracker {
             }
         }
 
-        log.debug("用户最活跃时段 | userId={} | hour={} | count={}", userId, maxHour, maxCount);
+        log.debug("用户最活跃时段 | hour={} | count={}", maxHour, maxCount);
         return maxHour;
     }
 
     /**
      * 判断当前是否是用户的活跃时段（±1 小时）
      */
-    public boolean isActiveHour(String userId) {
-        int activeHour = getMostActiveHour(userId);
+    public boolean isActiveHour() {
+        int activeHour = getMostActiveHour();
         int currentHour = LocalTime.now().getHour();
 
         // 允许 ±1 小时的误差
@@ -95,8 +89,7 @@ public class UserActivityTracker {
     /**
      * 获取用户活跃记录数
      */
-    public int getRecordCount(String userId) {
-        List<Long> records = activityLog.get(userId);
-        return records != null ? records.size() : 0;
+    public synchronized int getRecordCount() {
+        return activityLog.size();
     }
 }

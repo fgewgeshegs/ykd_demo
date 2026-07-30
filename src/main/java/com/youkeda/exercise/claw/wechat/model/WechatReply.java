@@ -38,6 +38,9 @@ public class WechatReply {
      */
     private String fileDescription;
 
+    /** 消息已经处理完成，但本轮不应向用户发送内容。 */
+    private boolean silent;
+
     public static WechatReply text(String text) {
         return new WechatReply().setType(MessageType.TEXT).setText(text);
     }
@@ -62,6 +65,12 @@ public class WechatReply {
                 .setFileDescription(fileDescription);
     }
 
+    public static WechatReply silent() {
+        WechatReply reply = new WechatReply();
+        reply.silent = true;
+        return reply;
+    }
+
     /**
      * 判断该回复是否有有效内容
      */
@@ -69,6 +78,10 @@ public class WechatReply {
         return (type == MessageType.TEXT && text != null && !text.isEmpty())
                 || (type == MessageType.IMAGE && imageBytes != null && imageBytes.length > 0)
                 || (type == MessageType.FILE && fileBytes != null && fileBytes.length > 0);
+    }
+
+    public boolean isSilent() {
+        return silent;
     }
 
     public MessageType getType() {

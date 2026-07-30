@@ -10,7 +10,7 @@ import com.youkeda.exercise.claw.agent.skill.WorkflowWorker;
 import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,20 +31,17 @@ public class ScoutFunction implements LLMFunction {
     private final ScoutOrchestrator orchestrator;
     private final LLMFunctionRegistry functionRegistry;
     private final ObjectMapper objectMapper;
-    private final WechatUserManager userManager;
     private final ScoutTaskManager taskManager;
     private final WorkflowRegistry workflowRegistry;
 
     public ScoutFunction(ScoutOrchestrator orchestrator,
                           LLMFunctionRegistry functionRegistry,
                           ObjectMapper objectMapper,
-                          WechatUserManager userManager,
                           ScoutTaskManager taskManager,
                           WorkflowRegistry workflowRegistry) {
         this.orchestrator = orchestrator;
         this.functionRegistry = functionRegistry;
         this.objectMapper = objectMapper;
-        this.userManager = userManager;
         this.taskManager = taskManager;
         this.workflowRegistry = workflowRegistry;
     }
@@ -62,8 +59,10 @@ public class ScoutFunction implements LLMFunction {
 
     @Override
     public String getDescription() {
-        return "触发信息猎手 Agent，根据你的兴趣、项目和目标，主动发现高价值信息并推荐。"
-                + "当用户说「帮我找找」「有什么新消息」「搜搜看」「今天有什么值得关注的」「信息猎手」时调用。";
+        return "触发信息猎手 Agent，根据用户兴趣、项目和目标主动发现高价值信息并推荐。"
+                + "仅当当前用户消息明确要求查找信息时调用，例如「帮我找找」「有什么新消息」"
+                + "「搜搜看」「今天有什么值得关注的」「启动信息猎手」。"
+                + "用户只是在介绍兴趣、回答问题或补充情况时严禁调用；不得从历史对话推断触发意图。";
     }
 
     @Override
@@ -73,8 +72,21 @@ public class ScoutFunction implements LLMFunction {
         ObjectNode properties = params.putObject("properties");
         ObjectNode query = properties.putObject("query");
         query.put("type", "string");
-        query.put("description", "用户想搜索的内容（从用户消息中提取关键搜索词）");
+        query.put("description", "指定主题模式下的搜索主题；画像发现模式必须省略此字段");
         return params;
+    }
+
+    @Override
+    public boolean isAvailable(FunctionExecutionContext context) {
+        if (context == null || ScoutTriggerPolicy.isCancellation(context.currentMessage())) {
+            return false;
+        }
+        if (ScoutTriggerPolicy.hasExplicitRequest(context.currentMessage())) {
+            return true;
+        }
+        return context.skillSession() != null
+                && "information-scout".equals(context.skillSession().activeSkill())
+                && context.skillSession().hasPendingAction("START_INFORMATION_SCOUT");
     }
 
     @Override
@@ -83,13 +95,17 @@ public class ScoutFunction implements LLMFunction {
     }
 
     @Override
+    public String getUnavailableReason(FunctionExecutionContext context) {
+        return "用户当前消息没有明确要求查找信息，禁止调用信息猎手。请直接回应用户当前内容。";
+    }
+
+    @Override
     public String execute(String argumentsJson, FunctionExecutionContext context) {
         try {
-            String userId = userManager.getOwnerUserId();
             String query = extractQuery(argumentsJson, context);
 
             // Check for duplicate running tasks
-            if (taskManager.isDuplicate(userId, "scoutWorkflow")) {
+            if (taskManager.isDuplicate()) {
                 return "{\"status\":\"duplicate\",\"message\":\"已有正在运行的信息猎手任务，请等待完成后再试\"}";
             }
 
@@ -101,11 +117,12 @@ public class ScoutFunction implements LLMFunction {
 
             // Create task and launch workflow async
             String taskId = UUID.randomUUID().toString();
-            taskManager.createTask(taskId, userId, query);
+            taskManager.createTask(taskId, query);
 
             CompletableFuture.runAsync(() -> {
                 try {
-                    WorkflowRequest wfRequest = new WorkflowRequest("scoutWorkflow", userId, query, Instant.now());
+                    WorkflowRequest wfRequest = new WorkflowRequest(
+                            taskId, "scoutWorkflow", query, Instant.now());
                     worker.get().execute(wfRequest);
                 } catch (Exception e) {
                     log.error("Async scout workflow failed", e);
@@ -118,7 +135,7 @@ public class ScoutFunction implements LLMFunction {
                 taskId, queryDisplay);
 
         } catch (Exception e) {
-            log.error("信息猎手执行失败 | userId={}", userManager.getOwnerUserId(), e);
+            log.error("信息猎手执行失败", e);
             return "{\"status\":\"ERROR\",\"message\":\"信息猎手执行失败: " + e.getMessage() + "\"}";
         }
     }
@@ -130,6 +147,7 @@ public class ScoutFunction implements LLMFunction {
                 if (args.has("query") && !args.get("query").asText().isBlank()) {
                     return args.get("query").asText();
                 }
+                return "";
             } catch (Exception ignored) {}
         }
         if (context != null && context.currentMessage() != null) {

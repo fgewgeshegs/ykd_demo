@@ -18,8 +18,8 @@ public class ScoutTaskManager {
         this.taskStore = taskStore;
     }
 
-    public ScoutTask createTask(String taskId, String userId, String query) {
-        ScoutTask task = new ScoutTask(taskId, userId, query,
+    public ScoutTask createTask(String taskId, String query) {
+        ScoutTask task = new ScoutTask(taskId, query,
                 ScoutTaskStatus.PENDING, Instant.now(), null, null);
         taskStore.save(task);
         return task;
@@ -37,8 +37,8 @@ public class ScoutTaskManager {
         return taskStore.find(taskId);
     }
 
-    public List<ScoutTask> listTasks(String userId) {
-        return taskStore.findByUser(userId);
+    public List<ScoutTask> listTasks() {
+        return taskStore.findAll();
     }
 
     public boolean cancelTask(String taskId) {
@@ -50,8 +50,8 @@ public class ScoutTaskManager {
         return false;
     }
 
-    public boolean isDuplicate(String userId, String workflowName) {
-        List<ScoutTask> recent = taskStore.findByUser(userId);
+    public boolean isDuplicate() {
+        List<ScoutTask> recent = taskStore.findAll();
         return recent.stream().anyMatch(t ->
                 t.status() == ScoutTaskStatus.RUNNING || t.status() == ScoutTaskStatus.PENDING);
     }

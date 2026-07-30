@@ -116,9 +116,8 @@ public class JobInfoSource implements NotificationSource {
                 ? "发布日期: " + item.getPublishAt() + "\n" : "")
             + "详情: " + item.getUrl();
 
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "job_" + item.getType(),
-            userId,
             item.getTitle(),
             typeDisplayName + "就业通知",
             item.getClassifierReason(),
@@ -137,9 +136,8 @@ public class JobInfoSource implements NotificationSource {
         String question = "检测到新的「" + typeDisplayName + "」信息："
             + item.getTitle() + "，\n需要关注这类就业信息吗？（回复 需要/不需要）";
 
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "ask_job_" + item.getType(),
-            userId,
             item.getTitle() + " - 是否需要关注",
             "需要用户确认",
             item.getClassifierReason(),

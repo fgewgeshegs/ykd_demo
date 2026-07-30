@@ -79,6 +79,18 @@ public class SkillRouter {
     private SkillRoutingResult handlePendingInteraction(String message, Optional<SkillSession> sessionOpt) {
         if (sessionOpt.isEmpty()) return null;
         SkillSession session = sessionOpt.get();
+
+        if (session.context().containsKey("pendingAction")) {
+            if (isPendingCancellation(message)) {
+                return new SkillRoutingResult("common", Set.of(),
+                        SkillRoutingResult.SkillRoutingAction.DEACTIVATE, 1.0,
+                        "pending interaction cancelled");
+            }
+            return new SkillRoutingResult(session.activeSkill(), Set.of(),
+                    SkillRoutingResult.SkillRoutingAction.CONTINUE, 0.95,
+                    "pending interaction response for " + session.activeSkill());
+        }
+
         if (!"travel".equals(session.activeSkill())) return null;
 
         Set<String> pendingKeywords = Set.of("确认", "选择方案", "好的", "行", "可以", "这个方案");
@@ -90,6 +102,12 @@ public class SkillRouter {
                     "pending interaction confirmation for " + session.activeSkill());
         }
         return null;
+    }
+
+    private boolean isPendingCancellation(String message) {
+        if (message == null) return false;
+        String normalized = message.replaceAll("\\s+", "");
+        return normalized.matches(".*(?:算了|取消|不用了|不查了|别查了|不要查了).*");
     }
 
     private SkillRoutingResult handleExplicitSwitch(String message, Optional<SkillSession> sessionOpt) {

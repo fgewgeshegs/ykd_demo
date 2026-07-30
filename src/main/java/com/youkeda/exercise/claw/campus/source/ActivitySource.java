@@ -116,9 +116,8 @@ public class ActivitySource implements NotificationSource {
                 ? "发布日期: " + item.getPublishAt() + "\n" : "")
             + "详情: " + item.getUrl();
 
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "act_" + item.getType(),
-            userId,
             item.getTitle(),
             typeDisplayName + "活动通知",
             item.getClassifierReason(),
@@ -137,9 +136,8 @@ public class ActivitySource implements NotificationSource {
         String question = "检测到新的「" + typeDisplayName + "」活动："
             + item.getTitle() + "，\n需要关注这类活动吗？（回复 需要/不需要）";
 
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "ask_act_" + item.getType(),
-            userId,
             item.getTitle() + " - 是否需要关注",
             "需要用户确认",
             item.getClassifierReason(),

@@ -41,11 +41,18 @@ public class WechatILinkClient {
 
     // ==================== 消息发送 ====================
 
-    public void sendTextMessage(String toUserId, String text) {
+    public boolean sendTextMessage(String toUserId, String text) {
+        if (toUserId == null || toUserId.isBlank()) {
+            log.error("发送文本消息失败 | 收件人为空");
+            return false;
+        }
         BotInstance bot = requireBot();
-        if (bot == null) return;
-        bot.sendText(toUserId, text);
-        log.info("发送文本消息 | to={}", toUserId);
+        if (bot == null) return false;
+        boolean sent = bot.sendText(toUserId, text);
+        if (sent) {
+            log.info("发送文本消息成功 | to={}", toUserId);
+        }
+        return sent;
     }
 
     public void startTyping(String toUserId) {

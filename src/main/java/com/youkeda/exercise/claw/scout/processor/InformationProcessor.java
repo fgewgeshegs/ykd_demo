@@ -22,9 +22,11 @@ public class InformationProcessor {
     private static final Logger log = LoggerFactory.getLogger(InformationProcessor.class);
 
     private static final String SUMMARY_PROMPT = """
-            请为以下信息生成一句话中文摘要（不超过50字），突出对开发者/创业者的价值。
+            请为以下信息生成一句话中文摘要（不超过50字），保留原始事实和信息所属领域。
+            不要改变信息所属领域，不要强行改写成开发者或创业主题。
 
             标题：{title}
+            类别：{category}
             内容：{content}
 
             只返回摘要文本，不要加任何前缀。
@@ -214,6 +216,7 @@ public class InformationProcessor {
 
         String prompt = SUMMARY_PROMPT
                 .replace("{title}", title)
+                .replace("{category}", item.getCategory() != null ? item.getCategory() : "")
                 .replace("{content}", content);
 
         String result = llmClient.chatWithSystemPrompt("你是信息摘要专家。", prompt);

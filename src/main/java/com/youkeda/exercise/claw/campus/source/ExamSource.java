@@ -160,9 +160,8 @@ public class ExamSource implements NotificationSource {
                 ? "发布日期: " + notice.getPublishAt() + "\n" : "")
             + "详情: " + notice.getUrl();
 
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "exam_" + notificationItem.getType(),
-            userId,
             notice.getTitle(),
             typeDisplayName + "考试提醒",
             notificationItem.getClassifierReason(),
@@ -181,9 +180,8 @@ public class ExamSource implements NotificationSource {
         String question = "检测到新的「" + typeDisplayName + "」通知："
             + notice.getTitle() + "，\n需要提醒你吗？（回复 需要/不需要）";
 
-        notificationService.notify(userId, List.of(new Recommendation(
+        notificationService.notify(List.of(new Recommendation(
             "ask_" + notificationItem.getType(),
-            userId,
             notice.getTitle() + " - 是否需要提醒",
             "需要用户确认",
             notificationItem.getClassifierReason(),

@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.scout.matcher;
 import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
 import com.youkeda.exercise.claw.scout.ScoutProperties;
 import com.youkeda.exercise.claw.scout.context.UserProfile;
+import com.youkeda.exercise.claw.scout.processor.InformationFreshness;
 import com.youkeda.exercise.claw.scout.processor.InformationItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,50 +34,115 @@ public class CandidateMatcher {
     /**
      * 匹配用户兴趣与信息
      */
-    public List<MatchedCandidate> match(String userId, UserProfile profile,
+    public List<MatchedCandidate> match(UserProfile profile,
+                                         List<InformationItem> items) {
+        return match(profile, null, items);
+    }
+
+    /**
+     * 匹配本次明确主题、用户画像与信息。
+     */
+    public List<MatchedCandidate> match(UserProfile profile,
+                                         String explicitQuery,
                                          List<InformationItem> items) {
         if (items.isEmpty()) return List.of();
 
         try {
-            // 1. 用户兴趣 → embedding
-            String interestText = profile.toText();
-            if (interestText.isBlank()) {
+            List<InformationItem> freshItems = items.stream()
+                    .filter(item -> InformationFreshness.isFresh(item, props.getFreshnessDays()))
+                    .toList();
+            if (freshItems.isEmpty()) {
+                log.info("语义匹配完成 | total={} | fresh=0 | matched=0", items.size());
+                return List.of();
+            }
+
+            List<String> facets = profileFacets(profile, explicitQuery);
+            if (facets.isEmpty()) {
                 // 无画像时返回全部（按采集时间）
-                log.info("用户画像为空，返回全部候选 | userId={}", userId);
-                return items.stream()
+                log.info("用户画像为空，返回全部候选");
+                return freshItems.stream()
                         .filter(item -> item.getVector() != null)
                         .limit(props.getMaxCandidates())
                         .map(item -> new MatchedCandidate(item, 0.5f, "通用推荐"))
                         .toList();
             }
 
-            float[] userVector = embeddingClient.embed(interestText);
+            List<float[]> facetVectors = embeddingClient.embedBatch(facets);
 
-            // 2. 计算相似度
-            List<MatchedCandidate> candidates = new ArrayList<>();
-            for (InformationItem item : items) {
+            // 每条信息取与单个画像维度的最佳相似度，避免整份画像相互稀释。
+            List<MatchedCandidate> ranked = new ArrayList<>();
+            for (InformationItem item : freshItems) {
                 if (item.getVector() == null) continue;
 
-                float score = cosineSimilarity(userVector, item.getVector());
-                if (score >= props.getMinMatchScore()) {
-                    candidates.add(new MatchedCandidate(item, score, ""));
+                float bestScore = -1f;
+                int bestFacet = -1;
+                for (int i = 0; i < facetVectors.size(); i++) {
+                    float score = cosineSimilarity(facetVectors.get(i), item.getVector());
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestFacet = i;
+                    }
+                }
+                if (bestFacet >= 0) {
+                    ranked.add(new MatchedCandidate(
+                            item, bestScore, "匹配画像维度：" + facets.get(bestFacet)));
                 }
             }
 
-            // 3. 排序 + 截断
-            candidates.sort(Comparator.comparingDouble(MatchedCandidate::semanticScore).reversed());
-            List<MatchedCandidate> topK = candidates.stream()
+            ranked.sort(Comparator.comparingDouble(MatchedCandidate::semanticScore).reversed());
+            List<MatchedCandidate> strictMatches = ranked.stream()
+                    .filter(candidate -> candidate.semanticScore() >= props.getMinMatchScore())
                     .limit(props.getMaxCandidates())
                     .toList();
 
-            log.info("语义匹配完成 | userId={} | total={} | matched={}",
-                    userId, items.size(), topK.size());
+            List<MatchedCandidate> topK = new ArrayList<>(strictMatches);
+            int fallbackSlots = Math.min(
+                    props.getFallbackCandidateCount(),
+                    Math.max(0, props.getMaxCandidates() - topK.size()));
+            if (fallbackSlots > 0) {
+                List<MatchedCandidate> supplements = ranked.stream()
+                        .filter(candidate -> candidate.semanticScore() < props.getMinMatchScore())
+                        .filter(candidate -> candidate.semanticScore() >= props.getFallbackMatchScore())
+                        .limit(fallbackSlots)
+                        .toList();
+                topK.addAll(supplements);
+            }
+
+            float maxScore = ranked.isEmpty() ? 0f : ranked.get(0).semanticScore();
+            int supplemented = topK.size() - strictMatches.size();
+            log.info("语义匹配完成 | total={} | fresh={} | strict={} | supplemented={} | matched={} | maxScore={} | threshold={}",
+                    items.size(), freshItems.size(), strictMatches.size(), supplemented,
+                    topK.size(), maxScore, props.getMinMatchScore());
 
             return topK;
         } catch (Exception e) {
-            log.error("语义匹配失败 | userId={}", userId, e);
+            log.error("语义匹配失败", e);
             return List.of();
         }
+    }
+
+    private List<String> profileFacets(UserProfile profile, String explicitQuery) {
+        List<String> facets = new ArrayList<>();
+        if (explicitQuery != null && !explicitQuery.isBlank()) {
+            facets.add("本次关注主题：" + explicitQuery.trim());
+        }
+        addFacets(facets, "兴趣：", profile.interests());
+        addFacets(facets, "当前项目：", profile.currentProjects());
+        addFacets(facets, "技术栈：", profile.techStack());
+        addFacets(facets, "目标：", profile.goals());
+        if (profile.contextSummary() != null && !profile.contextSummary().isBlank()) {
+            facets.add("上下文：" + profile.contextSummary().trim());
+        }
+        return facets;
+    }
+
+    private void addFacets(List<String> facets, String prefix, List<String> values) {
+        if (values == null) return;
+        values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .map(value -> prefix + value)
+                .forEach(facets::add);
     }
 
     /**
