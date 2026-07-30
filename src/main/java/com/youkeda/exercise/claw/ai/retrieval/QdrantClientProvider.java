@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.ai.retrieval;
 
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;

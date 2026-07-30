@@ -1,12 +1,13 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.ai.retrieval;
 
-public record SkillKnowledgeSearchResult(
+public record SkillKnowledgeChunk(
         String chunkId,
         String skillName,
         String documentId,
+        int chunkIndex,
         String content,
         String source,
         Integer pageNumber,
-        double score
+        String version
 ) {
 }

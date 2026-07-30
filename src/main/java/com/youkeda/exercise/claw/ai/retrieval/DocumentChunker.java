@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.ai.retrieval;
 
 import org.springframework.stereotype.Component;
 import java.util.*;

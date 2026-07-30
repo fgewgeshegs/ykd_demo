@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.tool.skill;
-import com.youkeda.exercise.claw.agent.skill.SkillKnowledgeStore;
-import com.youkeda.exercise.claw.agent.skill.DocumentChunker;
-import com.youkeda.exercise.claw.agent.skill.SkillKnowledgeChunk;
+import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeStore;
+import com.youkeda.exercise.claw.ai.retrieval.DocumentChunker;
+import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeChunk;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

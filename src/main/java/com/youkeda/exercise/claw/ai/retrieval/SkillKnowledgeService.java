@@ -1,4 +1,7 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.ai.retrieval;
+
+import com.youkeda.exercise.claw.agent.skill.SkillDefinition;
+import com.youkeda.exercise.claw.agent.skill.SkillRegistry;
 
 import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
 import org.slf4j.Logger;

@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.agent.skill;
 
+import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeConfig;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
