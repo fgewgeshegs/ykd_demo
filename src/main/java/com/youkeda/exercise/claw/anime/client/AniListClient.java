@@ -168,6 +168,46 @@ public class AniListClient {
     }
 
     /**
+     * 按 AniList ID 直接查询番剧详情。
+     * 相比按名称搜索，ID 查询更精确、不受语言限制。
+     *
+     * @param anilistId AniList ID
+     * @return 番剧信息；未找到或异常时返回 {@code null}
+     */
+    public Anime getAnimeById(int anilistId) {
+        String query = """
+                query ($id: Int) {
+                    Media(id: $id, type: ANIME) {
+                        id
+                        title { romaji native english }
+                        coverImage { large }
+                        status
+                        episodes
+                        genres
+                        averageScore
+                        popularity
+                    }
+                }
+                """;
+        try {
+            JsonNode data = executeQuery(query, Map.of("id", anilistId));
+            if (data == null) {
+                return null;
+            }
+
+            JsonNode mediaNode = data.path("Media");
+            if (mediaNode.isMissingNode() || mediaNode.isNull()) {
+                return null;
+            }
+
+            return parseSingleAnime(mediaNode);
+        } catch (Exception e) {
+            log.error("按 ID 查询番剧失败，anilistId={}", anilistId, e);
+            return null;
+        }
+    }
+
+    /**
      * 执行 GraphQL 查询的通用方法。
      * <p>
      * 向 AniList GraphQL 端点发送 POST 请求，返回 {@code data} 节点。
@@ -250,6 +290,46 @@ public class AniListClient {
             list.add(anime);
         }
         return list;
+    }
+
+    /**
+     * 将 AniList media 单节点解析为 {@link Anime} 对象。
+     *
+     * @param node {@code data.Media} 节点
+     * @return Anime 对象；节点无效时返回 {@code null}
+     */
+    private Anime parseSingleAnime(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        Anime anime = new Anime();
+        anime.setAnilistId(node.path("id").asInt());
+
+        // title 嵌套对象：{ romaji, native, english }
+        JsonNode titleNode = node.path("title");
+        anime.setTitle(safeText(titleNode.path("romaji")));
+        anime.setTitleJa(safeText(titleNode.path("native")));
+
+        // coverImage 嵌套对象：{ large }
+        anime.setCoverUrl(safeText(node.path("coverImage").path("large")));
+
+        // 标量字段
+        anime.setStatus(safeText(node.path("status")));
+        anime.setEpisodeCount(node.path("episodes").asInt(0));
+        anime.setAverageScore(node.path("averageScore").asInt(0));
+        anime.setPopularity(node.path("popularity").asInt(0));
+
+        // genres 数组
+        List<String> genres = new ArrayList<>();
+        JsonNode genresNode = node.path("genres");
+        if (genresNode.isArray()) {
+            for (JsonNode g : genresNode) {
+                genres.add(g.asText());
+            }
+        }
+        anime.setGenres(genres);
+
+        return anime;
     }
 
     /**

@@ -50,6 +50,7 @@ public class AnimeSubscribeFunction implements LLMFunction {
     @Override
     public String getDescription() {
         return "管理追番列表。支持搜索番剧、订阅、取消订阅、查看列表。"
+            + "当用户已从推荐列表中指定番剧时，优先使用 animeId 参数进行 subscribe 操作。"
             + "当用户说'帮我追番'、'订阅'、'取消追番'、'我追的番'时调用。";
     }
 
@@ -68,11 +69,11 @@ public class AnimeSubscribeFunction implements LLMFunction {
 
         var nameProp = properties.putObject("animeName");
         nameProp.put("type", "string");
-        nameProp.put("description", "番剧名称（search/subscribe/unsubscribe 时需要）");
+        nameProp.put("description", "番剧名称（search 时需要；subscribe/unsubscribe 时若提供 animeId 则非必填。注意：AniList 不支持中文搜索，请使用英文或罗马音标题搜索）");
 
         var idProp = properties.putObject("animeId");
         idProp.put("type", "number");
-        idProp.put("description", "AniList 番剧 ID（subscribe/unsubscribe 时需要）");
+        idProp.put("description", "AniList 番剧 ID（subscribe 时推荐使用，比按名称搜索更准确，来自推荐列表中的 id 字段）");
 
         root.set("required", objectMapper.createArrayNode().add("action"));
         return root;
@@ -124,20 +125,29 @@ public class AnimeSubscribeFunction implements LLMFunction {
 
     private String handleSubscribe(JsonNode args) throws Exception {
         int animeId = args.path("animeId").asInt(0);
-        if (animeId <= 0) {
-            return "{\"status\":\"ERROR\",\"message\":\"请提供番剧 ID\"}";
-        }
-        // 搜索番剧详情（用 searchAnime 简单处理）
         String name = args.path("animeName").asText("");
-        List<Anime> results = aniListClient.searchAnime(name);
-        Anime target = results.stream()
-            .filter(a -> a.getAnilistId() == animeId)
-            .findFirst().orElse(null);
-        if (target == null) {
-            return "{\"status\":\"ERROR\",\"message\":\"未找到 ID 为 " + animeId + " 的番剧\"}";
+
+        Anime target = null;
+
+        // 优先按 ID 直接查询（推荐列表返回了 id，LLM 应当使用此路径）
+        if (animeId > 0) {
+            target = aniListClient.getAnimeById(animeId);
+            if (target == null) {
+                return "{\"status\":\"ERROR\",\"message\":\"未找到 ID 为 " + animeId + " 的番剧\"}";
+            }
+        } else if (!name.isBlank()) {
+            // 兜底：按名称搜索
+            List<Anime> results = aniListClient.searchAnime(name);
+            if (results.isEmpty()) {
+                return "{\"status\":\"SUCCESS\",\"message\":\"未找到与「" + name + "」相关的番剧\"}";
+            }
+            target = results.get(0);
+        } else {
+            return "{\"status\":\"ERROR\",\"message\":\"请提供番剧 ID 或名称\"}";
         }
+
         subscriptionStore.subscribe(target);
-        log.info("用户订阅了番剧 | title={} | id={}", target.getTitle(), animeId);
+        log.info("用户订阅了番剧 | title={} | id={}", target.getTitle(), target.getAnilistId());
         return "{\"status\":\"SUCCESS\",\"message\":\"已订阅《" + target.getTitle() + "》！播出前会提醒你。\"}";
     }
 
