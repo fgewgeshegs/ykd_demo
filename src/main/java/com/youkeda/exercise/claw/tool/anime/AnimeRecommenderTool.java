@@ -6,7 +6,7 @@ import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.anime.client.AniListClient;
-import com.youkeda.exercise.claw.anime.model.Anime;
+import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.anime.store.AnimeSubscriptionStore;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;

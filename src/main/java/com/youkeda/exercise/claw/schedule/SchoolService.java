@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.schedule;
 
-import com.youkeda.exercise.claw.schedule.entity.SchoolEntity;
+import com.youkeda.exercise.claw.domain.schedule.SchoolEntity;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,8 +1,8 @@
 package com.youkeda.exercise.claw.campus.classifier;
 
-import com.youkeda.exercise.claw.campus.model.ExamClassification;
-import com.youkeda.exercise.claw.campus.model.NoticeItem;
-import com.youkeda.exercise.claw.campus.model.NoticeType;
+import com.youkeda.exercise.claw.domain.campus.ExamClassification;
+import com.youkeda.exercise.claw.domain.campus.NoticeItem;
+import com.youkeda.exercise.claw.domain.campus.NoticeType;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

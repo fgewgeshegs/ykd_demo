@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.campus.policy;
 
-import com.youkeda.exercise.claw.campus.model.CampusConfig;
-import com.youkeda.exercise.claw.campus.model.NotificationItem;
+import com.youkeda.exercise.claw.domain.campus.CampusConfig;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import com.youkeda.exercise.claw.campus.policy.rule.PolicyRule;
 import com.youkeda.exercise.claw.campus.store.PendingAskStore;
 import org.slf4j.Logger;

@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.anime.model;
+package com.youkeda.exercise.claw.domain.anime;
 
 /**
  * 番剧播出事件。

@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.file.entity;
+package com.youkeda.exercise.claw.domain.file;
 
 /**
  * 文件元数据实体

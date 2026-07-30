@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.campus;
 
-import com.youkeda.exercise.claw.campus.model.CampusConfig;
+import com.youkeda.exercise.claw.domain.campus.CampusConfig;
 import com.youkeda.exercise.claw.campus.store.CampusConfigStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

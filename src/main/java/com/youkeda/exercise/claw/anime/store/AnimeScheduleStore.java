@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.anime.store;
 
-import com.youkeda.exercise.claw.anime.model.AnimeEpisode;
+import com.youkeda.exercise.claw.domain.anime.AnimeEpisode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

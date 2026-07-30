@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.anime.scheduler;
 
-import com.youkeda.exercise.claw.anime.model.Anime;
+import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.anime.store.AnimeScheduleStore;
 import com.youkeda.exercise.claw.anime.store.AnimeSubscriptionStore;
 import com.youkeda.exercise.claw.scout.judge.Recommendation;

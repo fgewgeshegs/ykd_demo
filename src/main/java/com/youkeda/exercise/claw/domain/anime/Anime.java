@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.anime.model;
+package com.youkeda.exercise.claw.domain.anime;
 
 import java.util.List;
 

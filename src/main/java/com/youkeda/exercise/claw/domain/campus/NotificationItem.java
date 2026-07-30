@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.campus.model;
+package com.youkeda.exercise.claw.domain.campus;
 
 /**
  * 通用通知事件模型。

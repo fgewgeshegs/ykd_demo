@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.anime.store;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.anime.model.Anime;
+import com.youkeda.exercise.claw.domain.anime.Anime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

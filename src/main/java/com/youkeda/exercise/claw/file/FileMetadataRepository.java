@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.file;
 
-import com.youkeda.exercise.claw.file.entity.FileMetadata;
+import com.youkeda.exercise.claw.domain.file.FileMetadata;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

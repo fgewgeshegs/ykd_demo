@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.campus.store;
 
-import com.youkeda.exercise.claw.campus.model.NoticeItem;
+import com.youkeda.exercise.claw.domain.campus.NoticeItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.campus.collector;
 
-import com.youkeda.exercise.claw.campus.model.NotificationItem;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;

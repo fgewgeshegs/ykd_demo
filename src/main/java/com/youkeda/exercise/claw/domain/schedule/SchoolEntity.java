@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.schedule.entity;
+package com.youkeda.exercise.claw.domain.schedule;
 
 /**
  * 学校基本信息实体

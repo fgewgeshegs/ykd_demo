@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.campus.model;
+package com.youkeda.exercise.claw.domain.campus;
 
 import java.time.Instant;
 import java.util.HashMap;

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.campus.model.CampusConfig;
+import com.youkeda.exercise.claw.domain.campus.CampusConfig;
 import com.youkeda.exercise.claw.campus.store.CampusConfigStore;
 import com.youkeda.exercise.claw.campus.store.PendingAskStore;
 import jakarta.annotation.PostConstruct;

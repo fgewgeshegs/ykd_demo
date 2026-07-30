@@ -1,8 +1,8 @@
 package com.youkeda.exercise.claw.campus.policy;
 
-import com.youkeda.exercise.claw.campus.model.CampusConfig;
-import com.youkeda.exercise.claw.campus.model.ExamClassification;
-import com.youkeda.exercise.claw.campus.model.NoticeType;
+import com.youkeda.exercise.claw.domain.campus.CampusConfig;
+import com.youkeda.exercise.claw.domain.campus.ExamClassification;
+import com.youkeda.exercise.claw.domain.campus.NoticeType;
 import com.youkeda.exercise.claw.campus.store.PendingAskStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

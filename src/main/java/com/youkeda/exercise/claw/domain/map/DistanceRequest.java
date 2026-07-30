@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.map.model;
+package com.youkeda.exercise.claw.domain.map;
 
 import java.util.List;
 

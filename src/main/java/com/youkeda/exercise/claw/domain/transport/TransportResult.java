@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.transport.model;
+package com.youkeda.exercise.claw.domain.transport;
 
 import java.util.List;
 

@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.holiday;
+package com.youkeda.exercise.claw.domain.holiday;
 
 /**
  * 日期类型枚举

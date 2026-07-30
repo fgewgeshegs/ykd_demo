@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.transport.model.TransportRequest;
+import com.youkeda.exercise.claw.domain.transport.TransportRequest;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

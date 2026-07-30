@@ -3,7 +3,7 @@ import com.youkeda.exercise.claw.notification.NotificationSource;
 
 import com.youkeda.exercise.claw.campus.classifier.ActivityClassifier;
 import com.youkeda.exercise.claw.campus.collector.CompetitionCollector;
-import com.youkeda.exercise.claw.campus.model.NotificationItem;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import com.youkeda.exercise.claw.campus.policy.DefaultPolicy;
 import com.youkeda.exercise.claw.campus.policy.NotificationPolicy;
 import com.youkeda.exercise.claw.campus.policy.rule.ActivityRules;

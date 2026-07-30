@@ -1,8 +1,8 @@
 package com.youkeda.exercise.claw.campus.store;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.campus.model.CampusConfig;
-import com.youkeda.exercise.claw.campus.model.ExamPreferences;
+import com.youkeda.exercise.claw.domain.campus.CampusConfig;
+import com.youkeda.exercise.claw.domain.campus.ExamPreferences;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

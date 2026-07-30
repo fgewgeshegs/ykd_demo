@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.campus.classifier;
 
-import com.youkeda.exercise.claw.campus.model.NotificationItem;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

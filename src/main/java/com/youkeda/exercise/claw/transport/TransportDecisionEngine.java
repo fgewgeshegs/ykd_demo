@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.transport;
 
-import com.youkeda.exercise.claw.transport.model.TransportOption;
+import com.youkeda.exercise.claw.domain.transport.TransportOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

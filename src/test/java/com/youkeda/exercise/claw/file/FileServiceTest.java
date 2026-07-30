@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.file;
 
 import com.youkeda.exercise.claw.ai.file.FileParseService;
-import com.youkeda.exercise.claw.file.entity.FileMetadata;
+import com.youkeda.exercise.claw.domain.file.FileMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

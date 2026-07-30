@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.campus.model;
+package com.youkeda.exercise.claw.domain.campus;
 
 public class NoticeItem {
     private Long id;

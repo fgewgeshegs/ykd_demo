@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.campus.policy.rule;
 
-import com.youkeda.exercise.claw.campus.model.NotificationItem;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 
 import java.util.List;
 
