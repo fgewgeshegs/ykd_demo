@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.infrastructure.channel.wechat;
 
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;

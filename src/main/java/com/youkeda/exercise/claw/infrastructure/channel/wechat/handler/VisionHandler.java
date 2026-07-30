@@ -1,9 +1,10 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.ai.llm.ImageClient;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.WechatMessageHandler;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
@@ -15,15 +16,15 @@ import org.springframework.stereotype.Component;
 import java.util.Base64;
 
 /**
- * 视觉理解工具
+ * 视觉处理器
  *
  * 封装 VisionService + 微信图片下载，作为 WechatMessageHandler 暴露。
  * 支持场景：直接发图 / 上下文有最近图片。
  */
 @Component
-public class VisionTool implements WechatMessageHandler {
+public class VisionHandler implements WechatMessageHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(VisionTool.class);
+    private static final Logger log = LoggerFactory.getLogger(VisionHandler.class);
     private static final String FALLBACK_REPLY = "抱歉，我暂时无法分析图片，请稍后再试。";
 
     private final VisionService visionService;
@@ -31,10 +32,10 @@ public class VisionTool implements WechatMessageHandler {
     private final ContextStore contextStore;
     private final ImageClient imageClient;
 
-    public VisionTool(VisionService visionService,
-                      WechatILinkClient wechatClient,
-                      ContextStore contextStore,
-                      ImageClient imageClient) {
+    public VisionHandler(VisionService visionService,
+                         WechatILinkClient wechatClient,
+                         ContextStore contextStore,
+                         ImageClient imageClient) {
         this.visionService = visionService;
         this.wechatClient = wechatClient;
         this.contextStore = contextStore;
@@ -57,7 +58,7 @@ public class VisionTool implements WechatMessageHandler {
     }
 
     private WechatReply analyzeImage(WechatMessage message) {
-        log.info("VisionTool 分析图片");
+        log.info("VisionHandler 分析图片");
 
         String imageDataUrl = downloadImageAsDataUrl(message);
         if (imageDataUrl == null) {

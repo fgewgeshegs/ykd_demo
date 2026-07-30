@@ -1,9 +1,9 @@
 package com.youkeda.exercise.claw.wechat;
 
-import com.youkeda.exercise.claw.agent.tool.ChatTool;
-import com.youkeda.exercise.claw.agent.tool.FileTool;
-import com.youkeda.exercise.claw.agent.tool.SimpleReplyTool;
-import com.youkeda.exercise.claw.agent.tool.VisionTool;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.ChatHandler;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.FileHandler;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.SimpleReplyHandler;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.VisionHandler;
 import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
 import com.youkeda.exercise.claw.schedule.CourseImportHandler;
 import com.youkeda.exercise.claw.schedule.CourseImportStateManager;
@@ -18,8 +18,8 @@ import org.springframework.stereotype.Component;
  * 消息路由器
  *
  * 按消息类型（IMAGE/VOICE/FILE/TEXT）分发到对应的处理器。
- * TEXT 消息由 ChatTool → ReActAgentExecutor 做 LLM tool-calling 循环；
- * 非 TEXT 消息直接分发给专用 Handler（VisionTool/VoiceFunction/FileTool）。
+ * TEXT 消息由 ChatHandler → ReActAgentExecutor 做 LLM tool-calling 循环；
+ * 非 TEXT 消息直接分发给专用 Handler（VisionHandler/VoiceFunction/FileHandler）。
  *
  * 不包含业务逻辑，仅负责路由分发
  */
@@ -28,26 +28,26 @@ public class MessageRouter {
 
     private static final Logger log = LoggerFactory.getLogger(MessageRouter.class);
 
-    private final ChatTool chatTool;
-    private final VisionTool visionTool;
-    private final SimpleReplyTool fallbackTool;
+    private final ChatHandler chatHandler;
+    private final VisionHandler visionHandler;
+    private final SimpleReplyHandler fallbackHandler;
     private final VoiceFunction voiceTool;
-    private final FileTool fileTool;
+    private final FileHandler fileHandler;
     private final CourseImportStateManager courseImportStateManager;
     private final CourseImportHandler courseImportHandler;
 
-    public MessageRouter(ChatTool chatTool,
-                         VisionTool visionTool,
-                         SimpleReplyTool fallbackTool,
+    public MessageRouter(ChatHandler chatHandler,
+                         VisionHandler visionHandler,
+                         SimpleReplyHandler fallbackHandler,
                          VoiceFunction voiceTool,
-                         FileTool fileTool,
+                         FileHandler fileHandler,
                          CourseImportStateManager courseImportStateManager,
                          CourseImportHandler courseImportHandler) {
-        this.chatTool = chatTool;
-        this.visionTool = visionTool;
-        this.fallbackTool = fallbackTool;
+        this.chatHandler = chatHandler;
+        this.visionHandler = visionHandler;
+        this.fallbackHandler = fallbackHandler;
         this.voiceTool = voiceTool;
-        this.fileTool = fileTool;
+        this.fileHandler = fileHandler;
         this.courseImportStateManager = courseImportStateManager;
         this.courseImportHandler = courseImportHandler;
     }
@@ -69,41 +69,41 @@ public class MessageRouter {
                 if (reply != null && reply.hasContent()) {
                     return reply;
                 }
-                // CourseImportHandler 返回空，说明状态异常，降级到 VisionTool
-                log.warn("课表导入处理图片失败，降级到 VisionTool | from={}", userId);
+                // CourseImportHandler 返回空，说明状态异常，降级到 VisionHandler
+                log.warn("课表导入处理图片失败，降级到 VisionHandler | from={}", userId);
             }
 
-            log.info("路由：图片消息 → VisionTool | from={}", userId);
-            WechatReply reply = visionTool.handle(message);
+            log.info("路由：图片消息 → VisionHandler | from={}", userId);
+            WechatReply reply = visionHandler.handle(message);
             return fallbackIfEmpty(reply, message);
         }
 
-        // 语音消息：ASR → ChatTool（ReActAgentExecutor tool-calling）→ auto TTS
+        // 语音消息：ASR → ChatHandler（ReActAgentExecutor tool-calling）→ auto TTS
         if (message.getType() == MessageType.VOICE) {
-            log.info("路由：语音消息 → ASR → ChatTool + auto TTS | from={}", message.getUserId());
+            log.info("路由：语音消息 → ASR → ChatHandler + auto TTS | from={}", message.getUserId());
 
             // 1. ASR 提取文本
             String voiceText = voiceTool.extractText(message);
             if (voiceText == null || voiceText.isEmpty()) {
                 log.warn("语音识别失败 | from={}", message.getUserId());
-                return fallbackTool.handle(message);
+                return fallbackHandler.handle(message);
             }
 
-            // 2. 构建文本消息走 ChatTool（ReActAgentExecutor 循环）
+            // 2. 构建文本消息走 ChatHandler（ReActAgentExecutor 循环）
             WechatMessage textMsg = new WechatMessage();
             textMsg.setUserId(message.getUserId());
             textMsg.setContextToken(message.getContextToken());
             textMsg.setType(MessageType.TEXT);
             textMsg.setText(voiceText);
 
-            WechatReply textReply = chatTool.handle(textMsg);
+            WechatReply textReply = chatHandler.handle(textMsg);
             if (textReply != null && textReply.isSilent()) {
                 return textReply;
             }
             if (textReply == null || !textReply.hasContent()) {
                 return fallbackIfEmpty(null, message);
             }
-            // ChatTool 如果返回非文本（如图片），直接返回
+            // ChatHandler 如果返回非文本（如图片），直接返回
             if (textReply.getType() != MessageType.TEXT) {
                 return textReply;
             }
@@ -130,25 +130,25 @@ public class MessageRouter {
                 if (reply != null && reply.hasContent()) {
                     return reply;
                 }
-                // CourseImportHandler 返回空，说明状态异常或不支持的格式，降级到 FileTool
-                log.warn("课表导入处理文件失败，降级到 FileTool | from={}", userId);
+                // CourseImportHandler 返回空，说明状态异常或不支持的格式，降级到 FileHandler
+                log.warn("课表导入处理文件失败，降级到 FileHandler | from={}", userId);
             }
 
-            log.info("路由：文件消息 → FileTool | from={} | fileName={}", userId, message.getFileName());
-            WechatReply reply = fileTool.handle(message);
+            log.info("路由：文件消息 → FileHandler | from={} | fileName={}", userId, message.getFileName());
+            WechatReply reply = fileHandler.handle(message);
             return fallbackIfEmpty(reply, message);
         }
 
-        // 文本消息：全部走 ChatTool，由 ReActAgentExecutor 通过 LLM tool-calling 循环自主路由
+        // 文本消息：全部走 ChatHandler，由 ReActAgentExecutor 通过 LLM tool-calling 循环自主路由
         if (message.getType() == MessageType.TEXT) {
-            log.info("路由：文本消息 → ChatTool | from={}", message.getUserId());
-            WechatReply reply = chatTool.handle(message);
+            log.info("路由：文本消息 → ChatHandler | from={}", message.getUserId());
+            WechatReply reply = chatHandler.handle(message);
             return fallbackIfEmpty(reply, message);
         }
 
         // 其他类型：兜底
         log.info("路由：未知消息类型 type={} | from={}", message.getType(), message.getUserId());
-        return fallbackTool.handle(message);
+        return fallbackHandler.handle(message);
     }
 
     /**
@@ -162,6 +162,6 @@ public class MessageRouter {
             return reply;
         }
         log.info("路由：Handler 返回空，使用兜底 | from={}", message.getUserId());
-        return fallbackTool.handle(message);
+        return fallbackHandler.handle(message);
     }
 }

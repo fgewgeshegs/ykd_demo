@@ -1,6 +1,9 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
 import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
+import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
+import com.youkeda.exercise.claw.agent.tool.FileGenerationTool;
+import com.youkeda.exercise.claw.agent.tool.ImageGenerationTool;
 import com.youkeda.exercise.claw.map.PlaceImageFunction;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
@@ -13,12 +16,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-class ChatToolSilentReplyTest {
+class ChatHandlerSilentReplyTest {
 
     @Test
     void convertsHandledAgentResultToSilentWechatReply() {
         ReActAgentExecutor executor = mock(ReActAgentExecutor.class);
-        ChatTool chatTool = new ChatTool(
+        ChatHandler chatHandler = new ChatHandler(
                 executor,
                 mock(VoiceFunction.class),
                 mock(FileGenerationTool.class),
@@ -32,7 +35,7 @@ class ChatToolSilentReplyTest {
         message.setType(MessageType.TEXT);
         message.setText("最近有什么值得关注的事情吗");
 
-        WechatReply reply = chatTool.handle(message);
+        WechatReply reply = chatHandler.handle(message);
 
         assertTrue(reply.isSilent());
     }

@@ -1,10 +1,11 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
 import com.youkeda.exercise.claw.ai.file.FileParseService;
 import com.youkeda.exercise.claw.ai.chat.ChatService;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.file.FileService;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.WechatMessageHandler;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
@@ -27,9 +28,9 @@ import java.util.List;
  * 实现 WechatMessageHandler 而非 Tool，因 FILE 是消息类型而非意图。
  */
 @Component
-public class FileTool implements WechatMessageHandler {
+public class FileHandler implements WechatMessageHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(FileTool.class);
+    private static final Logger log = LoggerFactory.getLogger(FileHandler.class);
 
     private static final String FALLBACK_REPLY = "抱歉，我暂时无法处理这个文件，请稍后再试。";
     private static final String UNSUPPORTED_FORMAT_REPLY =
@@ -42,12 +43,12 @@ public class FileTool implements WechatMessageHandler {
     private final ChatService chatService;
     private final FileService fileService;
 
-    public FileTool(WechatILinkClient wechatClient,
-                    FileParseService fileParseService,
-                    VisionService visionService,
-                    ContextStore contextStore,
-                    ChatService chatService,
-                    FileService fileService) {
+    public FileHandler(WechatILinkClient wechatClient,
+                       FileParseService fileParseService,
+                       VisionService visionService,
+                       ContextStore contextStore,
+                       ChatService chatService,
+                       FileService fileService) {
         this.wechatClient = wechatClient;
         this.fileParseService = fileParseService;
         this.visionService = visionService;
@@ -63,7 +64,7 @@ public class FileTool implements WechatMessageHandler {
         }
 
         String fileName = message.getFileName() != null ? message.getFileName() : "未知文件";
-        log.info("FileTool 处理文件 | from={} | fileName={}", message.getUserId(), fileName);
+        log.info("FileHandler 处理文件 | from={} | fileName={}", message.getUserId(), fileName);
 
         // 1. 下载文件字节
         byte[] fileBytes = downloadFile(message);
@@ -93,7 +94,7 @@ public class FileTool implements WechatMessageHandler {
      * 分支 A：图片文件 → VisionService 多模态分析
      */
     private WechatReply handleImageFile(byte[] fileBytes, String mimeType, String fileName) {
-        log.info("FileTool 图片文件路径 | fileName={}", fileName);
+        log.info("FileHandler 图片文件路径 | fileName={}", fileName);
 
         // 转 base64 data URL
         String base64 = Base64.getEncoder().encodeToString(fileBytes);
@@ -109,7 +110,7 @@ public class FileTool implements WechatMessageHandler {
         // 保存到上下文（供后续追问参考）
         contextStore.append("user", "[文件图片: " + fileName + "]\n" + description);
 
-        log.info("FileTool 图片分析完成 | fileName={}", fileName);
+        log.info("FileHandler 图片分析完成 | fileName={}", fileName);
         return WechatReply.text(description);
     }
 
@@ -117,7 +118,7 @@ public class FileTool implements WechatMessageHandler {
      * 分支 B：文档文件 → Tika 文本提取 + 内嵌图片分析 → LLM 分析
      */
     private WechatReply handleDocumentFile(byte[] fileBytes, String fileName) {
-        log.info("FileTool 文档文件路径 | fileName={}", fileName);
+        log.info("FileHandler 文档文件路径 | fileName={}", fileName);
 
         // 解析文件：提取文本和内嵌图片
         FileParseService.FileParseResult result = fileParseService.parse(fileBytes, fileName);
@@ -159,7 +160,7 @@ public class FileTool implements WechatMessageHandler {
             return WechatReply.text(FALLBACK_REPLY);
         }
 
-        log.info("FileTool 文档分析完成 | fileName={}", fileName);
+        log.info("FileHandler 文档分析完成 | fileName={}", fileName);
         return WechatReply.text(analysis);
     }
 
