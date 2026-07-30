@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.ai.vision;
 
-import com.youkeda.exercise.claw.ai.llm.VisionClient;
+import com.youkeda.exercise.claw.ai.vision.VisionClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

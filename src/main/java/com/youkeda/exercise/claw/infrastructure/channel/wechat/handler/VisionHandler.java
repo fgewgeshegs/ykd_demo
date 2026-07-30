@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
-import com.youkeda.exercise.claw.ai.llm.ImageClient;
+import com.youkeda.exercise.claw.ai.image.ImageClient;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.WechatMessageHandler;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;

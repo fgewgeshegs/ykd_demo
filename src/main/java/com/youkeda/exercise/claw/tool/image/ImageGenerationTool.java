@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.image.ImageGenerationService;
-import com.youkeda.exercise.claw.ai.llm.ImageClient;
+import com.youkeda.exercise.claw.ai.image.ImageClient;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

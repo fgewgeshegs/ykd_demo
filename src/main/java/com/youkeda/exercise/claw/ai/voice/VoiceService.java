@@ -1,8 +1,8 @@
 package com.youkeda.exercise.claw.ai.voice;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.ai.llm.VoiceClient;
-import com.youkeda.exercise.claw.ai.llm.VoiceProperties;
+import com.youkeda.exercise.claw.ai.voice.VoiceClient;
+import com.youkeda.exercise.claw.ai.voice.VoiceProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

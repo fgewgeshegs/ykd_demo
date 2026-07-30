@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.llm;
+package com.youkeda.exercise.claw.ai.image;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
