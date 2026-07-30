@@ -222,7 +222,10 @@ public class ReActAgentExecutor implements AgentExecutor {
         // 4. 按 Skill 过滤可用工具
         FunctionExecutionContext execContext = new FunctionExecutionContext(userMessage, session, userId);
         List<ToolDefinition> tools = functionRegistry.getAvailableDefinitions(effectiveTools, execContext);
-        log.debug("可用工具: {}", tools.stream().map(ToolDefinition::name).toList());
+        log.info("[Agent Available Tools] skill={} | count={} | tools={}",
+                activeSkillName,
+                tools.size(),
+                tools.stream().map(ToolDefinition::name).toList());
 
         // 5. tool-calling 循环
         Set<String> executedCalls = new HashSet<>();

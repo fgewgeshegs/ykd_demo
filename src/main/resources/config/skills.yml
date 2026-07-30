@@ -11,13 +11,27 @@ claw:
       tags: [通用]
       requiredTools: []
       optionalTools:
-        - course_schedule
-        - exam_schedule
-        - exam_reminder_setup
         - create_schedule_task
         - web_search
         - holiday_check
       systemPromptResource: prompts/skills/common.txt
+      knowledge:
+        enabled: false
+        namespaces: []
+        topK: 0
+        minScore: 0.0
+        maxContextChars: 0
+
+    campus:
+      enabled: true
+      priority: 4
+      tags: [校园, 课程]
+      requiredTools: []
+      optionalTools:
+        - course_schedule
+        - exam_schedule
+        - exam_reminder_setup
+      systemPromptResource: prompts/skills/campus.txt
       knowledge:
         enabled: false
         namespaces: []
@@ -39,8 +53,6 @@ claw:
         - map_search_place
         - map_route_planning
         - map_distance_calculate
-        - weather_query
-        - holiday_check
         - transport_recommend
         - place_image_search
       systemPromptResource: prompts/skills/travel.txt
@@ -53,7 +65,7 @@ claw:
 
     transport:
       enabled: true
-      priority: 4
+      priority: 3
       tags: [出行, 打车]
       requiredTools:
         - transport_recommend
@@ -82,7 +94,7 @@ claw:
 
     information-scout:
       enabled: true
-      priority: 3
+      priority: 2
       tags: [信息, 搜索]
       requiredTools: [information_scout]
       optionalTools: [scout_rss]
