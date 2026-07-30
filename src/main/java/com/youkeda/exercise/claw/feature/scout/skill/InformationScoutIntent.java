@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.skill;
+package com.youkeda.exercise.claw.feature.scout.skill;
 
 public record InformationScoutIntent(
         Action action,

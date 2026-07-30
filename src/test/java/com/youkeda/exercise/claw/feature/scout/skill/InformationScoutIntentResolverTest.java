@@ -1,7 +1,9 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.feature.scout.skill;
 
-import com.youkeda.exercise.claw.skill.InformationScoutIntent;
-import com.youkeda.exercise.claw.skill.InformationScoutIntentResolver;
+import com.youkeda.exercise.claw.feature.scout.skill.InformationScoutIntent;
+import com.youkeda.exercise.claw.feature.scout.skill.InformationScoutIntentResolver;
+import com.youkeda.exercise.claw.agent.skill.SkillSession;
+import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

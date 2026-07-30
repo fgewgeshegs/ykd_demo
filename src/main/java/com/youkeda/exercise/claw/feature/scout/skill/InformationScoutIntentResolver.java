@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.skill;
+package com.youkeda.exercise.claw.feature.scout.skill;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 
