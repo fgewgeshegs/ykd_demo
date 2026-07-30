@@ -30,7 +30,7 @@ public class SearchPlanner {
             要求：
             1. 搜索词以英文为主（搜索效果更好），可附中文
             2. 每个任务对应一次搜索
-            3. category 必须是以下之一：NEWS、BLOG、GITHUB；不要生成当前没有采集器的类别
+            3. category 必须是以下之一：NEWS、BLOG、GITHUB、JOB、COMPETITION
             4. reason 简要说明为什么搜这个
             5. priority 1-5，5 最高
             6. **必须保证信息时效性**：搜索词中必须包含时间限定词，如 "latest"、"this week"、"recent"、"2026"、"new" 等，确保搜到的是最新信息
@@ -83,7 +83,7 @@ public class SearchPlanner {
             }
 
             List<SearchTask> normalized = normalizeTasks(tasks, profile, explicitQuery);
-            log.info("搜索任务生成成功 | llmCount={} | executableCount={}",
+            log.info("搜索任务生成成功 | llmCount={} | plannedCount={}",
                     tasks.size(), normalized.size());
             return normalized;
         } catch (Exception e) {
@@ -134,33 +134,47 @@ public class SearchPlanner {
     }
 
     /**
-     * 只保留当前自动管线能够执行的类别，并用不同搜索角度补足任务数量。
+     * 保留规划语义支持的类别，并用不同搜索角度补足任务数量。
+     * CollectorRegistry 决定类别当前是否有专属数据源；JOB/COMPETITION 不会回退到通用搜索。
      */
     private List<SearchTask> normalizeTasks(List<SearchTask> tasks,
                                             UserProfile profile,
                                             String explicitQuery) {
         int targetCount = Math.max(1, props.getSearchTaskCount());
+        Set<String> supportedCategories = Set.of(
+                SearchTask.NEWS, SearchTask.BLOG, SearchTask.GITHUB,
+                SearchTask.JOB, SearchTask.COMPETITION);
         Set<String> executableCategories = Set.of(
                 SearchTask.NEWS, SearchTask.BLOG, SearchTask.GITHUB);
         List<SearchTask> normalized = new ArrayList<>();
+        int executableCount = 0;
 
         for (SearchTask task : tasks) {
-            if (!executableCategories.contains(task.category())) continue;
-            if (containsQuery(normalized, task.query())) continue;
+            if (!supportedCategories.contains(task.category())) continue;
+            if (containsTask(normalized, task)) continue;
+            if (executableCategories.contains(task.category())
+                    && executableCount >= targetCount) {
+                continue;
+            }
             normalized.add(task);
-            if (normalized.size() >= targetCount) return normalized;
+            if (executableCategories.contains(task.category())) {
+                executableCount++;
+            }
         }
 
         for (SearchTask fallback : defaultTasks(profile, explicitQuery)) {
-            if (containsQuery(normalized, fallback.query())) continue;
+            if (executableCount >= targetCount) break;
+            if (containsTask(normalized, fallback)) continue;
             normalized.add(fallback);
-            if (normalized.size() >= targetCount) break;
+            executableCount++;
         }
         return normalized;
     }
 
-    private boolean containsQuery(List<SearchTask> tasks, String query) {
-        return tasks.stream().anyMatch(task -> task.query().equalsIgnoreCase(query));
+    private boolean containsTask(List<SearchTask> tasks, SearchTask candidate) {
+        return tasks.stream().anyMatch(task ->
+                task.category().equals(candidate.category())
+                        && task.query().equalsIgnoreCase(candidate.query()));
     }
 
     /**

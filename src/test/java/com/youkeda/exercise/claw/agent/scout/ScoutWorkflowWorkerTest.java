@@ -2,14 +2,18 @@ package com.youkeda.exercise.claw.agent.scout;
 
 import com.youkeda.exercise.claw.agent.skill.WorkflowRequest;
 import com.youkeda.exercise.claw.agent.skill.WorkflowResult;
+
 import com.youkeda.exercise.claw.scout.ScoutOrchestrator;
 import com.youkeda.exercise.claw.scout.ScoutReport;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 class ScoutWorkflowWorkerTest {
@@ -35,5 +39,31 @@ class ScoutWorkflowWorkerTest {
         verify(taskManager).updateStatus("task-123", ScoutTaskStatus.RUNNING);
         verify(taskManager).updateStatus("task-123", ScoutTaskStatus.COMPLETED);
         verify(orchestrator).run("AI agents");
+    }
+
+    @Test
+    void interruptsTimedOutAttemptBeforeReturningFailure() {
+        ScoutOrchestrator orchestrator = mock(ScoutOrchestrator.class);
+        ScoutTaskManager taskManager = mock(ScoutTaskManager.class);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        when(orchestrator.run("slow query")).thenAnswer(invocation -> {
+            try {
+                Thread.sleep(10_000);
+                return new ScoutReport(0, 0, 0);
+            } catch (InterruptedException e) {
+                interrupted.set(true);
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted", e);
+            }
+        });
+        ScoutWorkflowWorker worker = new ScoutWorkflowWorker(orchestrator, taskManager);
+
+        WorkflowResult result = worker.execute(new WorkflowRequest(
+                "task-timeout", "scoutWorkflow", "slow query", Instant.now(),
+                Duration.ofMillis(50), 0));
+
+        assertEquals(WorkflowResult.WorkflowStatus.FAILED, result.status());
+        assertTrue(interrupted.get());
+        verify(taskManager).updateStatus("task-timeout", ScoutTaskStatus.FAILED);
     }
 }

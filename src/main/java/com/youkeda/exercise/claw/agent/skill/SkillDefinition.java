@@ -14,6 +14,7 @@ public record SkillDefinition(
         String systemPromptResource,
         String triggerPolicyName,
         SkillKnowledgeConfig knowledge,
+        SkillExecutionConfig execution,
         boolean enabled
 ) {
     public Set<String> allowedTools() {

@@ -68,22 +68,40 @@ public class CandidateMatcher {
             }
 
             List<float[]> facetVectors = embeddingClient.embedBatch(facets);
+            boolean hasExplicitQuery = explicitQuery != null && !explicitQuery.isBlank();
 
             // 每条信息取与单个画像维度的最佳相似度，避免整份画像相互稀释。
             List<MatchedCandidate> ranked = new ArrayList<>();
             for (InformationItem item : freshItems) {
                 if (item.getVector() == null) continue;
 
+                float topicScore = hasExplicitQuery
+                        ? cosineSimilarity(facetVectors.get(0), item.getVector())
+                        : -1f;
+                if (hasExplicitQuery && topicScore < props.getFallbackMatchScore()) {
+                    continue;
+                }
+
                 float bestScore = -1f;
                 int bestFacet = -1;
-                for (int i = 0; i < facetVectors.size(); i++) {
+                int firstProfileFacet = hasExplicitQuery ? 1 : 0;
+                for (int i = firstProfileFacet; i < facetVectors.size(); i++) {
                     float score = cosineSimilarity(facetVectors.get(i), item.getVector());
                     if (score > bestScore) {
                         bestScore = score;
                         bestFacet = i;
                     }
                 }
-                if (bestFacet >= 0) {
+                if (hasExplicitQuery) {
+                    float rankingScore = bestFacet >= 0
+                            ? 0.85f * topicScore + 0.15f * bestScore
+                            : topicScore;
+                    String reason = "匹配本次主题：" + explicitQuery.trim();
+                    if (bestFacet >= 0) {
+                        reason += "；画像排序：" + facets.get(bestFacet);
+                    }
+                    ranked.add(new MatchedCandidate(item, rankingScore, reason));
+                } else if (bestFacet >= 0) {
                     ranked.add(new MatchedCandidate(
                             item, bestScore, "匹配画像维度：" + facets.get(bestFacet)));
                 }

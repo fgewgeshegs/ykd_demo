@@ -20,5 +20,7 @@ class InformationScoutPromptContractTest {
         assertFalse(prompt.contains("告知用户任务状态"));
         assertFalse(prompt.contains("说明这是后台任务"));
         assertFalse(prompt.contains("告诉用户已经开始查找"));
+        assertFalse(prompt.contains("调用 information_scout"));
+        assertTrue(prompt.contains("SkillExecutor"));
     }
 }

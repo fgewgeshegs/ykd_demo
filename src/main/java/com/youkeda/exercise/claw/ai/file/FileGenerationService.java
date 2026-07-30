@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -84,7 +85,7 @@ public class FileGenerationService {
      * 生成文件（带格式提示）
      *
      * @param userText    用户请求文本
-     * @param formatHint  格式提示（"pdf" 或 "docx"），不为 null 时优先使用此格式
+     * @param formatHint  格式提示（"pdf"、"docx" 或 "md"），不为 null 时优先使用此格式
      * @return 文件生成结果（字节、文件名、描述），失败返回 null
      */
     public FileGenerationResult generate(String userText, String formatHint) {
@@ -96,6 +97,7 @@ public class FileGenerationService {
             format = switch (formatHint.toLowerCase()) {
                 case "pdf" -> FileFormat.PDF;
                 case "docx", "doc", "word" -> FileFormat.DOCX;
+                case "md", "markdown" -> FileFormat.MARKDOWN;
                 default -> detectFormat(userText);
             };
         } else {
@@ -115,13 +117,18 @@ public class FileGenerationService {
         // 3. 生成文件名
         String title = extractTitle(content);
         String fileName = title + "." + format.extension;
-        String description = "基于对话内容生成的" + (format == FileFormat.PDF ? "PDF" : "Word") + "文档";
+        String description = switch (format) {
+            case PDF -> "基于对话内容生成的PDF文档";
+            case DOCX -> "基于对话内容生成的Word文档";
+            case MARKDOWN -> "基于对话内容生成的Markdown文档";
+        };
 
         // 4. 渲染文件
         try {
             byte[] fileBytes = switch (format) {
                 case PDF -> generatePdf(content, title);
                 case DOCX -> generateDocx(content, title);
+                case MARKDOWN -> content.getBytes(StandardCharsets.UTF_8);
             };
 
             if (fileBytes == null || fileBytes.length == 0) {
@@ -142,7 +149,8 @@ public class FileGenerationService {
 
     private enum FileFormat {
         PDF("pdf"),
-        DOCX("docx");
+        DOCX("docx"),
+        MARKDOWN("md");
 
         final String extension;
         FileFormat(String extension) {
@@ -152,6 +160,9 @@ public class FileGenerationService {
 
     private FileFormat detectFormat(String userText) {
         String lower = userText.toLowerCase();
+        if (lower.contains("markdown") || lower.contains(".md") || lower.contains("md文件")) {
+            return FileFormat.MARKDOWN;
+        }
         // "pdf" 优先级最高（避免 "PDF文档" 被误判为 DOCX）
         if (lower.contains("pdf")) {
             return FileFormat.PDF;

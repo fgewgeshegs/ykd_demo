@@ -3,13 +3,10 @@ package com.youkeda.exercise.claw.scout;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.scout.ScoutTaskManager;
-import com.youkeda.exercise.claw.agent.skill.WorkflowRegistry;
-import com.youkeda.exercise.claw.agent.skill.WorkflowRequest;
-import com.youkeda.exercise.claw.agent.skill.WorkflowWorker;
 import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
 import com.youkeda.exercise.claw.agent.tool.LLMFunction;
 import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.skill.SkillsProperties;
 
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -17,33 +14,25 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-
 @Component
 @ConditionalOnProperty(name = "scout.enabled", havingValue = "true")
 public class ScoutFunction implements LLMFunction {
 
     private static final Logger log = LoggerFactory.getLogger(ScoutFunction.class);
 
-    private final ScoutOrchestrator orchestrator;
     private final LLMFunctionRegistry functionRegistry;
     private final ObjectMapper objectMapper;
-    private final ScoutTaskManager taskManager;
-    private final WorkflowRegistry workflowRegistry;
+    private final ScoutSubmissionService submissionService;
+    private final SkillsProperties skillsProperties;
 
-    public ScoutFunction(ScoutOrchestrator orchestrator,
-                          LLMFunctionRegistry functionRegistry,
+    public ScoutFunction(LLMFunctionRegistry functionRegistry,
                           ObjectMapper objectMapper,
-                          ScoutTaskManager taskManager,
-                          WorkflowRegistry workflowRegistry) {
-        this.orchestrator = orchestrator;
+                          ScoutSubmissionService submissionService,
+                          SkillsProperties skillsProperties) {
         this.functionRegistry = functionRegistry;
         this.objectMapper = objectMapper;
-        this.taskManager = taskManager;
-        this.workflowRegistry = workflowRegistry;
+        this.submissionService = submissionService;
+        this.skillsProperties = skillsProperties;
     }
 
     @PostConstruct
@@ -103,41 +92,34 @@ public class ScoutFunction implements LLMFunction {
     public String execute(String argumentsJson, FunctionExecutionContext context) {
         try {
             String query = extractQuery(argumentsJson, context);
-
-            // Check for duplicate running tasks
-            if (taskManager.isDuplicate()) {
-                return "{\"status\":\"duplicate\",\"message\":\"已有正在运行的信息猎手任务，请等待完成后再试\"}";
-            }
-
-            // Get workflow worker
-            Optional<WorkflowWorker> worker = workflowRegistry.getWorker("scoutWorkflow");
-            if (worker.isEmpty()) {
-                return "{\"status\":\"error\",\"message\":\"信息猎手暂不可用\"}";
-            }
-
-            // Create task and launch workflow async
-            String taskId = UUID.randomUUID().toString();
-            taskManager.createTask(taskId, query);
-
-            CompletableFuture.runAsync(() -> {
-                try {
-                    WorkflowRequest wfRequest = new WorkflowRequest(
-                            taskId, "scoutWorkflow", query, Instant.now());
-                    worker.get().execute(wfRequest);
-                } catch (Exception e) {
-                    log.error("Async scout workflow failed", e);
-                }
-            });
-
-            String queryDisplay = (query != null && !query.isBlank()) ? "「" + query + "」" : "";
-            return String.format(
-                "{\"status\":\"started\",\"taskId\":\"%s\",\"message\":\"已开始查找%s，完成后会推送结果给你\"}",
-                taskId, queryDisplay);
-
+            String workflowName = skillsProperties == null
+                    ? null
+                    : skillsProperties.getSkillWorkflowBindings().get("information-scout");
+            ScoutSubmissionResult result = submissionService.submit(query, workflowName);
+            return toJson(result);
         } catch (Exception e) {
             log.error("信息猎手执行失败", e);
-            return "{\"status\":\"ERROR\",\"message\":\"信息猎手执行失败: " + e.getMessage() + "\"}";
+            ObjectNode error = objectMapper.createObjectNode();
+            error.put("status", "error");
+            error.put("message", "信息猎手执行失败");
+            return error.toString();
         }
+    }
+
+    private String toJson(ScoutSubmissionResult result) {
+        ObjectNode response = objectMapper.createObjectNode();
+        switch (result.status()) {
+            case STARTED -> {
+                response.put("status", "started");
+                response.put("taskId", result.taskId());
+            }
+            case DUPLICATE -> response.put("status", "duplicate");
+            case UNAVAILABLE, FAILED -> {
+                response.put("status", "error");
+                response.put("message", "信息猎手暂不可用");
+            }
+        }
+        return response.toString();
     }
 
     private String extractQuery(String argumentsJson, FunctionExecutionContext context) {

@@ -59,6 +59,7 @@ public class SkillRegistry {
                 def.systemPromptResource(),
                 def.triggerPolicyName(),
                 def.knowledge(),
+                def.execution(),
                 def.enabled()
         );
     }

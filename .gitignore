@@ -78,3 +78,5 @@ META-INF/
 data/
 *.sqlite
 .claude/
+.agents/
+.hermes/

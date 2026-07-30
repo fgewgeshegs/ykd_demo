@@ -24,6 +24,7 @@ class SkillRegistryTest {
                 "prompts/skills/information-scout.txt",
                 "scoutTriggerPolicy",
                 null,
+                null,
                 true
         );
         properties.setSkills(new LinkedHashMap<>(Map.of("information-scout", configuredSkill)));

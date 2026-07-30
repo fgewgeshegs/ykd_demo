@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ScoutFunctionPendingAvailabilityTest {
 
     private final ScoutFunction function = new ScoutFunction(
-            null, null, null, null, null);
+            null, null, null, null);
 
     @Test
     void shortSlotAnswerIsAvailableOnlyForPendingScoutAction() {

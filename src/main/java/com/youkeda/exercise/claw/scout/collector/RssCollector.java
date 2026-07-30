@@ -39,6 +39,7 @@ public class RssCollector implements Collector {
         this.props = props;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
 

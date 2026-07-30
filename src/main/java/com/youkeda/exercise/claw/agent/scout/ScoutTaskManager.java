@@ -25,6 +25,17 @@ public class ScoutTaskManager {
         return task;
     }
 
+    /**
+     * 在单一任务管理器临界区内完成查重和创建，避免两个并发请求都通过查重。
+     */
+    public synchronized boolean createTaskIfNoActive(String taskId, String query) {
+        if (isDuplicate()) {
+            return false;
+        }
+        createTask(taskId, query);
+        return true;
+    }
+
     public void updateStatus(String taskId, ScoutTaskStatus status) {
         taskStore.updateStatus(taskId, status);
     }

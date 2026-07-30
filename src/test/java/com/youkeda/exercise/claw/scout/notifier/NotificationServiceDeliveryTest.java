@@ -1,6 +1,5 @@
 package com.youkeda.exercise.claw.scout.notifier;
 
-import com.youkeda.exercise.claw.scout.ScoutProperties;
 import com.youkeda.exercise.claw.scout.judge.Recommendation;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
@@ -16,78 +15,103 @@ import static org.mockito.Mockito.*;
 class NotificationServiceDeliveryTest {
 
     @Test
-    void doesNotSendOrMarkDeliveredWhenOwnerIsUnavailable() {
+    void sendsOnlyAConciseActionableMessageForWorkflowFailure() {
         WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        ScoutDeliveryStore deliveryStore = mock(ScoutDeliveryStore.class);
+        WechatUserManager userManager = mock(WechatUserManager.class);
+        when(userManager.getOwnerUserId()).thenReturn("owner-1");
+        when(wechatClient.sendTextMessage(anyString(), anyString())).thenReturn(true);
+        NotificationService service = new NotificationService(
+                wechatClient, userManager,
+                mock(RecommendationSummaryService.class));
+
+        service.notifyFailure();
+
+        verify(wechatClient).sendTextMessage(
+                "owner-1", "信息猎手本次运行失败，请稍后重试。");
+    }
+
+    @Test
+    void doesNotSendWhenOwnerIsUnavailable() {
+        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn(null);
-        when(deliveryStore.wasDeliveredSince(anyString(), anyLong())).thenReturn(false);
         NotificationService service = new NotificationService(
-                wechatClient, deliveryStore, new ScoutProperties(), userManager, summaryService);
+                wechatClient, userManager, summaryService);
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
                 "https://example.com", 0.9f, System.currentTimeMillis())));
 
         verify(wechatClient, never()).sendTextMessage(any(), anyString());
-        verify(deliveryStore, never()).markDelivered(anyString(), anyLong());
         verify(summaryService, never()).summarize(anyList());
     }
 
     @Test
-    void doesNotMarkDeliveredWhenWechatSendFails() {
+    void doesNotSummarizeWhenWechatSendFails() {
         WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        ScoutDeliveryStore deliveryStore = mock(ScoutDeliveryStore.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
         when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(false);
-        when(deliveryStore.wasDeliveredSince(anyString(), anyLong())).thenReturn(false);
         NotificationService service = new NotificationService(
-                wechatClient, deliveryStore, new ScoutProperties(), userManager, summaryService);
+                wechatClient, userManager, summaryService);
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
                 "https://example.com", 0.9f, System.currentTimeMillis())));
 
-        verify(deliveryStore, never()).markDelivered(anyString(), anyLong());
         verify(summaryService, never()).summarize(anyList());
     }
 
     @Test
-    void marksDeliveredOnlyAfterWechatSendSucceeds() {
+    void sendsSummaryAfterWechatSendSucceeds() {
         WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        ScoutDeliveryStore deliveryStore = mock(ScoutDeliveryStore.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
         when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
-        when(deliveryStore.wasDeliveredSince(anyString(), anyLong())).thenReturn(false);
         when(summaryService.summarize(anyList())).thenReturn("📌 信息猎手总结\n\n总结内容");
         NotificationService service = new NotificationService(
-                wechatClient, deliveryStore, new ScoutProperties(), userManager, summaryService);
+                wechatClient, userManager, summaryService);
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
                 "https://example.com", 0.9f, System.currentTimeMillis())));
 
-        verify(deliveryStore).markDelivered(anyString(), anyLong());
         verify(wechatClient, times(2)).sendTextMessage(eq("owner-1"), anyString());
+    }
+
+    @Test
+    void sendsTheSameRecommendationAgainOnLaterCalls() {
+        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+        WechatUserManager userManager = mock(WechatUserManager.class);
+        RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
+        when(userManager.getOwnerUserId()).thenReturn("owner-1");
+        when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
+        NotificationService service = new NotificationService(
+                wechatClient, userManager, summaryService);
+        List<Recommendation> recommendations = List.of(new Recommendation(
+                "rec-1", "title", "summary", "reason", "suggestion",
+                "https://example.com", 0.9f, System.currentTimeMillis()));
+
+        service.notify(recommendations);
+        service.notify(recommendations);
+
+        verify(wechatClient, times(2))
+                .sendTextMessage(eq("owner-1"), anyString());
     }
 
     @Test
     void groupsStrongAndDiscoveryRecommendationsInTheReport() {
         WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        ScoutDeliveryStore deliveryStore = mock(ScoutDeliveryStore.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
         when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
-        when(deliveryStore.wasDeliveredSince(anyString(), anyLong())).thenReturn(false);
         when(summaryService.summarize(anyList())).thenReturn("📌 信息猎手总结\n\n综合结论");
         NotificationService service = new NotificationService(
-                wechatClient, deliveryStore, new ScoutProperties(), userManager, summaryService);
+                wechatClient, userManager, summaryService);
 
         service.notifyWithSummary(List.of(
                 new Recommendation("strong", "强推荐", "summary", "reason", "suggestion",
@@ -110,14 +134,12 @@ class NotificationServiceDeliveryTest {
     @Test
     void plainNotificationDoesNotSendScoutSummary() {
         WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        ScoutDeliveryStore deliveryStore = mock(ScoutDeliveryStore.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
         when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
-        when(deliveryStore.wasDeliveredSince(anyString(), anyLong())).thenReturn(false);
         NotificationService service = new NotificationService(
-                wechatClient, deliveryStore, new ScoutProperties(), userManager, summaryService);
+                wechatClient, userManager, summaryService);
 
         service.notify(List.of(new Recommendation(
                 "campus", "考试提醒", "summary", "reason", "suggestion",
@@ -130,15 +152,13 @@ class NotificationServiceDeliveryTest {
     @Test
     void splitsLongDetailReportAtRecommendationBoundariesBeforeSummary() {
         WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        ScoutDeliveryStore deliveryStore = mock(ScoutDeliveryStore.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
         when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
-        when(deliveryStore.wasDeliveredSince(anyString(), anyLong())).thenReturn(false);
         when(summaryService.summarize(anyList())).thenReturn("📌 信息猎手总结\n\n综合结论");
         NotificationService service = new NotificationService(
-                wechatClient, deliveryStore, new ScoutProperties(), userManager, summaryService);
+                wechatClient, userManager, summaryService);
 
         String longSummary = "这是一段较长的推荐摘要，用于验证长文本会按完整条目分段发送。".repeat(12);
         List<Recommendation> recommendations = java.util.stream.IntStream.rangeClosed(1, 6)
