@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.image;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 

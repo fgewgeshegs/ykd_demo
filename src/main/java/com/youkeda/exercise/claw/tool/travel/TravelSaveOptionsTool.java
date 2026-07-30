@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.travel;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
@@ -19,15 +19,15 @@ import org.springframework.stereotype.Component;
  * 方案必须有明确标识、名称、定位和行程概要。
  */
 @Component
-public class TravelSaveOptionsFunction implements Tool {
+public class TravelSaveOptionsTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(TravelSaveOptionsFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TravelSaveOptionsTool.class);
 
     private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
     private final ToolRegistry registry;
 
-    public TravelSaveOptionsFunction(TravelPlanService planService,
+    public TravelSaveOptionsTool(TravelPlanService planService,
                                        ObjectMapper objectMapper,
                                        ToolRegistry registry) {
         this.planService = planService;

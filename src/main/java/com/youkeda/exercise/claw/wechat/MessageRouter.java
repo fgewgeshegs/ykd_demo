@@ -4,7 +4,7 @@ import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.ChatHandl
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.FileHandler;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.SimpleReplyHandler;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.VisionHandler;
-import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
+import com.youkeda.exercise.claw.tool.voice.VoiceTool;
 import com.youkeda.exercise.claw.schedule.CourseImportHandler;
 import com.youkeda.exercise.claw.schedule.CourseImportStateManager;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
  *
  * 按消息类型（IMAGE/VOICE/FILE/TEXT）分发到对应的处理器。
  * TEXT 消息由 ChatHandler → ReActAgentExecutor 做 LLM tool-calling 循环；
- * 非 TEXT 消息直接分发给专用 Handler（VisionHandler/VoiceFunction/FileHandler）。
+ * 非 TEXT 消息直接分发给专用 Handler（VisionHandler/VoiceTool/FileHandler）。
  *
  * 不包含业务逻辑，仅负责路由分发
  */
@@ -31,7 +31,7 @@ public class MessageRouter {
     private final ChatHandler chatHandler;
     private final VisionHandler visionHandler;
     private final SimpleReplyHandler fallbackHandler;
-    private final VoiceFunction voiceTool;
+    private final VoiceTool voiceTool;
     private final FileHandler fileHandler;
     private final CourseImportStateManager courseImportStateManager;
     private final CourseImportHandler courseImportHandler;
@@ -39,7 +39,7 @@ public class MessageRouter {
     public MessageRouter(ChatHandler chatHandler,
                          VisionHandler visionHandler,
                          SimpleReplyHandler fallbackHandler,
-                         VoiceFunction voiceTool,
+                         VoiceTool voiceTool,
                          FileHandler fileHandler,
                          CourseImportStateManager courseImportStateManager,
                          CourseImportHandler courseImportHandler) {

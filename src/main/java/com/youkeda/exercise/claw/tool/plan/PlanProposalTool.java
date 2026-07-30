@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.plan;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
@@ -29,14 +29,14 @@ import org.springframework.stereotype.Component;
  * 将计划以自然语言展示给用户，等待用户回复确认或修改。</p>
  */
 @Component
-public class PlanProposalFunction implements Tool {
+public class PlanProposalTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(PlanProposalFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(PlanProposalTool.class);
 
     private final ObjectMapper objectMapper;
     private final ToolRegistry functionRegistry;
 
-    public PlanProposalFunction(ObjectMapper objectMapper,
+    public PlanProposalTool(ObjectMapper objectMapper,
                                 ToolRegistry functionRegistry) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -45,7 +45,7 @@ public class PlanProposalFunction implements Tool {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("PlanProposalFunction 已注册到 ToolRegistry");
+        log.info("PlanProposalTool 已注册到 ToolRegistry");
     }
 
     @Override

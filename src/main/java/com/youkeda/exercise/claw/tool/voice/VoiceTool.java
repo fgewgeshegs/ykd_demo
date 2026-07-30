@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.voice;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
@@ -30,9 +30,9 @@ import org.springframework.stereotype.Component;
  * {@link #consumePendingAudio()} 传递回调用方（{@code ChatHandler}），确保语音文件能被正确发送。</p>
  */
 @Component
-public class VoiceFunction implements Tool {
+public class VoiceTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(VoiceFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(VoiceTool.class);
 
     private static final String ASR_FAILED_REPLY = "抱歉，语音识别失败，请重试。";
 
@@ -44,7 +44,7 @@ public class VoiceFunction implements Tool {
     /** 待发送的音频数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
     private volatile PendingAudio pendingAudio;
 
-    public VoiceFunction(VoiceService voiceService,
+    public VoiceTool(VoiceService voiceService,
                       WechatILinkClient wechatClient,
                       ToolRegistry functionRegistry,
                       ObjectMapper objectMapper) {
@@ -72,7 +72,7 @@ public class VoiceFunction implements Tool {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("VoiceFunction 已注册到 ToolRegistry（text_to_speech）");
+        log.info("VoiceTool 已注册到 ToolRegistry（text_to_speech）");
     }
 
     // ==================== Tool（text_to_speech） ====================

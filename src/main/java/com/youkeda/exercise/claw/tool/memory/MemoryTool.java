@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.memory;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
@@ -26,15 +26,15 @@ import java.util.List;
  * - "我之前让你记住的偏好有哪些" → recall（按分类查询）
  */
 @Component
-public class MemoryFunction implements Tool {
+public class MemoryTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(MemoryFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(MemoryTool.class);
 
     private final ObjectMapper objectMapper;
     private final ToolRegistry functionRegistry;
     private final LongTermMemoryService memoryService;
 
-    public MemoryFunction(ObjectMapper objectMapper,
+    public MemoryTool(ObjectMapper objectMapper,
                           ToolRegistry functionRegistry,
                           LongTermMemoryService memoryService) {
         this.objectMapper = objectMapper;
@@ -45,7 +45,7 @@ public class MemoryFunction implements Tool {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("MemoryFunction 已注册到 ToolRegistry");
+        log.info("MemoryTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -100,7 +100,7 @@ public class MemoryFunction implements Tool {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String actionStr = args.path("action").asText("");
 
-            log.info("MemoryFunction 执行 | action={} | args={}",
+            log.info("MemoryTool 执行 | action={} | args={}",
                     actionStr, argumentsJson);
 
             return switch (actionStr) {
@@ -111,7 +111,7 @@ public class MemoryFunction implements Tool {
                 default -> errorJson("不支持的 action: " + actionStr);
             };
         } catch (Exception e) {
-            log.error("MemoryFunction 执行失败 | args={}", argumentsJson, e);
+            log.error("MemoryTool 执行失败 | args={}", argumentsJson, e);
             return errorJson(e.getMessage());
         }
     }

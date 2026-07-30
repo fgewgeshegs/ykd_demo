@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.travel;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
@@ -20,15 +20,15 @@ import org.springframework.stereotype.Component;
  * （接受超支、修改到预算内、更新预算上限、查看调整选项）。
  */
 @Component
-public class TravelSelectOptionFunction implements Tool {
+public class TravelSelectOptionTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(TravelSelectOptionFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TravelSelectOptionTool.class);
 
     private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
     private final ToolRegistry registry;
 
-    public TravelSelectOptionFunction(TravelPlanService planService,
+    public TravelSelectOptionTool(TravelPlanService planService,
                                         ObjectMapper objectMapper,
                                         ToolRegistry registry) {
         this.planService = planService;

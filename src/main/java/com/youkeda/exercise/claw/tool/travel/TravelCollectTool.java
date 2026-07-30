@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.travel;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
@@ -20,15 +20,15 @@ import org.springframework.stereotype.Component;
  * 信息不足时返回 NEED_MORE_INFORMATION 和具体缺失字段，LLM 应据此追问。
  */
 @Component
-public class TravelCollectFunction implements Tool {
+public class TravelCollectTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(TravelCollectFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TravelCollectTool.class);
 
     private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
     private final ToolRegistry registry;
 
-    public TravelCollectFunction(TravelPlanService planService,
+    public TravelCollectTool(TravelPlanService planService,
                                    ObjectMapper objectMapper,
                                    ToolRegistry registry) {
         this.planService = planService;

@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.time;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
@@ -29,9 +29,9 @@ import java.time.temporal.TemporalAdjusters;
  * <p>演示场景：团建计划设计 — LLM 通过此函数理解"这周末"、"下周五"等相对时间表达。
  */
 @Component
-public class TimeFunction implements Tool {
+public class TimeTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(TimeFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TimeTool.class);
 
     private static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
 
@@ -45,7 +45,7 @@ public class TimeFunction implements Tool {
     private final ObjectMapper objectMapper;
     private final ToolRegistry functionRegistry;
 
-    public TimeFunction(ObjectMapper objectMapper, ToolRegistry functionRegistry) {
+    public TimeTool(ObjectMapper objectMapper, ToolRegistry functionRegistry) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
     }
@@ -53,7 +53,7 @@ public class TimeFunction implements Tool {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("TimeFunction 已注册到 ToolRegistry");
+        log.info("TimeTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -133,7 +133,7 @@ public class TimeFunction implements Tool {
             }
 
             String action = actionNode.asText();
-            log.info("TimeFunction 执行 | action={} | args={}", action, argumentsJson);
+            log.info("TimeTool 执行 | action={} | args={}", action, argumentsJson);
 
             return switch (action) {
                 case "get_current_time" -> handleGetCurrentTime(args);
@@ -143,7 +143,7 @@ public class TimeFunction implements Tool {
             };
 
         } catch (Exception e) {
-            log.error("TimeFunction 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
+            log.error("TimeTool 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
             return "{\"error\": \"" + e.getMessage().replace("\"", "'") + "\"}";
         }
     }

@@ -21,7 +21,7 @@ import java.util.List;
  * 作为 WechatMessageHandler 暴露。
  *
  * <p>TTS 语音合成特殊处理：当工具调用循环中触发了 {@code text_to_speech}，
- * VoiceFunction 会暂存音频数据，{@link #handle(WechatMessage)} 在 executor
+ * VoiceTool 会暂存音频数据，{@link #handle(WechatMessage)} 在 executor
  * 返回后优先发送语音文件而非纯文本回复。</p>
  */
 @Component
@@ -31,17 +31,17 @@ public class ChatHandler implements WechatMessageHandler {
     private static final String FALLBACK_REPLY = "抱歉，我现在暂时无法回复，请稍后再试。";
 
     private final ReActAgentExecutor agentExecutor;
-    private final com.youkeda.exercise.claw.agent.tool.VoiceFunction voiceTool;
-    private final com.youkeda.exercise.claw.agent.tool.FileGenerationTool fileGenerationTool;
-    private final com.youkeda.exercise.claw.agent.tool.ImageGenerationTool imageGenerationTool;
+    private final com.youkeda.exercise.claw.tool.voice.VoiceTool voiceTool;
+    private final com.youkeda.exercise.claw.tool.file.FileGenerationTool fileGenerationTool;
+    private final com.youkeda.exercise.claw.tool.image.ImageGenerationTool imageGenerationTool;
     private final PlaceImageFunction placeImageFunction;
     private final WechatILinkClient wechatClient;
     private final WechatUserManager wechatUserManager;
 
     public ChatHandler(ReActAgentExecutor agentExecutor,
-                       com.youkeda.exercise.claw.agent.tool.VoiceFunction voiceTool,
-                       com.youkeda.exercise.claw.agent.tool.FileGenerationTool fileGenerationTool,
-                       com.youkeda.exercise.claw.agent.tool.ImageGenerationTool imageGenerationTool,
+                       com.youkeda.exercise.claw.tool.voice.VoiceTool voiceTool,
+                       com.youkeda.exercise.claw.tool.file.FileGenerationTool fileGenerationTool,
+                       com.youkeda.exercise.claw.tool.image.ImageGenerationTool imageGenerationTool,
                        PlaceImageFunction placeImageFunction,
                        WechatILinkClient wechatClient,
                        WechatUserManager wechatUserManager) {
@@ -82,14 +82,14 @@ public class ChatHandler implements WechatMessageHandler {
         }
 
         // 检查 TTS 是否生成了待发送的语音（text_to_speech 工具调用的结果）
-        com.youkeda.exercise.claw.agent.tool.VoiceFunction.PendingAudio audio = voiceTool.consumePendingAudio();
+        com.youkeda.exercise.claw.tool.voice.VoiceTool.PendingAudio audio = voiceTool.consumePendingAudio();
         if (audio != null && audio.audioBytes() != null && audio.audioBytes().length > 0) {
             log.info("TTS 音频待发送 | size={}bytes | from={}", audio.audioBytes().length, message.getUserId());
             return WechatReply.file(audio.audioBytes(), "AI语音回复.mp3", audio.text());
         }
 
         // 检查文件生成工具是否产生了待发送的文件（file_generate 工具调用的结果）
-        com.youkeda.exercise.claw.agent.tool.FileGenerationTool.PendingFile file = fileGenerationTool.consumePendingFile();
+        com.youkeda.exercise.claw.tool.file.FileGenerationTool.PendingFile file = fileGenerationTool.consumePendingFile();
         if (file != null && file.fileBytes() != null && file.fileBytes().length > 0) {
             log.info("待发送文件 | fileName={} | size={}bytes | from={}",
                     file.fileName(), file.fileBytes().length, message.getUserId());
@@ -110,7 +110,7 @@ public class ChatHandler implements WechatMessageHandler {
         }
 
         // 检查图片生成工具是否产生了待发送的图片（image_generate 工具调用的结果）
-        com.youkeda.exercise.claw.agent.tool.ImageGenerationTool.PendingImage image = imageGenerationTool.consumePendingImage();
+        com.youkeda.exercise.claw.tool.image.ImageGenerationTool.PendingImage image = imageGenerationTool.consumePendingImage();
         if (image != null && image.imageBytes() != null && image.imageBytes().length > 0) {
             log.info("待发送图片 | size={}bytes | from={}", image.imageBytes().length, message.getUserId());
             wechatClient.sendTextMessage(message.getUserId(), reply);

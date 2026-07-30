@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.tool.travel;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
@@ -19,15 +19,15 @@ import org.springframework.stereotype.Component;
  * 支持通用修订（反馈原话）、指定方案修订、多方案组合三种模式。
  */
 @Component
-public class TravelReviseFunction implements Tool {
+public class TravelReviseTool implements Tool {
 
-    private static final Logger log = LoggerFactory.getLogger(TravelReviseFunction.class);
+    private static final Logger log = LoggerFactory.getLogger(TravelReviseTool.class);
 
     private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
     private final ToolRegistry registry;
 
-    public TravelReviseFunction(TravelPlanService planService,
+    public TravelReviseTool(TravelPlanService planService,
                                   ObjectMapper objectMapper,
                                   ToolRegistry registry) {
         this.planService = planService;

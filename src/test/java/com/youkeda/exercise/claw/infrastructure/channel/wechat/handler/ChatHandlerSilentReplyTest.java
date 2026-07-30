@@ -1,9 +1,9 @@
 package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
 import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
-import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
-import com.youkeda.exercise.claw.agent.tool.FileGenerationTool;
-import com.youkeda.exercise.claw.agent.tool.ImageGenerationTool;
+import com.youkeda.exercise.claw.tool.voice.VoiceTool;
+import com.youkeda.exercise.claw.tool.file.FileGenerationTool;
+import com.youkeda.exercise.claw.tool.image.ImageGenerationTool;
 import com.youkeda.exercise.claw.map.PlaceImageFunction;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
@@ -23,7 +23,7 @@ class ChatHandlerSilentReplyTest {
         ReActAgentExecutor executor = mock(ReActAgentExecutor.class);
         ChatHandler chatHandler = new ChatHandler(
                 executor,
-                mock(VoiceFunction.class),
+                mock(VoiceTool.class),
                 mock(FileGenerationTool.class),
                 mock(ImageGenerationTool.class),
                 mock(PlaceImageFunction.class),

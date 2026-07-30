@@ -4,7 +4,7 @@ import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.ChatHandl
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.FileHandler;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.SimpleReplyHandler;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.VisionHandler;
-import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
+import com.youkeda.exercise.claw.tool.voice.VoiceTool;
 import com.youkeda.exercise.claw.schedule.CourseImportHandler;
 import com.youkeda.exercise.claw.schedule.CourseImportStateManager;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
@@ -22,7 +22,7 @@ class MessageRouterSilentReplyTest {
         ChatHandler chatTool = mock(ChatHandler.class);
         VisionHandler visionHandler = mock(VisionHandler.class);
         SimpleReplyHandler fallbackTool = mock(SimpleReplyHandler.class);
-        VoiceFunction voiceTool = mock(VoiceFunction.class);
+        VoiceTool voiceTool = mock(VoiceTool.class);
         FileHandler fileHandler = mock(FileHandler.class);
         CourseImportStateManager importStateManager = mock(CourseImportStateManager.class);
         CourseImportHandler importHandler = mock(CourseImportHandler.class);
