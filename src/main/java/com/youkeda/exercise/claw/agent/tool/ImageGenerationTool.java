@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
  * 启动时自动注册到 ToolRegistry。
  *
  * <p>注意：{@link Tool#execute(String)} 只能返回文本，但图片数据通过
- * {@link #consumePendingImage()} 传递回调用方（{@code ChatTool}），确保图片能被正确发送。</p>
+ * {@link #consumePendingImage()} 传递回调用方（{@code ChatHandler}），确保图片能被正确发送。</p>
  */
 @Component
 public class ImageGenerationTool implements Tool {
@@ -51,7 +51,7 @@ public class ImageGenerationTool implements Tool {
 
     /**
      * 消费待发送的图片数据
-     * <p>被 {@code ChatTool} 在工具调用循环结束后调用，如果存在则发送图片而非纯文本。</p>
+     * <p>被 {@code ChatHandler} 在工具调用循环结束后调用，如果存在则发送图片而非纯文本。</p>
      *
      * @return 待发送的图片数据，没有则返回 null
      */
@@ -123,7 +123,7 @@ public class ImageGenerationTool implements Tool {
 
             log.info("图片生成并下载成功 | size={} bytes", imageBytes.length);
 
-            // 暂存图片供 ChatTool 取走发送（execute() 只能返回文本，图片通过此通道传递）
+            // 暂存图片供 ChatHandler 取走发送（execute() 只能返回文本，图片通过此通道传递）
             pendingImage = new PendingImage(imageBytes, prompt);
 
             return "{\"imageUrl\": \"" + imageUrl

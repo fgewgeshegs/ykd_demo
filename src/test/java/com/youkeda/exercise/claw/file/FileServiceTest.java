@@ -371,7 +371,7 @@ class FileServiceTest {
     class SourceFieldTest {
 
         @Test
-        @DisplayName("通过 FileTool 保存的文件标记为 user_upload")
+        @DisplayName("通过 FileHandler 保存的文件标记为 user_upload")
         void userUploadSource() {
             FileMetadata meta = fileService.saveFile(userA, "content".getBytes(StandardCharsets.UTF_8), "upload.md");
             assertEquals("user_upload", meta.getSource());

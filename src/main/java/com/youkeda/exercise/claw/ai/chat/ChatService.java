@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * 聊天服务
  *
- * <p>封装无工具调用的单轮对话逻辑。当前主要用于 {@code FileTool} 文件分析场景，
+ * <p>封装无工具调用的单轮对话逻辑。当前主要用于 {@code FileHandler} 文件分析场景，
  * 通过 {@link LLMClient#chatWithSystemPrompt} 完成模型交互。
  *
  * <p>多轮对话 + tool-calling 的主链路见 {@code ReActAgentExecutor}。

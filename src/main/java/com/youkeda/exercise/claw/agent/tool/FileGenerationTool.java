@@ -39,7 +39,7 @@ public class FileGenerationTool implements Tool {
 
     /**
      * 消费待发送的文件数据
-     * <p>被 {@code ChatTool} 在工具调用循环结束后调用，如果存在则发送文件而非纯文本。</p>
+     * <p>被 {@code ChatHandler} 在工具调用循环结束后调用，如果存在则发送文件而非纯文本。</p>
      *
      * @return 待发送的文件数据，没有则返回 null
      */
@@ -113,7 +113,7 @@ public class FileGenerationTool implements Tool {
             log.info("文件生成成功 | fileName={} | size={}bytes",
                     result.fileName(), result.fileBytes().length);
 
-            // 暂存文件供 ChatTool 取走发送（execute() 只能返回文本，文件字节通过此通道传递）
+            // 暂存文件供 ChatHandler 取走发送（execute() 只能返回文本，文件字节通过此通道传递）
             pendingFile = new PendingFile(result.fileBytes(), result.fileName(), result.description());
 
             return "{\"fileName\": \"" + result.fileName()

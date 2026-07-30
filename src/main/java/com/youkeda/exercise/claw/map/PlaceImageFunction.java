@@ -25,7 +25,7 @@ import java.util.List;
  * <ol>
  *   <li>{@link #execute(String)} 获取图片 bytes 并暂存到 {@link #pendingPlaceImages}</li>
  *   <li>返回简化的 JSON 给 LLM（不含图片 URL）</li>
- *   <li>ChatTool 通过 {@link #consumePendingPlaceImages()} 消费图片直接发送</li>
+ *   <li>ChatHandler 通过 {@link #consumePendingPlaceImages()} 消费图片直接发送</li>
  * </ol>
  *
  * <p>LLM 只收到地点名称和描述，用自己的话生成文字介绍，不接触图片数据。
@@ -65,7 +65,7 @@ public class PlaceImageFunction implements Tool {
 
     /**
      * 消费并清除暂存的地点图片。
-     * ChatTool 在 stash-consume 阶段调用。
+     * ChatHandler 在 stash-consume 阶段调用。
      *
      * @return 暂存的图片列表，无暂存数据时返回 null
      */
@@ -126,7 +126,7 @@ public class PlaceImageFunction implements Tool {
             // 获取图片字节
             List<byte[]> imageBytes = placeImageService.searchImageBytes(keyword, city);
 
-            // stash 图片字节（ChatTool 消费）
+            // stash 图片字节（ChatHandler 消费）
             if (imageBytes != null && !imageBytes.isEmpty()) {
                 List<PendingPlaceImage> pending = new ArrayList<>();
                 for (byte[] bytes : imageBytes) {

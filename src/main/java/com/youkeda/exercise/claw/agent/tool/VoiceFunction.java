@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * </ul>
  *
  * <p>注意：{@link Tool#execute(String)} 只能返回文本，但 TTS 产生的音频数据通过
- * {@link #consumePendingAudio()} 传递回调用方（{@code ChatTool}），确保语音文件能被正确发送。</p>
+ * {@link #consumePendingAudio()} 传递回调用方（{@code ChatHandler}），确保语音文件能被正确发送。</p>
  */
 @Component
 public class VoiceFunction implements Tool {
@@ -56,7 +56,7 @@ public class VoiceFunction implements Tool {
 
     /**
      * 消费待发送的音频数据
-     * <p>被 {@code ChatTool} 在工具调用循环结束后调用，如果存在则发送语音文件而非纯文本。</p>
+     * <p>被 {@code ChatHandler} 在工具调用循环结束后调用，如果存在则发送语音文件而非纯文本。</p>
      *
      * @return 待发送的音频数据，没有则返回 null
      */
@@ -122,7 +122,7 @@ public class VoiceFunction implements Tool {
             log.info("语音合成成功 | size={}bytes | playtime={}ms",
                     result.getAudioBytes().length, result.getPlaytimeMs());
 
-            // 暂存音频供 ChatTool 取走发送（execute() 只能返回文本，音频通过此通道传递）
+            // 暂存音频供 ChatHandler 取走发送（execute() 只能返回文本，音频通过此通道传递）
             pendingAudio = new PendingAudio(result.getAudioBytes(), text);
 
             return "{\"success\": true, \"playtimeMs\": " + result.getPlaytimeMs()
