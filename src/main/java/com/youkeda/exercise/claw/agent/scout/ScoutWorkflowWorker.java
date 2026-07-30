@@ -46,19 +46,26 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
     public WorkflowResult execute(WorkflowRequest request) {
         String taskId = request.taskId();
 
-        Duration timeout = Duration.ofMinutes(timeoutMinutes);
+        Duration timeout = request.timeout() == null
+                ? Duration.ofMinutes(timeoutMinutes)
+                : request.timeout();
+        int effectiveRetryMax = request.retryMax() < 0
+                ? retryMax
+                : request.retryMax();
         Exception lastError = null;
 
-        for (int attempt = 0; attempt <= retryMax; attempt++) {
+        for (int attempt = 0; attempt <= effectiveRetryMax; attempt++) {
             if (attempt > 0) {
-                log.info("Retry {}/{} for scout workflow, task={}", attempt, retryMax, taskId);
+                log.info("Retry {}/{} for scout workflow, task={}",
+                        attempt, effectiveRetryMax, taskId);
                 try { Thread.sleep(1000L * attempt); } catch (InterruptedException ignored) { break; }
             }
 
             taskManager.updateStatus(taskId, ScoutTaskStatus.RUNNING);
 
+            Future<WorkflowResult> future = null;
             try {
-                Future<WorkflowResult> future = executor.submit(() -> {
+                future = executor.submit(() -> {
                     com.youkeda.exercise.claw.scout.ScoutReport report =
                             orchestrator.run(request.payload());
                     String summary = report.toString();
@@ -73,18 +80,33 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
                 return result;
 
             } catch (TimeoutException e) {
+                if (future != null) {
+                    future.cancel(true);
+                }
                 lastError = e;
-                log.warn("Scout workflow timeout attempt {}/{}", attempt + 1, retryMax);
+                log.warn("Scout workflow timeout attempt {}/{}",
+                        attempt + 1, effectiveRetryMax + 1);
                 taskManager.updateStatus(taskId, ScoutTaskStatus.PENDING);
+            } catch (InterruptedException e) {
+                if (future != null) {
+                    future.cancel(true);
+                }
+                Thread.currentThread().interrupt();
+                lastError = e;
+                break;
             } catch (Exception e) {
                 lastError = e;
-                log.error("Scout workflow failed attempt {}/{}", attempt + 1, retryMax, e);
+                log.error("Scout workflow failed attempt {}/{}",
+                        attempt + 1, effectiveRetryMax + 1, e);
                 taskManager.updateStatus(taskId, ScoutTaskStatus.PENDING);
             }
         }
 
         taskManager.updateStatus(taskId, ScoutTaskStatus.FAILED);
+        String failureMessage = lastError == null
+                ? "Workflow interrupted before completion"
+                : lastError.getMessage();
         return new WorkflowResult(taskId, WorkflowResult.WorkflowStatus.FAILED,
-                Instant.now(), "All retries exhausted: " + lastError.getMessage(), null);
+                Instant.now(), "All retries exhausted: " + failureMessage, null);
     }
 }

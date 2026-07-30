@@ -16,6 +16,23 @@ import static org.mockito.Mockito.*;
 class NotificationServiceDeliveryTest {
 
     @Test
+    void sendsOnlyAConciseActionableMessageForWorkflowFailure() {
+        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+        WechatUserManager userManager = mock(WechatUserManager.class);
+        when(userManager.getOwnerUserId()).thenReturn("owner-1");
+        when(wechatClient.sendTextMessage(anyString(), anyString())).thenReturn(true);
+        NotificationService service = new NotificationService(
+                wechatClient, mock(ScoutDeliveryStore.class),
+                new ScoutProperties(), userManager,
+                mock(RecommendationSummaryService.class));
+
+        service.notifyFailure();
+
+        verify(wechatClient).sendTextMessage(
+                "owner-1", "信息猎手本次运行失败，请稍后重试。");
+    }
+
+    @Test
     void doesNotSendOrMarkDeliveredWhenOwnerIsUnavailable() {
         WechatILinkClient wechatClient = mock(WechatILinkClient.class);
         ScoutDeliveryStore deliveryStore = mock(ScoutDeliveryStore.class);

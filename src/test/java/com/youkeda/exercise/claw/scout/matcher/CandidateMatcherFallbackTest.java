@@ -39,6 +39,31 @@ class CandidateMatcherFallbackTest {
     }
 
     @Test
+    void explicitTopicIsAHardGateBeforeProfileRanking() {
+        EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
+        when(embeddingClient.embedBatch(anyList())).thenReturn(List.of(
+                new float[]{1f, 0f},
+                new float[]{0f, 1f}));
+        ScoutProperties properties = new ScoutProperties();
+        properties.setMinMatchScore(0.45f);
+        properties.setFallbackMatchScore(0.30f);
+        CandidateMatcher matcher = new CandidateMatcher(embeddingClient, properties);
+        UserProfile profile = new UserProfile(
+                List.of("Java 项目"), List.of(), List.of(), List.of(), "");
+        InformationItem topicRelevant = item(
+                "考研政策调整", new float[]{0.60f, 0.80f});
+        InformationItem profileOnly = item(
+                "Java 框架更新", new float[]{0.20f, 0.98f});
+
+        List<MatchedCandidate> candidates = matcher.match(
+                profile, "考研政策最近变化", List.of(profileOnly, topicRelevant));
+
+        assertEquals(1, candidates.size());
+        assertSame(topicRelevant, candidates.get(0).item());
+        assertTrue(candidates.get(0).matchReason().contains("本次主题"));
+    }
+
+    @Test
     void fallsBackToHighestScoringItemsWhenThresholdMatchesNothing() {
         EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
         when(embeddingClient.embedBatch(anyList())).thenReturn(List.of(new float[]{1f, 0f}));

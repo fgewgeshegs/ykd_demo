@@ -77,11 +77,15 @@ claw:
     information-scout:
       enabled: true
       priority: 3
+      description: 主动发现与用户兴趣、项目和目标相关的最新资讯；仅在用户明确要求查找新动态、趋势或机会时运行。
       tags: [信息, 搜索]
-      requiredTools: [information_scout]
-      optionalTools: [scout_rss]
+      requiredTools: []
+      optionalTools: []
       systemPromptResource: prompts/skills/information-scout.txt
       triggerPolicyName: scoutTriggerPolicy
+      execution:
+        mode: BACKGROUND_WORKFLOW
+        executorName: informationScoutSkillExecutor
       knowledge:
         enabled: false
         namespaces: [scout]

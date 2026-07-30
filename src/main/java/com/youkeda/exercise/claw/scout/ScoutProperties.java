@@ -20,10 +20,10 @@ public class ScoutProperties {
     private float minMatchScore = 0.45f;
 
     /** 严格阈值无命中时的最低兜底分数 */
-    private float fallbackMatchScore = 0.25f;
+    private float fallbackMatchScore = 0.30f;
 
     /** 兜底候选数量上限 */
-    private int fallbackCandidateCount = 8;
+    private int fallbackCandidateCount = 3;
 
     /** 信息新鲜度窗口（天） */
     private int freshnessDays = 14;
@@ -35,7 +35,7 @@ public class ScoutProperties {
     private int maxRecommendations = 10;
 
     /** 候选充足时的最少推荐数 */
-    private int minRecommendations = 8;
+    private int minRecommendations = 0;
 
     /** 信息保留天数 */
     private int ttlDays = 7;

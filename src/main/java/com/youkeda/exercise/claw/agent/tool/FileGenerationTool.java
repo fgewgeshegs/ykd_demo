@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 /**
  * 文件生成工具
  *
- * 封装 FileGenerationService，根据用户请求生成 PDF 或 Word 文档文件。
+ * 封装 FileGenerationService，根据用户请求生成 PDF、Word 或 Markdown 文件。
  * 作为 LLMFunction 暴露，启动时自动注册到 LLMFunctionRegistry。
  */
 @Component
@@ -64,7 +64,7 @@ public class FileGenerationTool implements LLMFunction {
 
     @Override
     public String getDescription() {
-        return "根据文字描述生成 PDF 或 Word 文档文件，支持总结对话、生成报告、导出文档等。用户要求生成文件时调用此工具";
+        return "根据文字描述生成 PDF、Word 或 Markdown 文件，支持总结对话、生成报告和导出文档。用户要求生成文件时调用此工具";
     }
 
     @Override
@@ -79,8 +79,8 @@ public class FileGenerationTool implements LLMFunction {
 
         ObjectNode format = properties.putObject("format");
         format.put("type", "string");
-        format.put("description", "文件格式，pdf 或 docx");
-        format.put("enum", objectMapper.createArrayNode().add("pdf").add("docx"));
+        format.put("description", "文件格式，pdf、docx 或 md");
+        format.put("enum", objectMapper.createArrayNode().add("pdf").add("docx").add("md"));
 
         params.putArray("required").add("topic").add("format");
 

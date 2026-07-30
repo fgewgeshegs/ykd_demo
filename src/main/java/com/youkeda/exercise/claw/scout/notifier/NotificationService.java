@@ -58,6 +58,23 @@ public class NotificationService {
         deliver(recommendations, true);
     }
 
+    /** 后台信息猎手真正失败时，只发送简短且可操作的提示。 */
+    public void notifyFailure() {
+        String ownerUserId = userManager.getOwnerUserId();
+        if (ownerUserId == null || ownerUserId.isBlank()) {
+            log.error("信息猎手失败通知发送失败 | 未找到微信收件人");
+            return;
+        }
+        try {
+            if (!wechatClient.sendTextMessage(
+                    ownerUserId, "信息猎手本次运行失败，请稍后重试。")) {
+                log.error("信息猎手失败通知发送失败");
+            }
+        } catch (Exception e) {
+            log.error("信息猎手失败通知发送异常", e);
+        }
+    }
+
     private void deliver(List<Recommendation> recommendations, boolean sendSummary) {
         if (recommendations == null || recommendations.isEmpty()) {
             log.info("无推荐结果，跳过推送");

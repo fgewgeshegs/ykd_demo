@@ -133,7 +133,10 @@ public class ScoutOrchestrator {
 
         } catch (Exception e) {
             log.error("信息猎手执行异常", e);
-            return new ScoutReport(0, 0, 0);
+            if (e instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("信息猎手执行失败", e);
         }
     }
 

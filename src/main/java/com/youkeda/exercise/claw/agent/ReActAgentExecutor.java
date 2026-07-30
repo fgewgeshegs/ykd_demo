@@ -89,7 +89,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final SkillKnowledgeService skillKnowledgeService;
     private final AgentActivityRecorder activityRecorder;
     private final SkillPendingCoordinator skillPendingCoordinator;
-    private final SkillToolFallbackPolicy skillToolFallbackPolicy;
+    private final SkillExecutionDispatcher skillExecutionDispatcher;
     private final ToolResultStatusParser toolResultStatusParser;
 
     public ReActAgentExecutor(LLMClient llmClient,
@@ -108,7 +108,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                                SkillKnowledgeService skillKnowledgeService,
                                AgentActivityRecorder activityRecorder,
                                SkillPendingCoordinator skillPendingCoordinator,
-                               SkillToolFallbackPolicy skillToolFallbackPolicy,
+                               SkillExecutionDispatcher skillExecutionDispatcher,
                                ToolResultStatusParser toolResultStatusParser) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
@@ -126,7 +126,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.skillKnowledgeService = skillKnowledgeService;
         this.activityRecorder = activityRecorder;
         this.skillPendingCoordinator = skillPendingCoordinator;
-        this.skillToolFallbackPolicy = skillToolFallbackPolicy;
+        this.skillExecutionDispatcher = skillExecutionDispatcher;
         this.toolResultStatusParser = toolResultStatusParser;
     }
 
@@ -154,6 +154,32 @@ public class ReActAgentExecutor implements AgentExecutor {
         String activeSkillName = session.activeSkill();
         SkillDefinition activeSkill = skillRegistry.find(activeSkillName).orElse(null);
         activityRecorder.skillSelected(activityRequestId, activeSkillName);
+
+        SkillExecutionResult skillExecution = skillExecutionDispatcher.dispatch(
+                activeSkill, userMessage, session);
+        if (skillExecution.status() != SkillExecutionResult.Status.NOT_HANDLED) {
+            session = skillExecution.session() == null ? session : skillExecution.session();
+            context.setSkillSession(session);
+            skillSessionStore.save(userId, session);
+            if (skillExecution.status() == SkillExecutionResult.Status.HANDLED_SILENT) {
+                activityRecorder.requestCompleted(
+                        activityRequestId, System.currentTimeMillis() - requestStartedAt);
+                return SILENT_REPLY;
+            }
+            String reply = skillExecution.message();
+            if (reply == null || reply.isBlank()) {
+                reply = "当前功能暂时不可用，请稍后重试。";
+            }
+            contextStore.append("assistant", reply);
+            if (skillExecution.status() == SkillExecutionResult.Status.FAILED) {
+                activityRecorder.requestFailed(
+                        activityRequestId, reply, System.currentTimeMillis() - requestStartedAt);
+            } else {
+                activityRecorder.requestCompleted(
+                        activityRequestId, System.currentTimeMillis() - requestStartedAt);
+            }
+            return reply;
+        }
 
         // Build effective tool set
         Set<String> effectiveTools = new LinkedHashSet<>();
@@ -282,28 +308,17 @@ public class ReActAgentExecutor implements AgentExecutor {
 
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
-                var fallbackCall = skillToolFallbackPolicy.createFallback(
-                        routingResult, userMessage, execContext, toolCallCount);
-                if (fallbackCall.isPresent()) {
-                    log.info("LLM 未调用已选中的信息猎手，Runtime 执行兜底调用");
-                    response = new LLMResponse(
-                            null, List.of(fallbackCall.get()), "tool_calls");
-                } else {
-                    String reply = response.getContent();
-                    log.info("LLM 直接回复 | reply={}", reply);
-                    contextStore.append("assistant", reply);
-                    if (toolCallCount == 0) {
-                        session = skillPendingCoordinator.afterDirectReply(session, routingResult);
-                    }
-                    // 异步提取长期记忆
-                    final String directUserMsg = userMessage;
-                    final String directReply = reply;
-                    longTermMemoryService.processAndStoreAsync(directUserMsg, directReply);
-                    skillSessionStore.save(userId, session);
-                    activityRecorder.requestCompleted(
-                            activityRequestId, System.currentTimeMillis() - requestStartedAt);
-                    return reply;
-                }
+                String reply = response.getContent();
+                log.info("LLM 直接回复 | reply={}", reply);
+                contextStore.append("assistant", reply);
+                // 异步提取长期记忆
+                final String directUserMsg = userMessage;
+                final String directReply = reply;
+                longTermMemoryService.processAndStoreAsync(directUserMsg, directReply);
+                skillSessionStore.save(userId, session);
+                activityRecorder.requestCompleted(
+                        activityRequestId, System.currentTimeMillis() - requestStartedAt);
+                return reply;
             }
 
             // === 分支 3：工具调用 ===
@@ -680,14 +695,6 @@ public class ReActAgentExecutor implements AgentExecutor {
                 sb.append(skillPrompt).append("\n");
                 sb.append("[/SKILL_CONTEXT]\n\n");
             }
-        }
-        if (context.getSkillSession() != null
-                && context.getSkillSession().hasPendingAction(
-                        SkillPendingCoordinator.START_INFORMATION_SCOUT)) {
-            sb.append("[RUNTIME_STATE]\n");
-            sb.append("用户当前消息是对信息猎手搜索方向追问的补充回答。\n");
-            sb.append("请将当前消息作为 query 调用 information_scout，不要再次追问方向。\n");
-            sb.append("[/RUNTIME_STATE]\n\n");
         }
         // RAG knowledge context
         if (skillKnowledgeService != null && activeSkill != null
