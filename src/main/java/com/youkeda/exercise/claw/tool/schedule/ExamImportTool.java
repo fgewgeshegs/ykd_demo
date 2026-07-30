@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.schedule;
-import com.youkeda.exercise.claw.schedule.*;
+import com.youkeda.exercise.claw.feature.schedule.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -4,8 +4,8 @@ import com.youkeda.exercise.claw.skill.SkillExecutionRequest;
 import com.youkeda.exercise.claw.skill.InformationScoutIntentResolver;
 import com.youkeda.exercise.claw.skill.SkillExecutionResult;
 
-import com.youkeda.exercise.claw.scout.ScoutSubmissionResult;
-import com.youkeda.exercise.claw.scout.ScoutSubmissionService;
+import com.youkeda.exercise.claw.feature.scout.ScoutSubmissionResult;
+import com.youkeda.exercise.claw.feature.scout.ScoutSubmissionService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

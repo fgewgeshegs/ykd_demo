@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.holiday.HolidayDataLoader;
+import com.youkeda.exercise.claw.feature.holiday.HolidayDataLoader;
 import com.youkeda.exercise.claw.domain.holiday.DayType;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.map.*;
+import com.youkeda.exercise.claw.feature.map.*;
 import com.youkeda.exercise.claw.domain.map.DistanceRequest;
 import com.youkeda.exercise.claw.domain.map.PlaceSearchRequest;
 import com.youkeda.exercise.claw.domain.map.RouteRequest;

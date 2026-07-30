@@ -1,11 +1,11 @@
 package com.youkeda.exercise.claw.notification.source;
 import com.youkeda.exercise.claw.notification.NotificationSource;
 
-import com.youkeda.exercise.claw.anime.client.AniListClient;
+import com.youkeda.exercise.claw.feature.anime.client.AniListClient;
 import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.domain.anime.AnimeEpisode;
-import com.youkeda.exercise.claw.anime.store.AnimeScheduleStore;
-import com.youkeda.exercise.claw.anime.store.AnimeSubscriptionStore;
+import com.youkeda.exercise.claw.feature.anime.store.AnimeScheduleStore;
+import com.youkeda.exercise.claw.feature.anime.store.AnimeSubscriptionStore;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

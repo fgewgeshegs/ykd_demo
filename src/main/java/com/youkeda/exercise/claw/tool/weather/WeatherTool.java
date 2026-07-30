@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.weather.WeatherResponse;
+import com.youkeda.exercise.claw.feature.weather.WeatherResponse;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,11 +26,11 @@ public class WeatherTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(WeatherTool.class);
 
-    private final com.youkeda.exercise.claw.weather.WeatherService weatherTool;
+    private final com.youkeda.exercise.claw.feature.weather.WeatherService weatherTool;
     private final ObjectMapper objectMapper;
     private final ToolRegistry functionRegistry;
 
-    public WeatherTool(com.youkeda.exercise.claw.weather.WeatherService weatherTool,
+    public WeatherTool(com.youkeda.exercise.claw.feature.weather.WeatherService weatherTool,
                             ObjectMapper objectMapper,
                             ToolRegistry functionRegistry) {
         this.weatherTool = weatherTool;

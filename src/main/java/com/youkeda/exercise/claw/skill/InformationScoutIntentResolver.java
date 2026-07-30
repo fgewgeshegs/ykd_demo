@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.skill;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 
-import com.youkeda.exercise.claw.scout.ScoutTriggerPolicy;
+import com.youkeda.exercise.claw.feature.scout.ScoutTriggerPolicy;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.Pattern;

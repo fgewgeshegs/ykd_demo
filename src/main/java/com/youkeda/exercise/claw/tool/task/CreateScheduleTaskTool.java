@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.task;
-import com.youkeda.exercise.claw.task.service.TaskCreator;
+import com.youkeda.exercise.claw.feature.task.service.TaskCreator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.task.model.ScheduledTask;
+import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

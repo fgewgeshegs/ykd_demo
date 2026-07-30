@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.scout;
-import com.youkeda.exercise.claw.scout.*;
+import com.youkeda.exercise.claw.feature.scout.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

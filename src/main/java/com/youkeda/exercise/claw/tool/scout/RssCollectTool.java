@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.scout;
-import com.youkeda.exercise.claw.scout.collector.RssCollector;
+import com.youkeda.exercise.claw.feature.scout.collector.RssCollector;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,8 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.scout.planner.SearchTask;
-import com.youkeda.exercise.claw.scout.processor.InformationItem;
+import com.youkeda.exercise.claw.feature.scout.planner.SearchTask;
+import com.youkeda.exercise.claw.feature.scout.processor.InformationItem;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,16 +1,16 @@
 package com.youkeda.exercise.claw.notification.source;
 import com.youkeda.exercise.claw.notification.NotificationSource;
 
-import com.youkeda.exercise.claw.campus.classifier.ActivityClassifier;
-import com.youkeda.exercise.claw.campus.collector.CompetitionCollector;
+import com.youkeda.exercise.claw.feature.campus.classifier.ActivityClassifier;
+import com.youkeda.exercise.claw.feature.campus.collector.CompetitionCollector;
 import com.youkeda.exercise.claw.domain.campus.NotificationItem;
-import com.youkeda.exercise.claw.campus.policy.DefaultPolicy;
-import com.youkeda.exercise.claw.campus.policy.NotificationPolicy;
-import com.youkeda.exercise.claw.campus.policy.rule.ActivityRules;
-import com.youkeda.exercise.claw.campus.store.CampusNotificationStore;
-import com.youkeda.exercise.claw.campus.store.PendingAskStore;
-import com.youkeda.exercise.claw.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.scout.notifier.NotificationService;
+import com.youkeda.exercise.claw.feature.campus.policy.DefaultPolicy;
+import com.youkeda.exercise.claw.feature.campus.policy.NotificationPolicy;
+import com.youkeda.exercise.claw.feature.campus.policy.rule.ActivityRules;
+import com.youkeda.exercise.claw.feature.campus.store.CampusNotificationStore;
+import com.youkeda.exercise.claw.feature.campus.store.PendingAskStore;
+import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
+import com.youkeda.exercise.claw.feature.scout.notifier.NotificationService;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -2,9 +2,9 @@ package com.youkeda.exercise.claw.skill;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 
-import com.youkeda.exercise.claw.scout.ScoutSubmissionResult;
+import com.youkeda.exercise.claw.feature.scout.ScoutSubmissionResult;
 import com.youkeda.exercise.claw.agent.runtime.SkillExecutor;
-import com.youkeda.exercise.claw.scout.ScoutSubmissionService;
+import com.youkeda.exercise.claw.feature.scout.ScoutSubmissionService;
 import org.springframework.stereotype.Component;
 
 @Component

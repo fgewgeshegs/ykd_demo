@@ -6,7 +6,7 @@ import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.travel.TravelPlanService;
+import com.youkeda.exercise.claw.feature.travel.TravelPlanService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

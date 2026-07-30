@@ -3,7 +3,7 @@ package com.youkeda.exercise.claw.agent.scout;
 import com.youkeda.exercise.claw.skill.WorkflowRequest;
 import com.youkeda.exercise.claw.skill.WorkflowResult;
 import com.youkeda.exercise.claw.skill.WorkflowWorker;
-import com.youkeda.exercise.claw.scout.ScoutOrchestrator;
+import com.youkeda.exercise.claw.feature.scout.ScoutOrchestrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -66,7 +66,7 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
             Future<WorkflowResult> future = null;
             try {
                 future = executor.submit(() -> {
-                    com.youkeda.exercise.claw.scout.ScoutReport report =
+                    com.youkeda.exercise.claw.feature.scout.ScoutReport report =
                             orchestrator.run(request.payload());
                     String summary = report.toString();
                     return new WorkflowResult(taskId, WorkflowResult.WorkflowStatus.COMPLETED,

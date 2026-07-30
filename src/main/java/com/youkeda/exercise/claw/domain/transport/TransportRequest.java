@@ -3,7 +3,7 @@ package com.youkeda.exercise.claw.domain.transport;
 /**
  * 交通方式推荐请求参数
  *
- * <p>由 LLM 提取并传入 {@link com.youkeda.exercise.claw.transport.TransportRecommendFunction}
+ * <p>由 LLM 提取并传入 {@link com.youkeda.exercise.claw.feature.transport.TransportRecommendFunction}
  */
 public class TransportRequest {
 

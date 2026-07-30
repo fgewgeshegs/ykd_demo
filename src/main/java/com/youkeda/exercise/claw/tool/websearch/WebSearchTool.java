@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.websearch;
-import com.youkeda.exercise.claw.websearch.*;
+import com.youkeda.exercise.claw.feature.websearch.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

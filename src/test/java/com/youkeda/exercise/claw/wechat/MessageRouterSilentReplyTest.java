@@ -6,8 +6,8 @@ import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.FileHandl
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.SimpleReplyHandler;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.VisionHandler;
 import com.youkeda.exercise.claw.tool.voice.VoiceTool;
-import com.youkeda.exercise.claw.schedule.CourseImportHandler;
-import com.youkeda.exercise.claw.schedule.CourseImportStateManager;
+import com.youkeda.exercise.claw.feature.schedule.CourseImportHandler;
+import com.youkeda.exercise.claw.feature.schedule.CourseImportStateManager;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatReply;
