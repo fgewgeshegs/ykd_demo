@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
 import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.WechatMessageHandler;
-import com.youkeda.exercise.claw.map.PlaceImageFunction;
+import com.youkeda.exercise.claw.tool.map.PlaceImageTool;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
@@ -34,7 +34,7 @@ public class ChatHandler implements WechatMessageHandler {
     private final com.youkeda.exercise.claw.tool.voice.VoiceTool voiceTool;
     private final com.youkeda.exercise.claw.tool.file.FileGenerationTool fileGenerationTool;
     private final com.youkeda.exercise.claw.tool.image.ImageGenerationTool imageGenerationTool;
-    private final PlaceImageFunction placeImageFunction;
+    private final PlaceImageTool placeImageFunction;
     private final WechatILinkClient wechatClient;
     private final WechatUserManager wechatUserManager;
 
@@ -42,7 +42,7 @@ public class ChatHandler implements WechatMessageHandler {
                        com.youkeda.exercise.claw.tool.voice.VoiceTool voiceTool,
                        com.youkeda.exercise.claw.tool.file.FileGenerationTool fileGenerationTool,
                        com.youkeda.exercise.claw.tool.image.ImageGenerationTool imageGenerationTool,
-                       PlaceImageFunction placeImageFunction,
+                       PlaceImageTool placeImageFunction,
                        WechatILinkClient wechatClient,
                        WechatUserManager wechatUserManager) {
         this.agentExecutor = agentExecutor;
@@ -97,9 +97,9 @@ public class ChatHandler implements WechatMessageHandler {
         }
 
         // 检查地点图片搜索是否产生了待发送的图片（place_image_search 工具调用的结果）
-        List<PlaceImageFunction.PendingPlaceImage> placeImages = placeImageFunction.consumePendingPlaceImages();
+        List<PlaceImageTool.PendingPlaceImage> placeImages = placeImageFunction.consumePendingPlaceImages();
         if (placeImages != null && !placeImages.isEmpty()) {
-            PlaceImageFunction.PendingPlaceImage first = placeImages.get(0);
+            PlaceImageTool.PendingPlaceImage first = placeImages.get(0);
             if (first.imageBytes() != null && first.imageBytes().length > 0) {
                 log.info("待发送地点图片 | place={} | count={} | size={}bytes | from={}",
                         first.placeName(), placeImages.size(), first.imageBytes().length, message.getUserId());

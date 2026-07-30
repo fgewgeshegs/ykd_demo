@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
-import com.youkeda.exercise.claw.task.service.CreateScheduleTaskFunction;
+import com.youkeda.exercise.claw.tool.task.CreateScheduleTaskTool;
 import com.youkeda.exercise.claw.task.service.RepeatCalculator;
 import com.youkeda.exercise.claw.task.service.TaskCreator;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +38,7 @@ class ScheduledTaskTest {
 
     private ScheduledTaskRepository repository;
     private TaskCreator taskCreator;
-    private CreateScheduleTaskFunction createFunction;
+    private CreateScheduleTaskTool createFunction;
 
     @TempDir
     File tempDir;
@@ -51,7 +51,7 @@ class ScheduledTaskTest {
         setField(repository, "dbPath", new File(tempDir, "test-tasks.db").getAbsolutePath());
         repository.init();
         taskCreator = new TaskCreator(repository);
-        createFunction = new CreateScheduleTaskFunction(MAPPER, null, taskCreator);
+        createFunction = new CreateScheduleTaskTool(MAPPER, null, taskCreator);
     }
 
     // ==================== 工具方法 ====================

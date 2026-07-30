@@ -11,9 +11,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class WeatherCommand implements CommandHandler {
 
-    private final WeatherTool weatherTool;
+    private final WeatherService weatherTool;
 
-    public WeatherCommand(WeatherTool weatherTool) {
+    public WeatherCommand(WeatherService weatherTool) {
         this.weatherTool = weatherTool;
     }
 
@@ -26,7 +26,7 @@ public class WeatherCommand implements CommandHandler {
 
         String city = args[1].trim();
 
-        // 调用 WeatherTool 查询天气
+        // 调用 WeatherService 查询天气
         WeatherResponse response = weatherTool.queryWeather(city);
 
         // 格式化输出

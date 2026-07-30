@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.scout;
+import com.youkeda.exercise.claw.tool.scout.ScoutTool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.skill.SkillsProperties;
@@ -21,7 +22,7 @@ class ScoutFunctionProfileModeTest {
         SkillsProperties properties = new SkillsProperties();
         properties.setSkillWorkflowBindings(Map.of(
                 "information-scout", "customScoutWorkflow"));
-        ScoutFunction function = new ScoutFunction(
+        ScoutTool function = new ScoutTool(
                 mock(ToolRegistry.class), new ObjectMapper(), submissionService, properties);
 
         function.execute("{}", new ToolExecutionContext("最近有什么值得关注的事情吗"));
@@ -37,7 +38,7 @@ class ScoutFunctionProfileModeTest {
         SkillsProperties properties = new SkillsProperties();
         properties.setSkillWorkflowBindings(Map.of(
                 "information-scout", "scoutWorkflow"));
-        ScoutFunction function = new ScoutFunction(
+        ScoutTool function = new ScoutTool(
                 mock(ToolRegistry.class), new ObjectMapper(), submissionService, properties);
 
         function.execute("{}", new ToolExecutionContext("最近有什么值得关注的事情吗"));

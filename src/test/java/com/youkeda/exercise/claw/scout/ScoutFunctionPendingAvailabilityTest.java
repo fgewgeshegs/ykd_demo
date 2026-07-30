@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.scout;
+import com.youkeda.exercise.claw.tool.scout.ScoutTool;
 
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
@@ -9,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScoutFunctionPendingAvailabilityTest {
 
-    private final ScoutFunction function = new ScoutFunction(
+    private final ScoutTool function = new ScoutTool(
             null, null, null, null);
 
     @Test

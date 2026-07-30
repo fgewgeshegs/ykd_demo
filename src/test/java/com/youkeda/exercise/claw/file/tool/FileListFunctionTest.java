@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.file.tool;
+import com.youkeda.exercise.claw.tool.file.FileListTool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,7 +26,7 @@ class FileListFunctionTest {
     @TempDir
     Path tempDir;
 
-    private FileListFunction function;
+    private FileListTool function;
     private FileService fileService;
     private ObjectMapper objectMapper;
     private String userId = "testUser";
@@ -51,7 +52,7 @@ class FileListFunctionTest {
         fileService = new FileService(fileLocalStorage, metadataRepository, fileParseService, fileLocalStorage);
 
         var registry = new ToolRegistry();
-        function = new FileListFunction(fileService, registry, objectMapper);
+        function = new FileListTool(fileService, registry, objectMapper);
         function.init();
     }
 

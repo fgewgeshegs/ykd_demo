@@ -43,7 +43,7 @@ public class HolidayDataLoader {
     /**
      * 单年的节假日数据（包级可见，供 HolidayCheckFunction 使用）
      */
-    record YearData(
+    public record YearData(
             int year,
             List<HolidayRange> holidays,
             Set<LocalDate> swapWorkdays
@@ -52,11 +52,11 @@ public class HolidayDataLoader {
     /**
      * 节假日区间
      */
-    record HolidayRange(LocalDate start, LocalDate end, String name) {
+    public record HolidayRange(LocalDate start, LocalDate end, String name) {
         /**
          * 判断日期是否在此区间内（含首尾）
          */
-        boolean contains(LocalDate date) {
+        public boolean contains(LocalDate date) {
             return !date.isBefore(start) && !date.isAfter(end);
         }
     }
@@ -107,14 +107,14 @@ public class HolidayDataLoader {
     /**
      * 获取某年的节假日数据，不存在返回 null
      */
-    YearData getYear(Year year) {
+    public YearData getYear(Year year) {
         return cache.get(year.getValue());
     }
 
     /**
      * 判断指定日期是否为法定节假日
      */
-    boolean isHoliday(LocalDate date) {
+    public boolean isHoliday(LocalDate date) {
         YearData data = cache.get(date.getYear());
         if (data == null) return false;
         return data.holidays().stream().anyMatch(h -> h.contains(date));
@@ -123,7 +123,7 @@ public class HolidayDataLoader {
     /**
      * 判断指定日期是否为调休工作日
      */
-    boolean isSwapWorkday(LocalDate date) {
+    public boolean isSwapWorkday(LocalDate date) {
         YearData data = cache.get(date.getYear());
         if (data == null) return false;
         return data.swapWorkdays().contains(date);
@@ -132,7 +132,7 @@ public class HolidayDataLoader {
     /**
      * 获取日期所属的节假日名称（仅当在节假日区间内时返回）
      */
-    String getHolidayName(LocalDate date) {
+    public String getHolidayName(LocalDate date) {
         YearData data = cache.get(date.getYear());
         if (data == null) return null;
         return data.holidays().stream()

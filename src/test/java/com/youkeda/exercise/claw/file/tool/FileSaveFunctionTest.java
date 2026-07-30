@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.file.tool;
+import com.youkeda.exercise.claw.tool.file.FileSaveTool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,7 +25,7 @@ class FileSaveFunctionTest {
     @TempDir
     Path tempDir;
 
-    private FileSaveFunction function;
+    private FileSaveTool function;
     private FileService fileService;
     private ObjectMapper objectMapper;
     private String userId = "testUser";
@@ -50,7 +51,7 @@ class FileSaveFunctionTest {
         fileService = new FileService(fileLocalStorage, metadataRepository, fileParseService, fileLocalStorage);
 
         var registry = new ToolRegistry();
-        function = new FileSaveFunction(fileService, registry, objectMapper);
+        function = new FileSaveTool(fileService, registry, objectMapper);
         function.init();
     }
 

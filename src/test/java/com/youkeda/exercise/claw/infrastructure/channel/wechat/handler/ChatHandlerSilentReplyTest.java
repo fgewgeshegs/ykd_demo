@@ -4,7 +4,7 @@ import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
 import com.youkeda.exercise.claw.tool.voice.VoiceTool;
 import com.youkeda.exercise.claw.tool.file.FileGenerationTool;
 import com.youkeda.exercise.claw.tool.image.ImageGenerationTool;
-import com.youkeda.exercise.claw.map.PlaceImageFunction;
+import com.youkeda.exercise.claw.tool.map.PlaceImageTool;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
@@ -26,7 +26,7 @@ class ChatHandlerSilentReplyTest {
                 mock(VoiceTool.class),
                 mock(FileGenerationTool.class),
                 mock(ImageGenerationTool.class),
-                mock(PlaceImageFunction.class),
+                mock(PlaceImageTool.class),
                 mock(WechatILinkClient.class),
                 mock(WechatUserManager.class));
         when(executor.execute(any())).thenReturn(ReActAgentExecutor.SILENT_REPLY);

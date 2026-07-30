@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.file.tool;
+import com.youkeda.exercise.claw.tool.file.FileReadTool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,7 +27,7 @@ class FileReadFunctionTest {
     @TempDir
     Path tempDir;
 
-    private FileReadFunction function;
+    private FileReadTool function;
     private FileService fileService;
     private ObjectMapper objectMapper;
     private String userId = "testUser";
@@ -52,7 +53,7 @@ class FileReadFunctionTest {
         fileService = new FileService(fileLocalStorage, metadataRepository, fileParseService, fileLocalStorage);
 
         var registry = new ToolRegistry();
-        function = new FileReadFunction(fileService, registry, objectMapper);
+        function = new FileReadTool(fileService, registry, objectMapper);
         function.init();
     }
 

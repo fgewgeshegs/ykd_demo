@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.file.tool;
+import com.youkeda.exercise.claw.tool.file.FileDeleteTool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,7 +27,7 @@ class FileDeleteFunctionTest {
     @TempDir
     Path tempDir;
 
-    private FileDeleteFunction function;
+    private FileDeleteTool function;
     private FileService fileService;
     private ObjectMapper objectMapper;
     private String userId = "testUser";
@@ -52,7 +53,7 @@ class FileDeleteFunctionTest {
         fileService = new FileService(fileLocalStorage, metadataRepository, fileParseService, fileLocalStorage);
 
         var registry = new ToolRegistry();
-        function = new FileDeleteFunction(fileService, registry, objectMapper);
+        function = new FileDeleteTool(fileService, registry, objectMapper);
         function.init();
     }
 
