@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.scout.ScoutProperties;
 import com.youkeda.exercise.claw.scout.planner.SearchTask;
+import com.youkeda.exercise.claw.scout.processor.InformationFreshness;
 import com.youkeda.exercise.claw.scout.processor.InformationItem;
 import com.youkeda.exercise.claw.websearch.SearchService;
 import org.slf4j.Logger;
@@ -74,6 +75,8 @@ public class JobCollector implements Collector {
                 InformationItem item = InformationItem.create(
                         title, content, url, getType(), task.category()
                 );
+                item.setPublishedAt(InformationFreshness.parsePublishedAt(
+                        safeText(r, "published_date")));
                 items.add(item);
             }
         } catch (Exception e) {

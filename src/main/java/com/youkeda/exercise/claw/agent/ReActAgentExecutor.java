@@ -222,7 +222,10 @@ public class ReActAgentExecutor implements AgentExecutor {
         // 4. 按 Skill 过滤可用工具
         FunctionExecutionContext execContext = new FunctionExecutionContext(userMessage, session, userId);
         List<ToolDefinition> tools = functionRegistry.getAvailableDefinitions(effectiveTools, execContext);
-        log.debug("可用工具: {}", tools.stream().map(ToolDefinition::name).toList());
+        log.info("[Agent Available Tools] skill={} | count={} | tools={}",
+                activeSkillName,
+                tools.size(),
+                tools.stream().map(ToolDefinition::name).toList());
 
         // 5. tool-calling 循环
         Set<String> executedCalls = new HashSet<>();
@@ -629,7 +632,8 @@ public class ReActAgentExecutor implements AgentExecutor {
         String prompt = "你是一个分类器。判断用户消息是否需要调用工具才能完整回答。\n"
                 + "需要工具：查天气、查地图/地点/路线、查时间/日期/节假日、搜索网页、"
                 + "生成图片、生成文件/文档、语音合成、交通推荐、预算计算、"
-                + "查课表/今天课表/导入课表/课程信息/考试安排。\n"
+                + "查课表/今天课表/导入课表/课程信息/考试安排、"
+                + "设置提醒/定时提醒/自定义提醒/创建提醒。\n"
                 + "不需要工具：纯粹的聊天、问答、解释、翻译、写作、闲聊、感谢。\n"
                 + "如果用户消息很短（如\"好\"\"可以\"\"继续\"），可能是在回应之前提出的方案，"
                 + "需要让工具系统处理，返回 NEED_TOOLS。\n"

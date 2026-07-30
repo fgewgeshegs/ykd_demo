@@ -33,13 +33,20 @@ public class FileLocalStorage implements FileStorage {
     private String filesRoot;
 
     /** 允许的文件扩展名 */
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("md", "txt", "pdf", "docx");
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+            "md", "txt", "pdf", "docx",
+            "xlsx", "xls",
+            "png", "jpg", "jpeg"
+    );
+
+    /** 存储基目录（用于路径穿越校验） */
+    private static final String STORAGE_BASE_DIR = "data" + File.separator + "users";
 
     @Value("${file.max-size:20971520}")
     private long maxFileSize;
 
     public FileLocalStorage() {
-        this.filesRoot = "data" + File.separator + "users";
+        this.filesRoot = STORAGE_BASE_DIR;
     }
 
     /**
@@ -64,12 +71,15 @@ public class FileLocalStorage implements FileStorage {
         // 生成唯一存储名：UUID + 原始扩展名
         String storedName = UUID.randomUUID().toString().replace("-", "") + "." + extension;
 
-        Path targetPath = resolvePath(userId, storedName);
         try {
+            Path targetPath = resolvePath(userId, storedName);
             Files.createDirectories(targetPath.getParent());
             Files.write(targetPath, content);
             log.info("文件已保存 | userId={} | storedName={} | size={}", userId, storedName, content.length);
             return storedName;
+        } catch (SecurityException e) {
+            log.error("文件保存路径非法 | userId={}", userId, e);
+            throw new IllegalArgumentException("非法文件路径");
         } catch (IOException e) {
             log.error("文件保存失败 | userId={} | storedName={}", userId, storedName, e);
             throw new RuntimeException("文件保存失败", e);
@@ -78,13 +88,16 @@ public class FileLocalStorage implements FileStorage {
 
     @Override
     public byte[] read(String userId, String storedName) {
-        Path path = resolvePath(userId, storedName);
-        if (!Files.exists(path)) {
-            log.warn("文件不存在 | userId={} | storedName={}", userId, storedName);
-            return null;
-        }
         try {
+            Path path = resolvePath(userId, storedName);
+            if (!Files.exists(path)) {
+                log.warn("文件不存在 | userId={} | storedName={}", userId, storedName);
+                return null;
+            }
             return Files.readAllBytes(path);
+        } catch (SecurityException e) {
+            log.error("文件读取路径非法 | userId={} | storedName={}", userId, storedName, e);
+            return null;
         } catch (IOException e) {
             log.error("文件读取失败 | userId={} | storedName={}", userId, storedName, e);
             return null;
@@ -93,13 +106,16 @@ public class FileLocalStorage implements FileStorage {
 
     @Override
     public boolean delete(String userId, String storedName) {
-        Path path = resolvePath(userId, storedName);
         try {
+            Path path = resolvePath(userId, storedName);
             boolean deleted = Files.deleteIfExists(path);
             if (deleted) {
                 log.info("文件已删除 | userId={} | storedName={}", userId, storedName);
             }
             return deleted;
+        } catch (SecurityException e) {
+            log.error("文件删除路径非法 | userId={} | storedName={}", userId, storedName, e);
+            return false;
         } catch (IOException e) {
             log.error("文件删除失败 | userId={} | storedName={}", userId, storedName, e);
             return false;
@@ -120,19 +136,50 @@ public class FileLocalStorage implements FileStorage {
      * 解析文件路径，并进行路径穿越防护
      *
      * <p>最终路径格式：{@code data/users/{userId}/files/original/{storedName}}
-     * 使用 {@link Path#normalize()} + {@link Path#startsWith(Path)} 确保
-     * storedName 中的 {@code ../} 无法逃逸出用户目录。
+     *
+     * <p>防护措施：
+     * <ul>
+     *   <li>userId 去除路径分隔符和父目录引用，防止用户越权访问其他用户目录</li>
+     *   <li>normalize + startsWith 确保 storedName 中的 {@code ../} 无法逃逸出用户目录</li>
+     * </ul>
      */
     Path resolvePath(String userId, String storedName) {
-        Path root = Paths.get(filesRoot, userId, ORIGINAL_DIR).normalize().toAbsolutePath();
-        Path filePath = root.resolve(storedName).normalize();
+        Path baseDir = Paths.get(filesRoot).normalize().toAbsolutePath();
 
-        // 路径穿越防护：校验最终路径仍在用户目录内
-        if (!filePath.startsWith(root)) {
+        // 清理 userId：移除路径分隔符和父目录引用
+        String safeUserId = sanitizeUserId(userId);
+        if (safeUserId == null || safeUserId.isBlank()) {
+            throw new SecurityException("非法用户标识");
+        }
+
+        // 构建用户目录并校验不能逃逸基目录
+        Path root = baseDir.resolve(safeUserId).resolve(ORIGINAL_DIR).normalize();
+        if (!root.startsWith(baseDir)) {
+            throw new SecurityException("非法用户路径: " + userId);
+        }
+
+        // 解析文件路径并校验不能逃逸用户目录
+        Path filePath = root.resolve(storedName).normalize();
+        if (storedName != null && !storedName.isBlank() && !filePath.startsWith(root)) {
             throw new SecurityException("非法路径访问: " + storedName);
         }
 
         return filePath;
+    }
+
+    /**
+     * 清理 userId：去除路径分隔符和父目录引用，只保留安全字符。
+     *
+     * @param userId 原始用户标识
+     * @return 安全的路径段，如果全部非法返回空字符串
+     */
+    private String sanitizeUserId(String userId) {
+        if (userId == null || userId.isBlank()) return "";
+        // 只允许字母、数字、下划线、连字符、点号
+        String sanitized = userId.replaceAll("[^a-zA-Z0-9_\\-.@]", "");
+        // 如果清理后为空或者清理前后差异很大（说明包含大量非法字符），返回空
+        if (sanitized.isBlank()) return "";
+        return sanitized;
     }
 
     /**
@@ -152,6 +199,15 @@ public class FileLocalStorage implements FileStorage {
      * 获取用户原始文件目录
      */
     Path getUserOriginalDir(String userId) {
-        return Paths.get(filesRoot, userId, ORIGINAL_DIR).normalize().toAbsolutePath();
+        Path baseDir = Paths.get(filesRoot).normalize().toAbsolutePath();
+        String safeUserId = sanitizeUserId(userId);
+        if (safeUserId == null || safeUserId.isBlank()) {
+            throw new SecurityException("非法用户标识");
+        }
+        Path userDir = baseDir.resolve(safeUserId).resolve(ORIGINAL_DIR).normalize();
+        if (!userDir.startsWith(baseDir)) {
+            throw new SecurityException("非法用户路径: " + userId);
+        }
+        return userDir;
     }
 }
