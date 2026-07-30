@@ -13,7 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
-@Component
+@Component("campusCompetitionCollector")
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
 public class CompetitionCollector {
 

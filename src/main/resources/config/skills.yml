@@ -10,7 +10,13 @@ claw:
       priority: 0
       tags: [通用]
       requiredTools: []
-      optionalTools: []
+      optionalTools:
+        - course_schedule
+        - exam_schedule
+        - exam_reminder_setup
+        - create_schedule_task
+        - web_search
+        - holiday_check
       systemPromptResource: prompts/skills/common.txt
       knowledge:
         enabled: false
