@@ -1,7 +1,6 @@
 package com.youkeda.exercise.claw.anime.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.anime.model.Anime;
 import com.youkeda.exercise.claw.anime.model.AnimeEpisode;
 import org.slf4j.Logger;
@@ -33,7 +32,6 @@ public class AniListClient {
     private static final String GRAPHQL_URL = "https://graphql.anilist.co";
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 搜索番剧。
