@@ -3,9 +3,9 @@ package com.youkeda.exercise.claw.scout;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.skill.SkillsProperties;
 
 import jakarta.annotation.PostConstruct;
@@ -16,16 +16,16 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(name = "scout.enabled", havingValue = "true")
-public class ScoutFunction implements LLMFunction {
+public class ScoutFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ScoutFunction.class);
 
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ObjectMapper objectMapper;
     private final ScoutSubmissionService submissionService;
     private final SkillsProperties skillsProperties;
 
-    public ScoutFunction(LLMFunctionRegistry functionRegistry,
+    public ScoutFunction(ToolRegistry functionRegistry,
                           ObjectMapper objectMapper,
                           ScoutSubmissionService submissionService,
                           SkillsProperties skillsProperties) {
@@ -38,7 +38,7 @@ public class ScoutFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("ScoutFunction 已注册到 LLMFunctionRegistry");
+        log.info("ScoutFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -66,7 +66,7 @@ public class ScoutFunction implements LLMFunction {
     }
 
     @Override
-    public boolean isAvailable(FunctionExecutionContext context) {
+    public boolean isAvailable(ToolExecutionContext context) {
         if (context == null || ScoutTriggerPolicy.isCancellation(context.currentMessage())) {
             return false;
         }
@@ -84,12 +84,12 @@ public class ScoutFunction implements LLMFunction {
     }
 
     @Override
-    public String getUnavailableReason(FunctionExecutionContext context) {
+    public String getUnavailableReason(ToolExecutionContext context) {
         return "用户当前消息没有明确要求查找信息，禁止调用信息猎手。请直接回应用户当前内容。";
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             String query = extractQuery(argumentsJson, context);
             String workflowName = skillsProperties == null
@@ -122,7 +122,7 @@ public class ScoutFunction implements LLMFunction {
         return response.toString();
     }
 
-    private String extractQuery(String argumentsJson, FunctionExecutionContext context) {
+    private String extractQuery(String argumentsJson, ToolExecutionContext context) {
         if (argumentsJson != null && !argumentsJson.isBlank()) {
             try {
                 JsonNode args = objectMapper.readTree(argumentsJson);

@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,17 +33,17 @@ import org.springframework.stereotype.Component;
  * </pre>
  */
 @Component
-public class DidiRideFunction implements LLMFunction {
+public class DidiRideFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(DidiRideFunction.class);
 
     private final DidiRideService rideService;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
 
     public DidiRideFunction(DidiRideService rideService,
                             ObjectMapper objectMapper,
-                            LLMFunctionRegistry functionRegistry) {
+                            ToolRegistry functionRegistry) {
         this.rideService = rideService;
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -52,7 +52,7 @@ public class DidiRideFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("DidiRideFunction 已注册到 LLMFunctionRegistry（didi_taxi）");
+        log.info("DidiRideFunction 已注册到 ToolRegistry（didi_taxi）");
     }
 
     @Override
@@ -152,7 +152,7 @@ public class DidiRideFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         // Delegate to the simpler execute method since userId is no longer used
         return execute(argumentsJson);
     }

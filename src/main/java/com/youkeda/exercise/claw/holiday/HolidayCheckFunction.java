@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,10 +31,10 @@ import java.util.List;
  * <p>演示场景：团建方案规划 — LLM 查询"这周五是工作日还是调休上班"、
  * "五一期间哪天适合团建"等。
  *
- * <p>注册方式：{@link LLMFunctionRegistry}（与 TimeFunction 相同模式）
+ * <p>注册方式：{@link ToolRegistry}（与 TimeFunction 相同模式）
  */
 @Component
-public class HolidayCheckFunction implements LLMFunction {
+public class HolidayCheckFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(HolidayCheckFunction.class);
 
@@ -45,11 +45,11 @@ public class HolidayCheckFunction implements LLMFunction {
     };
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final HolidayDataLoader dataLoader;
 
     public HolidayCheckFunction(ObjectMapper objectMapper,
-                                LLMFunctionRegistry functionRegistry,
+                                ToolRegistry functionRegistry,
                                 HolidayDataLoader dataLoader) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -59,7 +59,7 @@ public class HolidayCheckFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("HolidayCheckFunction 已注册到 LLMFunctionRegistry");
+        log.info("HolidayCheckFunction 已注册到 ToolRegistry");
     }
 
     @Override

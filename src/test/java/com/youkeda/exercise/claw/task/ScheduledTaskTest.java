@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.task;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
 import com.youkeda.exercise.claw.task.service.CreateScheduleTaskFunction;

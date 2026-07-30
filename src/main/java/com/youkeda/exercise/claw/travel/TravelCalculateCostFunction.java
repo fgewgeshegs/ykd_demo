@@ -3,8 +3,8 @@ package com.youkeda.exercise.claw.travel;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.budget.BatchPlanCostRequest;
 import com.youkeda.exercise.claw.budget.BudgetCalculatorService;
 import jakarta.annotation.PostConstruct;
@@ -12,15 +12,15 @@ import org.springframework.stereotype.Component;
 
 /** 将旅游方案成本核算注册为可供 LLM 调用的独立工具。 */
 @Component
-public class TravelCalculateCostFunction implements LLMFunction {
+public class TravelCalculateCostFunction implements Tool {
 
     private final BudgetCalculatorService calculatorService;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
 
     public TravelCalculateCostFunction(BudgetCalculatorService calculatorService,
                                          ObjectMapper objectMapper,
-                                         LLMFunctionRegistry registry) {
+                                         ToolRegistry registry) {
         this.calculatorService = calculatorService;
         this.objectMapper = objectMapper;
         this.registry = registry;

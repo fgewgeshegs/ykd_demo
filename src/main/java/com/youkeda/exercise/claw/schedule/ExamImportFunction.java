@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,19 +18,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-public class ExamImportFunction implements LLMFunction {
+public class ExamImportFunction implements Tool {
     private static final Logger log = LoggerFactory.getLogger(ExamImportFunction.class);
     private final ObjectMapper om;
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
     private final ExamService examService;
     private final ExamRepository examRepository;
 
-    public ExamImportFunction(ObjectMapper om, LLMFunctionRegistry registry, ExamService examService, ExamRepository examRepository) {
+    public ExamImportFunction(ObjectMapper om, ToolRegistry registry, ExamService examService, ExamRepository examRepository) {
         this.om = om; this.registry = registry; this.examService = examService; this.examRepository = examRepository;
     }
 
     @PostConstruct
-    public void init() { registry.register(this); log.info("ExamImportFunction 已注册到 LLMFunctionRegistry"); }
+    public void init() { registry.register(this); log.info("ExamImportFunction 已注册到 ToolRegistry"); }
 
     @Override
     public String getName() { return "exam_schedule"; }
@@ -73,7 +73,7 @@ public class ExamImportFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext ctx) {
+    public String execute(String argumentsJson, ToolExecutionContext ctx) {
         String userId = ctx.userId();
         if (userId == null || userId.isBlank()) return "{\"error\":\"缺少用户ID\"}";
         JsonNode args;

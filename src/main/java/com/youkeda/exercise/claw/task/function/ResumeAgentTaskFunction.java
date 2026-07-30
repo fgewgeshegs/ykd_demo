@@ -3,9 +3,9 @@ package com.youkeda.exercise.claw.task.function;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
 import jakarta.annotation.PostConstruct;
@@ -23,16 +23,16 @@ import org.springframework.stereotype.Component;
  * 仅支持 Agent 类型任务。
  */
 @Component
-public class ResumeAgentTaskFunction implements LLMFunction {
+public class ResumeAgentTaskFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ResumeAgentTaskFunction.class);
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ScheduledTaskRepository taskRepository;
 
     public ResumeAgentTaskFunction(ObjectMapper objectMapper,
-                                   LLMFunctionRegistry functionRegistry,
+                                   ToolRegistry functionRegistry,
                                    ScheduledTaskRepository taskRepository) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -42,7 +42,7 @@ public class ResumeAgentTaskFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("ResumeAgentTaskFunction 已注册到 LLMFunctionRegistry");
+        log.info("ResumeAgentTaskFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -84,7 +84,7 @@ public class ResumeAgentTaskFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String userId = context.userId();

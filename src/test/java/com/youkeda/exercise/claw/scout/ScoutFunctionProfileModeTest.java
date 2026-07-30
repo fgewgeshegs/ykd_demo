@@ -2,8 +2,8 @@ package com.youkeda.exercise.claw.scout;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.skill.SkillsProperties;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import org.junit.jupiter.api.Test;
 
@@ -22,9 +22,9 @@ class ScoutFunctionProfileModeTest {
         properties.setSkillWorkflowBindings(Map.of(
                 "information-scout", "customScoutWorkflow"));
         ScoutFunction function = new ScoutFunction(
-                mock(LLMFunctionRegistry.class), new ObjectMapper(), submissionService, properties);
+                mock(ToolRegistry.class), new ObjectMapper(), submissionService, properties);
 
-        function.execute("{}", new FunctionExecutionContext("最近有什么值得关注的事情吗"));
+        function.execute("{}", new ToolExecutionContext("最近有什么值得关注的事情吗"));
 
         verify(submissionService).submit("", "customScoutWorkflow");
     }
@@ -38,9 +38,9 @@ class ScoutFunctionProfileModeTest {
         properties.setSkillWorkflowBindings(Map.of(
                 "information-scout", "scoutWorkflow"));
         ScoutFunction function = new ScoutFunction(
-                mock(LLMFunctionRegistry.class), new ObjectMapper(), submissionService, properties);
+                mock(ToolRegistry.class), new ObjectMapper(), submissionService, properties);
 
-        function.execute("{}", new FunctionExecutionContext("最近有什么值得关注的事情吗"));
+        function.execute("{}", new ToolExecutionContext("最近有什么值得关注的事情吗"));
 
         verify(submissionService).submit("", "scoutWorkflow");
     }

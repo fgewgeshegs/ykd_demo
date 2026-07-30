@@ -3,8 +3,8 @@ package com.youkeda.exercise.claw.transport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.transport.model.TransportRequest;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  * <p>将交通方式推荐能力以 LLM Function Calling 方式暴露给 ReActAgentExecutor。
  * 注册函数：{@code transport_recommend}。
  *
- * <p>函数被调用后自动由 {@link LLMFunctionRegistry} 管理，
+ * <p>函数被调用后自动由 {@link ToolRegistry} 管理，
  * ReActAgentExecutor 在 tool-calling 循环中自动发现并调用。
  *
  * <p>核心链路：
@@ -28,17 +28,17 @@ import org.springframework.stereotype.Component;
  * </ol>
  */
 @Component
-public class TransportRecommendFunction implements LLMFunction {
+public class TransportRecommendFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(TransportRecommendFunction.class);
 
     private final TransportService transportService;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
 
     public TransportRecommendFunction(TransportService transportService,
                                        ObjectMapper objectMapper,
-                                       LLMFunctionRegistry functionRegistry) {
+                                       ToolRegistry functionRegistry) {
         this.transportService = transportService;
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -47,7 +47,7 @@ public class TransportRecommendFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("TransportRecommendFunction 已注册到 LLMFunctionRegistry");
+        log.info("TransportRecommendFunction 已注册到 ToolRegistry");
     }
 
     @Override

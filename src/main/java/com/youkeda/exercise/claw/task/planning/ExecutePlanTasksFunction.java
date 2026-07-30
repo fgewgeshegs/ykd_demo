@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.task.model.TaskPlan;
 import com.youkeda.exercise.claw.task.repository.TaskPlanRepository;
 import com.youkeda.exercise.claw.task.service.TaskCreator;
@@ -29,17 +29,17 @@ import java.util.List;
  * <p>只允许执行属于自己的 PREVIEW 状态的计划。
  */
 @Component
-public class ExecutePlanTasksFunction implements LLMFunction {
+public class ExecutePlanTasksFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutePlanTasksFunction.class);
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final TaskPlanRepository planRepository;
     private final TaskCreator taskCreator;
 
     public ExecutePlanTasksFunction(ObjectMapper objectMapper,
-                                    LLMFunctionRegistry functionRegistry,
+                                    ToolRegistry functionRegistry,
                                     TaskPlanRepository planRepository,
                                     TaskCreator taskCreator) {
         this.objectMapper = objectMapper;
@@ -51,7 +51,7 @@ public class ExecutePlanTasksFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("ExecutePlanTasksFunction 已注册到 LLMFunctionRegistry");
+        log.info("ExecutePlanTasksFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -90,7 +90,7 @@ public class ExecutePlanTasksFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String userId = context.userId();

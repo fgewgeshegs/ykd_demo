@@ -1,4 +1,6 @@
 package com.youkeda.exercise.claw.agent.tool;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,7 +29,7 @@ import java.time.temporal.TemporalAdjusters;
  * <p>演示场景：团建计划设计 — LLM 通过此函数理解"这周末"、"下周五"等相对时间表达。
  */
 @Component
-public class TimeFunction implements LLMFunction {
+public class TimeFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(TimeFunction.class);
 
@@ -41,9 +43,9 @@ public class TimeFunction implements LLMFunction {
     };
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
 
-    public TimeFunction(ObjectMapper objectMapper, LLMFunctionRegistry functionRegistry) {
+    public TimeFunction(ObjectMapper objectMapper, ToolRegistry functionRegistry) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
     }
@@ -51,7 +53,7 @@ public class TimeFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("TimeFunction 已注册到 LLMFunctionRegistry");
+        log.info("TimeFunction 已注册到 ToolRegistry");
     }
 
     @Override

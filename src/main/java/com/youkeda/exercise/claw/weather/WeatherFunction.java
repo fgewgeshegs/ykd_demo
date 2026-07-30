@@ -3,8 +3,8 @@ package com.youkeda.exercise.claw.weather;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,17 +21,17 @@ import java.time.temporal.ChronoUnit;
  * LLM 生成 {"city": "北京"} 参数，本函数执行后返回 JSON 格式的天气数据。
  */
 @Component
-public class WeatherFunction implements LLMFunction {
+public class WeatherFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(WeatherFunction.class);
 
     private final WeatherTool weatherTool;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
 
     public WeatherFunction(WeatherTool weatherTool,
                             ObjectMapper objectMapper,
-                            LLMFunctionRegistry functionRegistry) {
+                            ToolRegistry functionRegistry) {
         this.weatherTool = weatherTool;
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -40,7 +40,7 @@ public class WeatherFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("WeatherFunction 已注册到 LLMFunctionRegistry");
+        log.info("WeatherFunction 已注册到 ToolRegistry");
     }
 
     @Override

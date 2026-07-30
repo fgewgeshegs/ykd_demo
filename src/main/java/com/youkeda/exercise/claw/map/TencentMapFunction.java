@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.map.model.DistanceRequest;
 import com.youkeda.exercise.claw.map.model.PlaceSearchRequest;
 import com.youkeda.exercise.claw.map.model.RouteRequest;
@@ -28,7 +28,7 @@ import java.util.List;
  *   <li>{@code map_distance_calculate} — 距离计算</li>
  * </ul>
  *
- * <p>函数注册后自动被 {@link LLMFunctionRegistry} 管理，
+ * <p>函数注册后自动被 {@link ToolRegistry} 管理，
  * ReActAgentExecutor 在 tool-calling 循环中自动发现并调用。
  */
 @Component
@@ -38,11 +38,11 @@ public class TencentMapFunction {
 
     private final MapService mapService;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
 
     public TencentMapFunction(MapService mapService,
                                ObjectMapper objectMapper,
-                               LLMFunctionRegistry functionRegistry) {
+                               ToolRegistry functionRegistry) {
         this.mapService = mapService;
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -51,7 +51,7 @@ public class TencentMapFunction {
     @PostConstruct
     public void init() {
         // ==================== 1. 地点搜索 ====================
-        functionRegistry.register(new LLMFunction() {
+        functionRegistry.register(new Tool() {
             @Override
             public String getName() {
                 return "map_search_place";
@@ -111,7 +111,7 @@ public class TencentMapFunction {
         });
 
         // ==================== 2. 路线规划 ====================
-        functionRegistry.register(new LLMFunction() {
+        functionRegistry.register(new Tool() {
             @Override
             public String getName() {
                 return "map_route_planning";
@@ -183,7 +183,7 @@ public class TencentMapFunction {
         });
 
         // ==================== 3. 距离计算 ====================
-        functionRegistry.register(new LLMFunction() {
+        functionRegistry.register(new Tool() {
             @Override
             public String getName() {
                 return "map_distance_calculate";

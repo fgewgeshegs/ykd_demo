@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.agent.skill;
 
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,11 +19,11 @@ public class SkillRegistry {
     private final Map<String, SkillDefinition> skills = new ConcurrentHashMap<>();
     private final Map<String, SkillHealth> healthCache = new ConcurrentHashMap<>();
     private final SkillsProperties properties;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private Set<String> registeredToolNames;
 
     public SkillRegistry(SkillsProperties properties,
-                         LLMFunctionRegistry functionRegistry) {
+                         ToolRegistry functionRegistry) {
         this.properties = properties;
         this.functionRegistry = functionRegistry;
     }
@@ -31,7 +31,7 @@ public class SkillRegistry {
     @EventListener(ApplicationReadyEvent.class)
     public void init() {
         // Collect registered tool names at PostConstruct time, AFTER all
-        // LLMFunction implementations have registered themselves.
+        // Tool implementations have registered themselves.
         this.registeredToolNames = functionRegistry.getAllDefinitions().stream()
                 .map(td -> td.name())
                 .collect(Collectors.toSet());

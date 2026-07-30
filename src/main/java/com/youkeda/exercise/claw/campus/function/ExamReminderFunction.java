@@ -2,9 +2,9 @@ package com.youkeda.exercise.claw.campus.function;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.campus.model.CampusConfig;
 import com.youkeda.exercise.claw.campus.store.CampusConfigStore;
 import com.youkeda.exercise.claw.campus.store.PendingAskStore;
@@ -20,17 +20,17 @@ import java.util.Map;
 
 @Component
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
-public class ExamReminderFunction implements LLMFunction {
+public class ExamReminderFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ExamReminderFunction.class);
 
     private final CampusConfigStore configStore;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ObjectMapper objectMapper;
     private final PendingAskStore pendingAskStore;
 
     public ExamReminderFunction(CampusConfigStore configStore,
-                                 LLMFunctionRegistry functionRegistry,
+                                 ToolRegistry functionRegistry,
                                  ObjectMapper objectMapper,
                                  PendingAskStore pendingAskStore) {
         this.configStore = configStore;
@@ -42,7 +42,7 @@ public class ExamReminderFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("ExamReminderFunction 已注册到 LLMFunctionRegistry");
+        log.info("ExamReminderFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -97,7 +97,7 @@ public class ExamReminderFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String action = args.path("action").asText("query");

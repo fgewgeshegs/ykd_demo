@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,14 +34,14 @@ import java.util.List;
  * </ol>
  */
 @Component
-public class CourseImportFunction implements LLMFunction {
+public class CourseImportFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(CourseImportFunction.class);
 
     private static final String[] DAY_NAMES = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final CourseService courseService;
     private final CourseRepository courseRepository;
     private final SemesterConfig semesterConfig;
@@ -53,7 +53,7 @@ public class CourseImportFunction implements LLMFunction {
     private final SchoolService schoolService;
 
     public CourseImportFunction(ObjectMapper objectMapper,
-                                LLMFunctionRegistry functionRegistry,
+                                ToolRegistry functionRegistry,
                                 CourseService courseService,
                                 CourseRepository courseRepository,
                                 SemesterConfig semesterConfig,
@@ -79,7 +79,7 @@ public class CourseImportFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("CourseImportFunction 已注册到 LLMFunctionRegistry");
+        log.info("CourseImportFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -196,7 +196,7 @@ public class CourseImportFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String actionStr = args.path("action").asText("");

@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.agent.skill;
 
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -29,7 +29,7 @@ class SkillRegistryTest {
         );
         properties.setSkills(new LinkedHashMap<>(Map.of("information-scout", configuredSkill)));
 
-        SkillRegistry registry = new SkillRegistry(properties, new LLMFunctionRegistry());
+        SkillRegistry registry = new SkillRegistry(properties, new ToolRegistry());
         registry.init();
 
         assertEquals("information-scout", registry.find("information-scout").orElseThrow().name());

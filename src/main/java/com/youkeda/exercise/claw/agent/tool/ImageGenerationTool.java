@@ -1,4 +1,6 @@
 package com.youkeda.exercise.claw.agent.tool;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,20 +15,20 @@ import org.springframework.stereotype.Component;
 /**
  * 图片生成工具
  *
- * <p>封装 ImageGenerationService，结合 LLM 上下文理解。作为 LLMFunction 暴露，
- * 启动时自动注册到 LLMFunctionRegistry。
+ * <p>封装 ImageGenerationService，结合 LLM 上下文理解。作为 Tool 暴露，
+ * 启动时自动注册到 ToolRegistry。
  *
- * <p>注意：{@link LLMFunction#execute(String)} 只能返回文本，但图片数据通过
+ * <p>注意：{@link Tool#execute(String)} 只能返回文本，但图片数据通过
  * {@link #consumePendingImage()} 传递回调用方（{@code ChatTool}），确保图片能被正确发送。</p>
  */
 @Component
-public class ImageGenerationTool implements LLMFunction {
+public class ImageGenerationTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationTool.class);
 
     private final ImageGenerationService imageGenerationService;
     private final ImageClient imageClient;
-    private final LLMFunctionRegistry llmFunctionRegistry;
+    private final ToolRegistry llmFunctionRegistry;
     private final ObjectMapper objectMapper;
 
     /** 待发送的图片数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
@@ -34,7 +36,7 @@ public class ImageGenerationTool implements LLMFunction {
 
     public ImageGenerationTool(ImageGenerationService imageGenerationService,
                                 ImageClient imageClient,
-                                LLMFunctionRegistry llmFunctionRegistry,
+                                ToolRegistry llmFunctionRegistry,
                                 ObjectMapper objectMapper) {
         this.imageGenerationService = imageGenerationService;
         this.imageClient = imageClient;
@@ -62,7 +64,7 @@ public class ImageGenerationTool implements LLMFunction {
     /** 图片生成结果暂存：图片字节 + 描述文本 */
     public record PendingImage(byte[] imageBytes, String description) {}
 
-    // ==================== LLMFunction ====================
+    // ==================== Tool ====================
 
     @Override
     public String getName() {

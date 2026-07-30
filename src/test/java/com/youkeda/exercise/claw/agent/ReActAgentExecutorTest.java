@@ -10,9 +10,9 @@ import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder;
 import com.youkeda.exercise.claw.agent.skill.*;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.skill.SkillKnowledgeService;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
@@ -137,8 +137,8 @@ class ReActAgentExecutorTest {
         ContextStore contextStore = mock(ContextStore.class);
         when(contextStore.getHistory(anyInt())).thenReturn(List.of());
 
-        LLMFunctionRegistry registry = new LLMFunctionRegistry();
-        registry.register(new LLMFunction() {
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
             @Override
             public String getName() {
                 return "dummy_tool";

@@ -3,8 +3,8 @@ package com.youkeda.exercise.claw.scout.collector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.scout.planner.SearchTask;
 import com.youkeda.exercise.claw.scout.processor.InformationItem;
 import jakarta.annotation.PostConstruct;
@@ -20,17 +20,17 @@ import java.util.List;
  * 搜索 GitHub 近期热门项目
  */
 @Component
-public class GithubCollectFunction implements LLMFunction {
+public class GithubCollectFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(GithubCollectFunction.class);
 
     private final GithubCollector collector;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
 
     public GithubCollectFunction(GithubCollector collector,
                                   ObjectMapper objectMapper,
-                                  LLMFunctionRegistry registry) {
+                                  ToolRegistry registry) {
         this.collector = collector;
         this.objectMapper = objectMapper;
         this.registry = registry;

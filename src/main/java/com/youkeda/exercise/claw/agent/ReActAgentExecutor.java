@@ -13,9 +13,9 @@ import com.youkeda.exercise.claw.agent.model.*;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
 import com.youkeda.exercise.claw.agent.plan.ValidationResult;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.PlanDecision;
@@ -44,7 +44,7 @@ import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
  *   <li>取对话历史 + 当前用户消息</li>
  *   <li>加载当前会话的 PlanState（如果有）</li>
  *   <li>快速判断：明显不需要工具的闲聊直接 LLM 回复（不含工具定义），跳过后续循环</li>
- *   <li>调 LLM（带所有已注册的 {@link LLMFunction} 定义）</li>
+ *   <li>调 LLM（带所有已注册的 {@link Tool} 定义）</li>
  *   <li>LLM 返回
  *     <ul>
  *       <li>文本 → 结束，保存回复到上下文</li>
@@ -74,7 +74,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     public static final String SILENT_REPLY = "__HANDLED_WITHOUT_USER_REPLY__";
 
     private final LLMClient llmClient;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ContextStore contextStore;
     private final ObjectMapper objectMapper;
     private final PlanStore planStore;
@@ -93,7 +93,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final ToolResultStatusParser toolResultStatusParser;
 
     public ReActAgentExecutor(LLMClient llmClient,
-                               LLMFunctionRegistry functionRegistry,
+                               ToolRegistry functionRegistry,
                                ContextStore contextStore,
                                ObjectMapper objectMapper,
                                PlanStore planStore,
@@ -246,7 +246,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
 
         // 4. 按 Skill 过滤可用工具
-        FunctionExecutionContext execContext = new FunctionExecutionContext(userMessage, session, userId);
+        ToolExecutionContext execContext = new ToolExecutionContext(userMessage, session, userId);
         List<ToolDefinition> tools = functionRegistry.getAvailableDefinitions(effectiveTools, execContext);
         log.info("[Agent Available Tools] skill={} | count={} | tools={}",
                 activeSkillName,
@@ -344,7 +344,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                 String toolName = tc.name();
                 log.info("工具调用 | name={} | args={} | id={}", toolName, tc.arguments(), tc.id());
 
-                LLMFunction fn = functionRegistry.find(toolName);
+                Tool fn = functionRegistry.find(toolName);
                 String result;
                 String callSignature = toolName + "|" + tc.arguments();
 

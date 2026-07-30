@@ -1,4 +1,6 @@
 package com.youkeda.exercise.claw.agent.tool;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,21 +16,21 @@ import org.springframework.stereotype.Component;
  * 文件生成工具
  *
  * 封装 FileGenerationService，根据用户请求生成 PDF、Word 或 Markdown 文件。
- * 作为 LLMFunction 暴露，启动时自动注册到 LLMFunctionRegistry。
+ * 作为 Tool 暴露，启动时自动注册到 ToolRegistry。
  */
 @Component
-public class FileGenerationTool implements LLMFunction {
+public class FileGenerationTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(FileGenerationTool.class);
     private final FileGenerationService fileGenerationService;
-    private final LLMFunctionRegistry llmFunctionRegistry;
+    private final ToolRegistry llmFunctionRegistry;
     private final ObjectMapper objectMapper;
 
     /** 待发送的文件数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
     private volatile PendingFile pendingFile;
 
     public FileGenerationTool(FileGenerationService fileGenerationService,
-                              LLMFunctionRegistry llmFunctionRegistry,
+                              ToolRegistry llmFunctionRegistry,
                               ObjectMapper objectMapper) {
         this.fileGenerationService = fileGenerationService;
         this.llmFunctionRegistry = llmFunctionRegistry;
@@ -55,7 +57,7 @@ public class FileGenerationTool implements LLMFunction {
         llmFunctionRegistry.register(this);
     }
 
-    // ==================== LLMFunction ====================
+    // ==================== Tool ====================
 
     @Override
     public String getName() {

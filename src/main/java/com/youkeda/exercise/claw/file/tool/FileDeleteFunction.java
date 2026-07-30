@@ -3,9 +3,9 @@ package com.youkeda.exercise.claw.file.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.file.FileService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -24,16 +24,16 @@ import org.springframework.stereotype.Component;
  * 删除为软删除（status = 'deleted'），数据可恢复。
  */
 @Component
-public class FileDeleteFunction implements LLMFunction {
+public class FileDeleteFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(FileDeleteFunction.class);
 
     private final FileService fileService;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ObjectMapper objectMapper;
 
     public FileDeleteFunction(FileService fileService,
-                              LLMFunctionRegistry functionRegistry,
+                              ToolRegistry functionRegistry,
                               ObjectMapper objectMapper) {
         this.fileService = fileService;
         this.functionRegistry = functionRegistry;
@@ -43,7 +43,7 @@ public class FileDeleteFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("FileDeleteFunction 已注册到 LLMFunctionRegistry");
+        log.info("FileDeleteFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -79,7 +79,7 @@ public class FileDeleteFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String userId = context.userId();

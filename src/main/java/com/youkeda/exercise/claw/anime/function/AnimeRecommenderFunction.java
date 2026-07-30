@@ -2,9 +2,9 @@ package com.youkeda.exercise.claw.anime.function;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.anime.client.AniListClient;
 import com.youkeda.exercise.claw.anime.model.Anime;
 import com.youkeda.exercise.claw.anime.store.AnimeSubscriptionStore;
@@ -20,18 +20,18 @@ import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnProperty(name = "anime.enabled", havingValue = "true")
-public class AnimeRecommenderFunction implements LLMFunction {
+public class AnimeRecommenderFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(AnimeRecommenderFunction.class);
 
     private final AniListClient aniListClient;
     private final AnimeSubscriptionStore subscriptionStore;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ObjectMapper objectMapper;
 
     public AnimeRecommenderFunction(AniListClient aniListClient,
                                     AnimeSubscriptionStore subscriptionStore,
-                                    LLMFunctionRegistry functionRegistry,
+                                    ToolRegistry functionRegistry,
                                     ObjectMapper objectMapper) {
         this.aniListClient = aniListClient;
         this.subscriptionStore = subscriptionStore;
@@ -70,7 +70,7 @@ public class AnimeRecommenderFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             // 获取当季新番（两阶段：规则预筛 → LLM 精筛）
             List<Anime> seasonAnime = aniListClient.getCurrentSeasonAnime(1);

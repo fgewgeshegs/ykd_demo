@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.ai.file.FileParseProperties;
 import com.youkeda.exercise.claw.ai.file.FileParseService;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.file.FileLocalStorage;
 import com.youkeda.exercise.claw.file.FileMetadataRepository;
 import com.youkeda.exercise.claw.file.FileService;
@@ -50,7 +50,7 @@ class FileSearchFunctionTest {
 
         fileService = new FileService(fileLocalStorage, metadataRepository, fileParseService, fileLocalStorage);
 
-        var registry = new LLMFunctionRegistry();
+        var registry = new ToolRegistry();
         function = new FileSearchFunction(fileService, registry, objectMapper);
         function.init();
     }
@@ -107,8 +107,8 @@ class FileSearchFunctionTest {
         assertEquals("error", json.get("status").asText());
     }
 
-    private FunctionExecutionContext context(String userId) {
-        return new FunctionExecutionContext("", null, userId);
+    private ToolExecutionContext context(String userId) {
+        return new ToolExecutionContext("", null, userId);
     }
 
     private void setField(Object target, String name, Object value) {

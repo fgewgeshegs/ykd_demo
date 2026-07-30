@@ -1,4 +1,6 @@
 package com.youkeda.exercise.claw.agent.tool;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,15 +29,15 @@ import org.springframework.stereotype.Component;
  * 将计划以自然语言展示给用户，等待用户回复确认或修改。</p>
  */
 @Component
-public class PlanProposalFunction implements LLMFunction {
+public class PlanProposalFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(PlanProposalFunction.class);
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
 
     public PlanProposalFunction(ObjectMapper objectMapper,
-                                LLMFunctionRegistry functionRegistry) {
+                                ToolRegistry functionRegistry) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
     }
@@ -43,7 +45,7 @@ public class PlanProposalFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("PlanProposalFunction 已注册到 LLMFunctionRegistry");
+        log.info("PlanProposalFunction 已注册到 ToolRegistry");
     }
 
     @Override

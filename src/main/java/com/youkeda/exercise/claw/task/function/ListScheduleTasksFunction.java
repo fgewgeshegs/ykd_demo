@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
 import jakarta.annotation.PostConstruct;
@@ -25,18 +25,18 @@ import java.util.List;
  * 返回当前用户的定时任务列表，支持按状态筛选。
  */
 @Component
-public class ListScheduleTasksFunction implements LLMFunction {
+public class ListScheduleTasksFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ListScheduleTasksFunction.class);
 
     private static final int MAX_TASKS = 50;
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ScheduledTaskRepository taskRepository;
 
     public ListScheduleTasksFunction(ObjectMapper objectMapper,
-                                     LLMFunctionRegistry functionRegistry,
+                                     ToolRegistry functionRegistry,
                                      ScheduledTaskRepository taskRepository) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -46,7 +46,7 @@ public class ListScheduleTasksFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("ListScheduleTasksFunction 已注册到 LLMFunctionRegistry");
+        log.info("ListScheduleTasksFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -84,7 +84,7 @@ public class ListScheduleTasksFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String userId = context.userId();

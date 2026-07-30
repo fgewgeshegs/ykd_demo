@@ -3,8 +3,8 @@ package com.youkeda.exercise.claw.scout.collector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.scout.planner.SearchTask;
 import com.youkeda.exercise.claw.scout.processor.InformationItem;
 import jakarta.annotation.PostConstruct;
@@ -18,17 +18,17 @@ import java.util.List;
  * 招聘信息采集工具（独立调用）
  */
 @Component
-public class JobCollectFunction implements LLMFunction {
+public class JobCollectFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(JobCollectFunction.class);
 
     private final JobCollector collector;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
 
     public JobCollectFunction(JobCollector collector,
                                 ObjectMapper objectMapper,
-                                LLMFunctionRegistry registry) {
+                                ToolRegistry registry) {
         this.collector = collector;
         this.objectMapper = objectMapper;
         this.registry = registry;

@@ -1,4 +1,7 @@
 package com.youkeda.exercise.claw.agent.tool;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,17 +20,17 @@ import org.springframework.stereotype.Component;
  * 信息不足时返回 NEED_MORE_INFORMATION 和具体缺失字段，LLM 应据此追问。
  */
 @Component
-public class TravelCollectFunction implements LLMFunction {
+public class TravelCollectFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(TravelCollectFunction.class);
 
     private final TravelPlanService planService;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
 
     public TravelCollectFunction(TravelPlanService planService,
                                    ObjectMapper objectMapper,
-                                   LLMFunctionRegistry registry) {
+                                   ToolRegistry registry) {
         this.planService = planService;
         this.objectMapper = objectMapper;
         this.registry = registry;
@@ -92,11 +95,11 @@ public class TravelCollectFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext(""));
+        return execute(argumentsJson, new ToolExecutionContext(""));
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
             return objectMapper.writeValueAsString(planService.handle(args));

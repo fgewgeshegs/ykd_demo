@@ -1,4 +1,7 @@
 package com.youkeda.exercise.claw.agent.tool;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,16 +26,16 @@ import java.util.List;
  * - "我之前让你记住的偏好有哪些" → recall（按分类查询）
  */
 @Component
-public class MemoryFunction implements LLMFunction {
+public class MemoryFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryFunction.class);
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final LongTermMemoryService memoryService;
 
     public MemoryFunction(ObjectMapper objectMapper,
-                          LLMFunctionRegistry functionRegistry,
+                          ToolRegistry functionRegistry,
                           LongTermMemoryService memoryService) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -42,7 +45,7 @@ public class MemoryFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("MemoryFunction 已注册到 LLMFunctionRegistry");
+        log.info("MemoryFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -88,11 +91,11 @@ public class MemoryFunction implements LLMFunction {
 
     @Override
     public String execute(String argumentsJson) {
-        return execute(argumentsJson, new FunctionExecutionContext(""));
+        return execute(argumentsJson, new ToolExecutionContext(""));
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String actionStr = args.path("action").asText("");

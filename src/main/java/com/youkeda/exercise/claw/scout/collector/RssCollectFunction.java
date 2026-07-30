@@ -3,9 +3,9 @@ package com.youkeda.exercise.claw.scout.collector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.scout.planner.SearchTask;
 import com.youkeda.exercise.claw.scout.processor.InformationItem;
 import jakarta.annotation.PostConstruct;
@@ -23,17 +23,17 @@ import java.util.List;
  */
 @Component
 @ConditionalOnProperty(name = "scout.rss.enabled", havingValue = "true")
-public class RssCollectFunction implements LLMFunction {
+public class RssCollectFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(RssCollectFunction.class);
 
     private final RssCollector collector;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
 
     public RssCollectFunction(RssCollector collector,
                                 ObjectMapper objectMapper,
-                                LLMFunctionRegistry registry) {
+                                ToolRegistry registry) {
         this.collector = collector;
         this.objectMapper = objectMapper;
         this.registry = registry;

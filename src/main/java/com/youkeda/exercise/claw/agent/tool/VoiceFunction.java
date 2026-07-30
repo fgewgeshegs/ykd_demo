@@ -1,4 +1,6 @@
 package com.youkeda.exercise.claw.agent.tool;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,14 +23,14 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>ASR 语音识别（提取语音消息文本）</li>
  *   <li>TTS 语音合成（将文本合成为音频文件）</li>
- *   <li>作为 {@link LLMFunction} 提供 {@code text_to_speech} 工具供 LLM 调用</li>
+ *   <li>作为 {@link Tool} 提供 {@code text_to_speech} 工具供 LLM 调用</li>
  * </ul>
  *
- * <p>注意：{@link LLMFunction#execute(String)} 只能返回文本，但 TTS 产生的音频数据通过
+ * <p>注意：{@link Tool#execute(String)} 只能返回文本，但 TTS 产生的音频数据通过
  * {@link #consumePendingAudio()} 传递回调用方（{@code ChatTool}），确保语音文件能被正确发送。</p>
  */
 @Component
-public class VoiceFunction implements LLMFunction {
+public class VoiceFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(VoiceFunction.class);
 
@@ -36,7 +38,7 @@ public class VoiceFunction implements LLMFunction {
 
     private final VoiceService voiceService;
     private final WechatILinkClient wechatClient;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ObjectMapper objectMapper;
 
     /** 待发送的音频数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
@@ -44,7 +46,7 @@ public class VoiceFunction implements LLMFunction {
 
     public VoiceFunction(VoiceService voiceService,
                       WechatILinkClient wechatClient,
-                      LLMFunctionRegistry functionRegistry,
+                      ToolRegistry functionRegistry,
                       ObjectMapper objectMapper) {
         this.voiceService = voiceService;
         this.wechatClient = wechatClient;
@@ -70,10 +72,10 @@ public class VoiceFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("VoiceFunction 已注册到 LLMFunctionRegistry（text_to_speech）");
+        log.info("VoiceFunction 已注册到 ToolRegistry（text_to_speech）");
     }
 
-    // ==================== LLMFunction（text_to_speech） ====================
+    // ==================== Tool（text_to_speech） ====================
 
     @Override
     public String getName() {

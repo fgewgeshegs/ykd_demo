@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,17 +14,17 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 
 @Component
-public class SkillKnowledgeManageFunction implements LLMFunction {
+public class SkillKnowledgeManageFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(SkillKnowledgeManageFunction.class);
 
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
     private final SkillKnowledgeStore knowledgeStore;
     private final EmbeddingClient embeddingClient;
     private final DocumentChunker chunker;
     private final ObjectMapper objectMapper;
 
-    public SkillKnowledgeManageFunction(LLMFunctionRegistry registry,
+    public SkillKnowledgeManageFunction(ToolRegistry registry,
                                         SkillKnowledgeStore knowledgeStore,
                                         EmbeddingClient embeddingClient,
                                         DocumentChunker chunker,
@@ -77,7 +77,7 @@ public class SkillKnowledgeManageFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String action = args.get("action").asText();

@@ -3,8 +3,8 @@ package com.youkeda.exercise.claw.websearch;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,17 +25,17 @@ import org.springframework.stereotype.Component;
  * <p>定位：当 LLM 发现已有专业工具无法满足的信息需求时调用。
  */
 @Component
-public class WebSearchFunction implements LLMFunction {
+public class WebSearchFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(WebSearchFunction.class);
 
     private final SearchService searchService;
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
 
     public WebSearchFunction(SearchService searchService,
                              ObjectMapper objectMapper,
-                             LLMFunctionRegistry functionRegistry) {
+                             ToolRegistry functionRegistry) {
         this.searchService = searchService;
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -44,7 +44,7 @@ public class WebSearchFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("WebSearchFunction 已注册到 LLMFunctionRegistry");
+        log.info("WebSearchFunction 已注册到 ToolRegistry");
     }
 
     @Override

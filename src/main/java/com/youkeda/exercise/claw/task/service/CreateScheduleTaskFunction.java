@@ -3,9 +3,9 @@ package com.youkeda.exercise.claw.task.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -21,16 +21,16 @@ import org.springframework.stereotype.Component;
  * 支持相对时间（delay_minutes）和绝对时间（execute_time），以及周期任务（repeat_type）。
  */
 @Component
-public class CreateScheduleTaskFunction implements LLMFunction {
+public class CreateScheduleTaskFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(CreateScheduleTaskFunction.class);
 
     private final ObjectMapper objectMapper;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final TaskCreator taskCreator;
 
     public CreateScheduleTaskFunction(ObjectMapper objectMapper,
-                                      LLMFunctionRegistry functionRegistry,
+                                      ToolRegistry functionRegistry,
                                       TaskCreator taskCreator) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
@@ -40,7 +40,7 @@ public class CreateScheduleTaskFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("CreateScheduleTaskFunction 已注册到 LLMFunctionRegistry");
+        log.info("CreateScheduleTaskFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -105,7 +105,7 @@ public class CreateScheduleTaskFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String userId = context.userId();

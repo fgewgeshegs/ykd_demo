@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.scout;
 
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,8 +18,8 @@ class ScoutFunctionPendingAvailabilityTest {
                 .withActiveSkill("information-scout")
                 .withPendingAction("START_INFORMATION_SCOUT", "query");
 
-        assertTrue(function.isAvailable(new FunctionExecutionContext("AI / 深度学习", pending)));
-        assertFalse(function.isAvailable(new FunctionExecutionContext(
+        assertTrue(function.isAvailable(new ToolExecutionContext("AI / 深度学习", pending)));
+        assertFalse(function.isAvailable(new ToolExecutionContext(
                 "AI / 深度学习", SkillSession.create("owner"))));
     }
 
@@ -29,6 +29,6 @@ class ScoutFunctionPendingAvailabilityTest {
                 .withActiveSkill("information-scout")
                 .withPendingAction("START_INFORMATION_SCOUT", "query");
 
-        assertFalse(function.isAvailable(new FunctionExecutionContext("不要查了", pending)));
+        assertFalse(function.isAvailable(new ToolExecutionContext("不要查了", pending)));
     }
 }

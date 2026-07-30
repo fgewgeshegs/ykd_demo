@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.tool;
+package com.youkeda.exercise.claw.agent.runtime;
 
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
 import org.slf4j.Logger;
@@ -12,37 +12,38 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * LLM 函数注册中心
+ * 工具注册中心
  *
- * <p>管理所有可供 LLM 通过 Function Calling 调用的 {@link LLMFunction}。
+ * <p>管理所有可供 LLM 调用的 {@link Tool}。
+ * 所有工具实现必须通过 {@link #register(Tool)} 在此注册才能被 Agent Runtime 发现。
  *
  * <p>线程安全：使用 {@link ConcurrentHashMap}。
  */
 @Component
-public class LLMFunctionRegistry {
+public class ToolRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(LLMFunctionRegistry.class);
+    private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
-    private final Map<String, LLMFunction> functions = new ConcurrentHashMap<>();
+    private final Map<String, Tool> tools = new ConcurrentHashMap<>();
 
     /**
-     * 注册函数
+     * 注册工具
      *
-     * @param function 函数实例
+     * @param tool 工具实例
      */
-    public void register(LLMFunction function) {
-        functions.put(function.getName(), function);
-        log.info("LLM函数已注册: name={}, description={}", function.getName(), function.getDescription());
+    public void register(Tool tool) {
+        tools.put(tool.getName(), tool);
+        log.info("工具已注册: name={}, description={}", tool.getName(), tool.getDescription());
     }
 
     /**
-     * 根据名称查找函数
+     * 根据名称查找工具
      *
-     * @param name 函数名
-     * @return 匹配的函数，未找到返回 null
+     * @param name 工具名
+     * @return 匹配的工具，未找到返回 null
      */
-    public LLMFunction find(String name) {
-        return functions.get(name);
+    public Tool find(String name) {
+        return tools.get(name);
     }
 
     /**
@@ -51,8 +52,8 @@ public class LLMFunctionRegistry {
      * @return 工具定义列表
      */
     public List<ToolDefinition> getAllDefinitions() {
-        return functions.values().stream()
-                .map(LLMFunction::toDefinition)
+        return tools.values().stream()
+                .map(Tool::toDefinition)
                 .collect(Collectors.toList());
     }
 
@@ -62,10 +63,10 @@ public class LLMFunctionRegistry {
      * @param context 本轮工具执行上下文
      * @return 通过各工具可用性校验的定义列表
      */
-    public List<ToolDefinition> getAvailableDefinitions(FunctionExecutionContext context) {
-        return functions.values().stream()
-                .filter(function -> function.isAvailable(context))
-                .map(LLMFunction::toDefinition)
+    public List<ToolDefinition> getAvailableDefinitions(ToolExecutionContext context) {
+        return tools.values().stream()
+                .filter(tool -> tool.isAvailable(context))
+                .map(Tool::toDefinition)
                 .collect(Collectors.toList());
     }
 
@@ -79,12 +80,12 @@ public class LLMFunctionRegistry {
      */
     public List<ToolDefinition> getAvailableDefinitions(
             Set<String> allowedNames,
-            FunctionExecutionContext context) {
+            ToolExecutionContext context) {
         if (allowedNames == null || allowedNames.isEmpty()) return List.of();
-        return functions.values().stream()
-                .filter(fn -> allowedNames.contains(fn.getName()))
-                .filter(fn -> fn.isAvailable(context))
-                .map(LLMFunction::toDefinition)
+        return tools.values().stream()
+                .filter(t -> allowedNames.contains(t.getName()))
+                .filter(t -> t.isAvailable(context))
+                .map(Tool::toDefinition)
                 .collect(Collectors.toList());
     }
 }

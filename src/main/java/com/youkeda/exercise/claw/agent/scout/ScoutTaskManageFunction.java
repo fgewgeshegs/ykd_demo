@@ -3,9 +3,9 @@ package com.youkeda.exercise.claw.agent.scout;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,15 +14,15 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
-public class ScoutTaskManageFunction implements LLMFunction {
+public class ScoutTaskManageFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ScoutTaskManageFunction.class);
 
-    private final LLMFunctionRegistry registry;
+    private final ToolRegistry registry;
     private final ScoutTaskManager taskManager;
     private final ObjectMapper objectMapper;
 
-    public ScoutTaskManageFunction(LLMFunctionRegistry registry,
+    public ScoutTaskManageFunction(ToolRegistry registry,
                                    ScoutTaskManager taskManager,
                                    ObjectMapper objectMapper) {
         this.registry = registry;
@@ -62,7 +62,7 @@ public class ScoutTaskManageFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String action = args.get("action").asText();

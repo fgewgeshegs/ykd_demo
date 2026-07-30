@@ -7,7 +7,7 @@ import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
 import com.youkeda.exercise.claw.agent.skill.*;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
@@ -49,7 +49,7 @@ class ReActAgentExecutorSkillExecutionTest {
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient,
-                mock(LLMFunctionRegistry.class),
+                mock(ToolRegistry.class),
                 mock(ContextStore.class),
                 new ObjectMapper(),
                 mock(PlanStore.class),

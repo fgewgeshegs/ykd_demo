@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.file.FileService;
 import com.youkeda.exercise.claw.file.entity.FileMetadata;
 import jakarta.annotation.PostConstruct;
@@ -27,16 +27,16 @@ import java.util.List;
  * <p>返回文件列表含文件名、类型、大小、创建时间和摘要信息。
  */
 @Component
-public class FileSearchFunction implements LLMFunction {
+public class FileSearchFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(FileSearchFunction.class);
 
     private final FileService fileService;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ObjectMapper objectMapper;
 
     public FileSearchFunction(FileService fileService,
-                              LLMFunctionRegistry functionRegistry,
+                              ToolRegistry functionRegistry,
                               ObjectMapper objectMapper) {
         this.fileService = fileService;
         this.functionRegistry = functionRegistry;
@@ -46,7 +46,7 @@ public class FileSearchFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("FileSearchFunction 已注册到 LLMFunctionRegistry");
+        log.info("FileSearchFunction 已注册到 ToolRegistry");
     }
 
     @Override
@@ -91,7 +91,7 @@ public class FileSearchFunction implements LLMFunction {
     }
 
     @Override
-    public String execute(String argumentsJson, FunctionExecutionContext context) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String userId = context.userId();

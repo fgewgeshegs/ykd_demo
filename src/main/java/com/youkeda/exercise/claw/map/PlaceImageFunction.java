@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.tool.LLMFunction;
-import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,19 +31,19 @@ import java.util.List;
  * <p>LLM 只收到地点名称和描述，用自己的话生成文字介绍，不接触图片数据。
  */
 @Component
-public class PlaceImageFunction implements LLMFunction {
+public class PlaceImageFunction implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(PlaceImageFunction.class);
 
     private final PlaceImageService placeImageService;
-    private final LLMFunctionRegistry functionRegistry;
+    private final ToolRegistry functionRegistry;
     private final ObjectMapper objectMapper;
 
     /** 暂存待发送的地点图片（stash-consume 模式） */
     private volatile List<PendingPlaceImage> pendingPlaceImages;
 
     public PlaceImageFunction(PlaceImageService placeImageService,
-                              LLMFunctionRegistry functionRegistry,
+                              ToolRegistry functionRegistry,
                               ObjectMapper objectMapper) {
         this.placeImageService = placeImageService;
         this.functionRegistry = functionRegistry;
@@ -75,7 +75,7 @@ public class PlaceImageFunction implements LLMFunction {
         return images;
     }
 
-    // ==================== LLMFunction ====================
+    // ==================== Tool ====================
 
     @Override
     public String getName() {
