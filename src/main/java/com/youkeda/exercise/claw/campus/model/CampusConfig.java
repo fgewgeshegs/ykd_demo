@@ -1,6 +1,8 @@
 package com.youkeda.exercise.claw.campus.model;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 public class CampusConfig {
     private Long id;
@@ -10,6 +12,9 @@ public class CampusConfig {
     private ExamPreferences preferences = new ExamPreferences();
     private Instant createdAt;
     private Instant updatedAt;
+
+    // 新增：各 Source 独立开关，key=source名称，value=是否开启
+    private Map<String, Boolean> sourceEnabled = new HashMap<>();
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -30,4 +35,12 @@ public class CampusConfig {
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    public boolean isSourceEnabled(String sourceName) {
+        return sourceEnabled.getOrDefault(sourceName, true);
+    }
+
+    public void setSourceEnabled(String sourceName, boolean enabled) {
+        sourceEnabled.put(sourceName, enabled);
+    }
 }

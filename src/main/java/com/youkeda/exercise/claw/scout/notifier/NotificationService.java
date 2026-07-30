@@ -1,16 +1,12 @@
 package com.youkeda.exercise.claw.scout.notifier;
 
-import com.youkeda.exercise.claw.scout.ScoutProperties;
 import com.youkeda.exercise.claw.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.scout.processor.InformationIdentity;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,19 +23,13 @@ public class NotificationService {
     private static final String REPORT_FOOTER = "---\n由 AI 信息猎手 Agent 自动生成";
 
     private final WechatILinkClient wechatClient;
-    private final ScoutDeliveryStore deliveryStore;
-    private final ScoutProperties props;
     private final WechatUserManager userManager;
     private final RecommendationSummaryService summaryService;
 
     public NotificationService(WechatILinkClient wechatClient,
-                               ScoutDeliveryStore deliveryStore,
-                               ScoutProperties props,
                                WechatUserManager userManager,
                                RecommendationSummaryService summaryService) {
         this.wechatClient = wechatClient;
-        this.deliveryStore = deliveryStore;
-        this.props = props;
         this.userManager = userManager;
         this.summaryService = summaryService;
     }
@@ -81,55 +71,31 @@ public class NotificationService {
             return;
         }
 
-        long now = System.currentTimeMillis();
-        long cooldownStart = Instant.ofEpochMilli(now)
-                .minus(Math.max(1, props.getDeliveryCooldownDays()), ChronoUnit.DAYS)
-                .toEpochMilli();
-        List<Recommendation> eligible = new ArrayList<>();
-        for (Recommendation recommendation : recommendations) {
-            String itemKey = InformationIdentity.stableKey(
-                    recommendation.source(), recommendation.title());
-            if (!deliveryStore.wasDeliveredSince(itemKey, cooldownStart)) {
-                eligible.add(recommendation);
-            }
-        }
-
-        if (eligible.isEmpty()) {
-            log.info("推荐均在冷却期内，跳过重复推送 | count={}", recommendations.size());
-            return;
-        }
-
-        List<String> reportChunks = formatReportChunks(eligible);
+        List<String> reportChunks = formatReportChunks(recommendations);
         String ownerUserId = userManager.getOwnerUserId();
         if (ownerUserId == null || ownerUserId.isBlank()) {
-            log.error("推荐推送失败 | 未找到微信收件人，不记录投递状态");
+            log.error("推荐推送失败 | 未找到微信收件人");
             return;
         }
 
         try {
             for (int i = 0; i < reportChunks.size(); i++) {
                 if (!wechatClient.sendTextMessage(ownerUserId, reportChunks.get(i))) {
-                    log.error("推荐明细第 {}/{} 段发送失败，不记录投递状态",
+                    log.error("推荐明细第 {}/{} 段发送失败",
                             i + 1, reportChunks.size());
                     return;
                 }
             }
-            for (Recommendation recommendation : eligible) {
-                String itemKey = InformationIdentity.stableKey(
-                        recommendation.source(), recommendation.title());
-                deliveryStore.markDelivered(itemKey, now);
-            }
 
             if (sendSummary) {
-                String summary = summaryService.summarize(eligible);
+                String summary = summaryService.summarize(recommendations);
                 if (summary != null && !summary.isBlank()
                         && !wechatClient.sendTextMessage(ownerUserId, summary)) {
                     log.error("推荐明细已发送，但综合总结发送失败");
                 }
             }
-            log.info("推荐推送成功 | count={} | chunks={} | suppressed={}",
-                    eligible.size(), reportChunks.size(),
-                    recommendations.size() - eligible.size());
+            log.info("推荐推送成功 | count={} | chunks={}",
+                    recommendations.size(), reportChunks.size());
         } catch (Exception e) {
             log.error("推荐推送失败", e);
         }

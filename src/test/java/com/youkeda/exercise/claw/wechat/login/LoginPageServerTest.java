@@ -69,7 +69,7 @@ class LoginPageServerTest {
 
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("连接微信"));
-        assertTrue(response.body().contains("使用微信扫码"));
+        assertTrue(response.body().contains("扫描二维码"));
         assertTrue(response.body().contains("/login/status"));
     }
 

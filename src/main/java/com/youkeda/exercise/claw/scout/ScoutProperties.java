@@ -49,9 +49,6 @@ public class ScoutProperties {
     /** 每个搜索任务最大结果数 */
     private int maxResultsPerTask = 10;
 
-    /** 同一信息再次允许推送前的冷却天数 */
-    private int deliveryCooldownDays = 30;
-
     private Qdrant qdrant = new Qdrant();
     private Rss rss = new Rss();
     private Kaggle kaggle = new Kaggle();
@@ -82,8 +79,6 @@ public class ScoutProperties {
     public void setSearchTaskCount(int searchTaskCount) { this.searchTaskCount = searchTaskCount; }
     public int getMaxResultsPerTask() { return maxResultsPerTask; }
     public void setMaxResultsPerTask(int maxResultsPerTask) { this.maxResultsPerTask = maxResultsPerTask; }
-    public int getDeliveryCooldownDays() { return deliveryCooldownDays; }
-    public void setDeliveryCooldownDays(int deliveryCooldownDays) { this.deliveryCooldownDays = deliveryCooldownDays; }
     public Qdrant getQdrant() { return qdrant; }
     public void setQdrant(Qdrant qdrant) { this.qdrant = qdrant; }
     public Rss getRss() { return rss; }

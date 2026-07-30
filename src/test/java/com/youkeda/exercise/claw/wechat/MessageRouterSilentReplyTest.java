@@ -5,6 +5,8 @@ import com.youkeda.exercise.claw.agent.tool.FileTool;
 import com.youkeda.exercise.claw.agent.tool.SimpleReplyTool;
 import com.youkeda.exercise.claw.agent.tool.VisionTool;
 import com.youkeda.exercise.claw.agent.tool.VoiceFunction;
+import com.youkeda.exercise.claw.schedule.CourseImportHandler;
+import com.youkeda.exercise.claw.schedule.CourseImportStateManager;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.wechat.model.WechatReply;
@@ -22,8 +24,10 @@ class MessageRouterSilentReplyTest {
         SimpleReplyTool fallbackTool = mock(SimpleReplyTool.class);
         VoiceFunction voiceTool = mock(VoiceFunction.class);
         FileTool fileTool = mock(FileTool.class);
+        CourseImportStateManager importStateManager = mock(CourseImportStateManager.class);
+        CourseImportHandler importHandler = mock(CourseImportHandler.class);
         MessageRouter router = new MessageRouter(
-                chatTool, visionTool, fallbackTool, voiceTool, fileTool);
+                chatTool, visionTool, fallbackTool, voiceTool, fileTool, importStateManager, importHandler);
 
         WechatMessage message = new WechatMessage();
         message.setType(MessageType.TEXT);

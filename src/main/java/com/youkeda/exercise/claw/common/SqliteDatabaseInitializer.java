@@ -127,6 +127,79 @@ public class SqliteDatabaseInitializer {
             )
         """);
 
+        // === 校园通知框架迁移：为 campus_notice 添加 source 列 ===
+        try {
+            jdbcTemplate.execute("ALTER TABLE campus_notice ADD COLUMN source TEXT NOT NULL DEFAULT 'EXAM'");
+            log.info("DB迁移完成：campus_notice 添加 source 列");
+        } catch (Exception e) {
+            log.debug("campus_notice.source 列已存在，跳过迁移");
+        }
+
+        try {
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_source ON campus_notice(source)");
+        } catch (Exception e) {
+            log.debug("idx_notice_source 索引已存在，跳过");
+        }
+
+        // === 迁移：为 campus_pending_ask 添加 source 列（默认 'EXAM' 兼容旧数据） ===
+        try {
+            jdbcTemplate.execute("ALTER TABLE campus_pending_ask ADD COLUMN source TEXT NOT NULL DEFAULT 'EXAM'");
+            log.info("DB迁移完成：campus_pending_ask 添加 source 列");
+        } catch (Exception e) {
+            log.debug("campus_pending_ask.source 列已存在，跳过迁移");
+        }
+
+        try {
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_pending_source_type ON campus_pending_ask(source, notice_type, status)");
+        } catch (Exception e) {
+            log.debug("idx_pending_source_type 索引已存在，跳过");
+        }
+
+        // === 动漫通知表 ===
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS anime_subscription (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                anilist_id  INTEGER NOT NULL UNIQUE,
+                title       TEXT NOT NULL,
+                title_ja    TEXT DEFAULT '',
+                cover_url   TEXT DEFAULT '',
+                status      TEXT DEFAULT 'RELEASING',
+                genres      TEXT DEFAULT '[]',
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS anime_schedule (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                anilist_id  INTEGER NOT NULL,
+                episode     INTEGER NOT NULL,
+                airing_at   INTEGER NOT NULL,
+                notified    INTEGER NOT NULL DEFAULT 0,
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                UNIQUE(anilist_id, episode)
+            )
+        """);
+        jdbcTemplate.execute("""
+            CREATE INDEX IF NOT EXISTS idx_anime_schedule_airing
+            ON anime_schedule(airing_at, notified)
+        """);
+
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS anime_reminder_task (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                anilist_id  INTEGER NOT NULL,
+                episode     INTEGER NOT NULL,
+                remind_time INTEGER NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'PENDING',
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+        jdbcTemplate.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reminder_status_time
+            ON anime_reminder_task(status, remind_time)
+        """);
+
         log.debug("数据库表结构创建完成");
     }
 

@@ -180,8 +180,6 @@ scout.ttl-days=7
 scout.search-task-count=5
 # 每个搜索任务最大结果数
 scout.max-results-per-task=10
-# 同一信息多少天内不重复推送
-scout.delivery-cooldown-days=30
 # 定时任务 cron 表达式（每天早8点）
 scout.cron=0 0 8 * * *
 
@@ -207,3 +205,9 @@ scout.rss.feeds[8]=https://openai.com/news/rss.xml
 scout.rss.feeds[9]=https://spring.io/blog.atom
 scout.rss.feeds[10]=https://github.blog/feed/
 scout.rss.feeds[11]=https://hnrss.org/frontpage
+
+# ============================================
+# Anime Notification（动漫通知）
+# ============================================
+anime.enabled=true
+anime.seasonRecommendation.enabled=true

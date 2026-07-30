@@ -4,6 +4,7 @@ import com.youkeda.exercise.claw.ai.file.FileParseService;
 import com.youkeda.exercise.claw.ai.chat.ChatService;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.file.FileService;
 import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.wechat.model.MessageType;
 import com.youkeda.exercise.claw.wechat.model.WechatMessage;
@@ -39,17 +40,20 @@ public class FileTool implements WechatMessageHandler {
     private final VisionService visionService;
     private final ContextStore contextStore;
     private final ChatService chatService;
+    private final FileService fileService;
 
     public FileTool(WechatILinkClient wechatClient,
                     FileParseService fileParseService,
                     VisionService visionService,
                     ContextStore contextStore,
-                    ChatService chatService) {
+                    ChatService chatService,
+                    FileService fileService) {
         this.wechatClient = wechatClient;
         this.fileParseService = fileParseService;
         this.visionService = visionService;
         this.contextStore = contextStore;
         this.chatService = chatService;
+        this.fileService = fileService;
     }
 
     @Override
@@ -74,7 +78,10 @@ public class FileTool implements WechatMessageHandler {
         String mimeType = fileParseService.detectMimeType(fileBytes);
         log.info("文件 MIME 类型 | fileName={} | mimeType={}", fileName, mimeType);
 
-        // 3. 按内容类型分发
+        // 3. 尝试自动保存到用户文件库（保存失败不影响后续分析）
+        trySaveFile(message.getUserId(), fileBytes, fileName);
+
+        // 4. 按内容类型分发
         if (mimeType.startsWith("image/")) {
             return handleImageFile(fileBytes, mimeType, fileName);
         } else {
@@ -154,6 +161,25 @@ public class FileTool implements WechatMessageHandler {
 
         log.info("FileTool 文档分析完成 | fileName={}", fileName);
         return WechatReply.text(analysis);
+    }
+
+    /**
+     * 尝试将文件自动保存到用户文件库
+     *
+     * <p>保存失败仅记录日志，不抛出异常，不打断已有分析流程。
+     * 仅支持白名单内的文件类型（md/txt/pdf/docx）。
+     */
+    private void trySaveFile(String userId, byte[] fileBytes, String fileName) {
+        try {
+            fileService.saveFile(userId, fileBytes, fileName);
+            log.info("文件已自动保存到知识库 | userId={} | fileName={}", userId, fileName);
+        } catch (IllegalArgumentException e) {
+            // 不支持的文件类型或超出大小限制——这是预期行为，记录 debug 级别
+            log.debug("文件自动保存跳过 | userId={} | fileName={} | reason={}", userId, fileName, e.getMessage());
+        } catch (Exception e) {
+            // 保存异常——不影响主流程，记录 warn 级别
+            log.warn("文件自动保存失败 | userId={} | fileName={} | error={}", userId, fileName, e.getMessage());
+        }
     }
 
     /**

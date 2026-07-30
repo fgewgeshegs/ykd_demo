@@ -1,0 +1,148 @@
+package com.youkeda.exercise.claw.file.tool;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.tool.FunctionExecutionContext;
+import com.youkeda.exercise.claw.agent.tool.LLMFunction;
+import com.youkeda.exercise.claw.agent.tool.LLMFunctionRegistry;
+import com.youkeda.exercise.claw.file.FileService;
+import com.youkeda.exercise.claw.file.entity.FileMetadata;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+/**
+ * 文件保存工具
+ *
+ * <p>LLM Function：{@code file_save}
+ *
+ * <p>当用户说「保存这段笔记」「帮我存一下」「记下来」时，
+ * Agent 自主调用此工具将文本内容保存为用户文件。
+ *
+ * <p>纯文本入、JSON 字符串出，不走 pending-consumer 模式。
+ */
+@Component
+public class FileSaveFunction implements LLMFunction {
+
+    private static final Logger log = LoggerFactory.getLogger(FileSaveFunction.class);
+
+    private final FileService fileService;
+    private final LLMFunctionRegistry functionRegistry;
+    private final ObjectMapper objectMapper;
+
+    public FileSaveFunction(FileService fileService,
+                            LLMFunctionRegistry functionRegistry,
+                            ObjectMapper objectMapper) {
+        this.fileService = fileService;
+        this.functionRegistry = functionRegistry;
+        this.objectMapper = objectMapper;
+    }
+
+    @PostConstruct
+    public void init() {
+        functionRegistry.register(this);
+        log.info("FileSaveFunction 已注册到 LLMFunctionRegistry");
+    }
+
+    @Override
+    public String getName() {
+        return "file_save";
+    }
+
+    @Override
+    public String getDescription() {
+        return "保存文本内容到用户的文件存储。当用户说「保存这段内容」「帮我存一下」「记下来」「记录一下」时调用。"
+                + "调用后文件会自动保存到用户的知识库。文件名必须包含扩展名（md/txt/pdf/docx）。";
+    }
+
+    @Override
+    public JsonNode getParameters() {
+        ObjectNode params = objectMapper.createObjectNode();
+        params.put("type", "object");
+
+        ObjectNode properties = params.putObject("properties");
+
+        ObjectNode filename = properties.putObject("filename");
+        filename.put("type", "string");
+        filename.put("description", "文件名，需包含扩展名，如「操作系统学习笔记.md」。"
+                + "支持 md, txt, pdf, docx 格式。");
+
+        ObjectNode content = properties.putObject("content");
+        content.put("type", "string");
+        content.put("description", "要保存的文件内容（纯文本 / markdown 格式）");
+
+        ObjectNode category = properties.putObject("category");
+        category.put("type", "string");
+        category.put("description", "分类标签（可选），如「学习笔记」「代码片段」「面试题」");
+
+        params.putArray("required").add("filename").add("content");
+
+        return params;
+    }
+
+    @Override
+    public String execute(String argumentsJson) {
+        return "{\"error\": \"缺少用户上下文\"}";
+    }
+
+    @Override
+    public String execute(String argumentsJson, FunctionExecutionContext context) {
+        try {
+            JsonNode args = objectMapper.readTree(argumentsJson);
+            String userId = context.userId();
+
+            if (userId == null || userId.isBlank()) {
+                return errorJson("缺少用户 ID");
+            }
+
+            String filename = args.path("filename").asText("");
+            String content = args.path("content").asText("");
+            String category = args.path("category").asText("");
+
+            if (filename.isBlank()) {
+                return errorJson("请提供文件名（filename 参数），如「笔记.md」");
+            }
+            if (content.isBlank()) {
+                return errorJson("请提供要保存的文件内容（content 参数）");
+            }
+
+            log.info("file_save 执行 | userId={} | filename={} | size={}",
+                    userId, filename, content.length());
+
+            FileMetadata metadata = fileService.saveTextFile(userId, content, filename);
+
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("status", "success");
+            result.put("file_id", metadata.getId());
+            result.put("filename", metadata.getFilename());
+            result.put("file_type", metadata.getFileType());
+            result.put("size", metadata.getSize());
+            result.put("created_time", metadata.getCreatedTime() != null ? metadata.getCreatedTime() : "");
+            result.put("message", "文件已保存到你的知识库");
+
+            log.info("file_save 完成 | userId={} | fileId={} | filename={}",
+                    userId, metadata.getId(), filename);
+            return objectMapper.writeValueAsString(result);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("file_save 参数错误 | args={}", argumentsJson, e);
+            return errorJson(e.getMessage());
+        } catch (Exception e) {
+            log.error("file_save 执行失败 | args={}", argumentsJson, e);
+            return errorJson("文件保存失败：" + e.getMessage());
+        }
+    }
+
+    private String errorJson(String message) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("status", "error");
+            node.put("message", message);
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            return "{\"status\":\"error\",\"message\":\"" + message + "\"}";
+        }
+    }
+}
