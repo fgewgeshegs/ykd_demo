@@ -3,6 +3,10 @@ claw:
     - memory_manage
     - time_query
     - skill_knowledge_manage
+    - anime_subscribe
+    - anime_recommend
+    - exam_reminder_setup
+    - course_schedule
 
   skills:
     common:
