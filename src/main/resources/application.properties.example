@@ -193,3 +193,9 @@ scout.rss.feeds[0]=https://openai.com/news/rss.xml
 scout.rss.feeds[1]=https://spring.io/blog.atom
 scout.rss.feeds[2]=https://github.blog/feed/
 scout.rss.feeds[3]=https://hnrss.org/frontpage
+
+# ============================================
+# Anime Notification（动漫通知）
+# ============================================
+anime.enabled=true
+anime.seasonRecommendation.enabled=true
