@@ -1,5 +1,11 @@
 package com.youkeda.exercise.claw.agent.skill;
 
+import com.youkeda.exercise.claw.skill.SkillDefinition;
+import com.youkeda.exercise.claw.skill.SkillExecutionResult;
+import com.youkeda.exercise.claw.skill.SkillExecutionMode;
+import com.youkeda.exercise.claw.skill.SkillExecutionRequest;
+import com.youkeda.exercise.claw.skill.SkillsProperties;
+import com.youkeda.exercise.claw.agent.runtime.SkillExecutor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;

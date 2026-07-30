@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.skill;
 
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeConfig;
 import java.util.Set;

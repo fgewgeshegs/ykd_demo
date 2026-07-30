@@ -1,5 +1,8 @@
 package com.youkeda.exercise.claw.agent.skill;
 
+import com.youkeda.exercise.claw.skill.SkillDefinition;
+import com.youkeda.exercise.claw.skill.SkillsProperties;
+import com.youkeda.exercise.claw.skill.SkillExecutionMode;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;

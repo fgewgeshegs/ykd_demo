@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.scout;
 import com.youkeda.exercise.claw.tool.scout.ScoutTool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.agent.skill.SkillsProperties;
+import com.youkeda.exercise.claw.skill.SkillsProperties;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 

@@ -1,5 +1,7 @@
 package com.youkeda.exercise.claw.agent.skill;
 
+import com.youkeda.exercise.claw.skill.InformationScoutIntent;
+import com.youkeda.exercise.claw.skill.InformationScoutIntentResolver;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

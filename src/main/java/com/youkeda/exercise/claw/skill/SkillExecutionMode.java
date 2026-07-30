@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.skill;
 
 public enum SkillExecutionMode {
     INLINE,

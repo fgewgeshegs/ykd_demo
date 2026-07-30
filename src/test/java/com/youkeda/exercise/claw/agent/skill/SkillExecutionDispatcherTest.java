@@ -1,4 +1,10 @@
 package com.youkeda.exercise.claw.agent.skill;
+import com.youkeda.exercise.claw.agent.runtime.SkillExecutor;
+import com.youkeda.exercise.claw.skill.SkillExecutionResult;
+import com.youkeda.exercise.claw.skill.SkillExecutionMode;
+import com.youkeda.exercise.claw.skill.SkillExecutionConfig;
+import com.youkeda.exercise.claw.skill.SkillsProperties;
+import com.youkeda.exercise.claw.skill.SkillDefinition;
 
 import org.junit.jupiter.api.Test;
 

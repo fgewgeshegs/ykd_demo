@@ -23,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
+import com.youkeda.exercise.claw.skill.*;
 import com.youkeda.exercise.claw.agent.skill.*;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 

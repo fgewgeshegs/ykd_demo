@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import com.youkeda.exercise.claw.agent.skill.SkillsProperties;
+import com.youkeda.exercise.claw.skill.SkillsProperties;
 
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;

@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.agent.scout;
 
-import com.youkeda.exercise.claw.agent.skill.WorkflowRequest;
-import com.youkeda.exercise.claw.agent.skill.WorkflowResult;
+import com.youkeda.exercise.claw.skill.WorkflowRequest;
+import com.youkeda.exercise.claw.skill.WorkflowResult;
 
 import com.youkeda.exercise.claw.scout.ScoutOrchestrator;
 import com.youkeda.exercise.claw.scout.ScoutReport;

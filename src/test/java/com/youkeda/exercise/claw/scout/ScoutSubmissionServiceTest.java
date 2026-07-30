@@ -2,10 +2,10 @@ package com.youkeda.exercise.claw.scout;
 
 import com.youkeda.exercise.claw.agent.scout.ScoutTaskManager;
 import com.youkeda.exercise.claw.agent.scout.ScoutTaskStatus;
-import com.youkeda.exercise.claw.agent.skill.WorkflowDefinition;
-import com.youkeda.exercise.claw.agent.skill.WorkflowRegistry;
-import com.youkeda.exercise.claw.agent.skill.WorkflowRequest;
-import com.youkeda.exercise.claw.agent.skill.WorkflowWorker;
+import com.youkeda.exercise.claw.skill.WorkflowDefinition;
+import com.youkeda.exercise.claw.skill.WorkflowRegistry;
+import com.youkeda.exercise.claw.skill.WorkflowRequest;
+import com.youkeda.exercise.claw.skill.WorkflowWorker;
 import com.youkeda.exercise.claw.scout.notifier.NotificationService;
 import org.junit.jupiter.api.Test;
 
@@ -36,8 +36,8 @@ class ScoutSubmissionServiceTest {
                         "scoutWorkflow", "scoutWorkflowWorker",
                         Duration.ofSeconds(12), 1, null)));
         when(taskManager.createTaskIfNoActive(anyString(), eq(""))).thenReturn(true);
-        when(worker.execute(any())).thenReturn(new com.youkeda.exercise.claw.agent.skill.WorkflowResult(
-                "task", com.youkeda.exercise.claw.agent.skill.WorkflowResult.WorkflowStatus.COMPLETED,
+        when(worker.execute(any())).thenReturn(new com.youkeda.exercise.claw.skill.WorkflowResult(
+                "task", com.youkeda.exercise.claw.skill.WorkflowResult.WorkflowStatus.COMPLETED,
                 Instant.now(), "done", null));
         ScoutSubmissionService service = new ScoutSubmissionService(
                 taskManager, workflowRegistry, notificationService);
@@ -89,8 +89,8 @@ class ScoutSubmissionServiceTest {
         when(workflowRegistry.find("scoutWorkflow")).thenReturn(Optional.of(definition));
         when(workflowRegistry.getWorker("scoutWorkflow")).thenReturn(Optional.of(worker));
         when(taskManager.createTaskIfNoActive(anyString(), eq("AI Agent"))).thenReturn(true);
-        when(worker.execute(any())).thenReturn(new com.youkeda.exercise.claw.agent.skill.WorkflowResult(
-                "task", com.youkeda.exercise.claw.agent.skill.WorkflowResult.WorkflowStatus.TIMEOUT,
+        when(worker.execute(any())).thenReturn(new com.youkeda.exercise.claw.skill.WorkflowResult(
+                "task", com.youkeda.exercise.claw.skill.WorkflowResult.WorkflowStatus.TIMEOUT,
                 Instant.now(), "timeout", null));
         ScoutSubmissionService service = new ScoutSubmissionService(
                 taskManager, workflowRegistry, notificationService);

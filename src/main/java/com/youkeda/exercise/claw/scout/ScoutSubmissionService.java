@@ -2,11 +2,11 @@ package com.youkeda.exercise.claw.scout;
 
 import com.youkeda.exercise.claw.agent.scout.ScoutTaskManager;
 import com.youkeda.exercise.claw.agent.scout.ScoutTaskStatus;
-import com.youkeda.exercise.claw.agent.skill.WorkflowRegistry;
-import com.youkeda.exercise.claw.agent.skill.WorkflowDefinition;
-import com.youkeda.exercise.claw.agent.skill.WorkflowRequest;
-import com.youkeda.exercise.claw.agent.skill.WorkflowResult;
-import com.youkeda.exercise.claw.agent.skill.WorkflowWorker;
+import com.youkeda.exercise.claw.skill.WorkflowRegistry;
+import com.youkeda.exercise.claw.skill.WorkflowDefinition;
+import com.youkeda.exercise.claw.skill.WorkflowRequest;
+import com.youkeda.exercise.claw.skill.WorkflowResult;
+import com.youkeda.exercise.claw.skill.WorkflowWorker;
 import com.youkeda.exercise.claw.scout.notifier.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.skill;
+package com.youkeda.exercise.claw.skill;
 
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;

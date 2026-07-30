@@ -3,6 +3,8 @@ package com.youkeda.exercise.claw.agent.skill;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.youkeda.exercise.claw.skill.SkillDefinition;
+import com.youkeda.exercise.claw.skill.SkillRegistry;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
