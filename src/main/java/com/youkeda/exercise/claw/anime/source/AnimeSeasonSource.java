@@ -86,20 +86,9 @@ public class AnimeSeasonSource implements NotificationSource {
             // 简化版：直接推候选列表前 5 名
             List<Anime> top5 = candidates.stream().limit(5).toList();
 
-            // 获取当季信息（与 AniListClient 相同的季节计算逻辑）
-            LocalDate now = LocalDate.now(ZoneId.of("Asia/Tokyo"));
-            int month = now.getMonthValue();
-            String season;
-            if (month <= 3) {
-                season = "WINTER";
-            } else if (month <= 6) {
-                season = "SPRING";
-            } else if (month <= 9) {
-                season = "SUMMER";
-            } else {
-                season = "FALL";
-            }
-            int year = now.getYear();
+            // 获取当季信息
+            String season = AniListClient.getCurrentSeason();
+            int year = LocalDate.now(ZoneId.of("Asia/Tokyo")).getYear();
 
             // 构建推送内容
             String title = "📺 " + year + "年" + season + "季新番推荐";

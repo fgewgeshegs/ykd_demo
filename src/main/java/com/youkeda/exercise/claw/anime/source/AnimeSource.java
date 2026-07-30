@@ -64,7 +64,7 @@ public class AnimeSource implements NotificationSource {
                     if (episode.getAiringAt() <= future24h) {
                         long remindTime = episode.getAiringAt() - 15 * 60; // 提前 15 分钟
                         scheduleStore.createReminderTask(
-                            anime.getAnilistId(), episode.getEpisode(), remindTime);
+                            anime.getAnilistId(), episode.getEpisode(), remindTime, episode.getAiringAt());
                         log.info("已生成提醒任务 | title={} | episode={} | remindTime={}",
                             anime.getTitle(), episode.getEpisode(), remindTime);
                     }

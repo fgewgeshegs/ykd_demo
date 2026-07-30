@@ -48,8 +48,7 @@ public class ReminderScheduler {
                     if (anime == null) continue;
 
                     // 格式化播出时间
-                    String airTime = Instant.ofEpochSecond(
-                        /* airing_at 需要从 schedule 表获取 */ task.getRemindTime() + 15 * 60)
+                    String airTime = Instant.ofEpochSecond(task.getAiringAt())
                         .atZone(ZoneId.of("Asia/Tokyo"))
                         .format(DateTimeFormatter.ofPattern("HH:mm"));
 

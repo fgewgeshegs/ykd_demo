@@ -36,6 +36,7 @@ public class AnimeScheduleStore {
     }
 
     /** 获取未来时段内未通知的播出 */
+    @SuppressWarnings("unused")
     public List<AnimeEpisode> getUpcomingEpisodes(long from, long to) {
         return jdbc.query("""
             SELECT s.*, a.title FROM anime_schedule s
@@ -46,21 +47,23 @@ public class AnimeScheduleStore {
     }
 
     /** 创建提醒任务 */
-    public void createReminderTask(int anilistId, int episode, long remindTime) {
+    public void createReminderTask(int anilistId, int episode, long remindTime, long airingAt) {
         long now = System.currentTimeMillis() / 1000;
         jdbc.update("""
             INSERT OR IGNORE INTO anime_reminder_task
-            (anilist_id, episode, remind_time, status, created_at)
-            VALUES (?, ?, ?, 'PENDING', ?)
-            """, anilistId, episode, remindTime, now);
+            (anilist_id, episode, remind_time, airing_at, status, created_at)
+            VALUES (?, ?, ?, ?, 'PENDING', ?)
+            """, anilistId, episode, remindTime, airingAt, now);
     }
 
     /** 获取所有待执行的提醒任务 */
     public List<ReminderTask> getPendingReminders(long now) {
         return jdbc.query("""
-            SELECT * FROM anime_reminder_task
-            WHERE status = 'PENDING' AND remind_time <= ?
-            ORDER BY remind_time ASC
+            SELECT r.*, s.airing_at AS airing_at
+            FROM anime_reminder_task r
+            LEFT JOIN anime_schedule s ON r.anilist_id = s.anilist_id AND r.episode = s.episode
+            WHERE r.status = 'PENDING' AND r.remind_time <= ?
+            ORDER BY r.remind_time ASC
             """, new ReminderTaskRowMapper(), now);
     }
 
@@ -76,6 +79,7 @@ public class AnimeScheduleStore {
     }
 
     /** 最近更新的集（用于"第 X 集已更新"通知） */
+    @SuppressWarnings("unused")
     public List<AnimeEpisode> getRecentlyAired(long since) {
         return jdbc.query("""
             SELECT s.*, a.title FROM anime_schedule s
@@ -92,6 +96,7 @@ public class AnimeScheduleStore {
         private int anilistId;
         private int episode;
         private long remindTime;
+        private long airingAt;
         private String status;
         private long createdAt;
 
@@ -106,6 +111,9 @@ public class AnimeScheduleStore {
 
         public long getRemindTime() { return remindTime; }
         public void setRemindTime(long remindTime) { this.remindTime = remindTime; }
+
+        public long getAiringAt() { return airingAt; }
+        public void setAiringAt(long airingAt) { this.airingAt = airingAt; }
 
         public String getStatus() { return status; }
         public void setStatus(String status) { this.status = status; }
@@ -133,6 +141,7 @@ public class AnimeScheduleStore {
             task.setAnilistId(rs.getInt("anilist_id"));
             task.setEpisode(rs.getInt("episode"));
             task.setRemindTime(rs.getLong("remind_time"));
+            task.setAiringAt(rs.getLong("airing_at"));
             task.setStatus(rs.getString("status"));
             task.setCreatedAt(rs.getLong("created_at"));
             return task;

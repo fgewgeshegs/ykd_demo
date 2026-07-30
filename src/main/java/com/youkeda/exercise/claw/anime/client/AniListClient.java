@@ -68,24 +68,33 @@ public class AniListClient {
     }
 
     /**
+     * 获取当前季度（东京时区）。
+     *
+     * @return 季度字符串：WINTER / SPRING / SUMMER / FALL
+     */
+    public static String getCurrentSeason() {
+        LocalDate now = LocalDate.now(ZoneId.of("Asia/Tokyo"));
+        int month = now.getMonthValue();
+        if (month <= 3) {
+            return "WINTER";
+        } else if (month <= 6) {
+            return "SPRING";
+        } else if (month <= 9) {
+            return "SUMMER";
+        } else {
+            return "FALL";
+        }
+    }
+
+    /**
      * 获取当季新番。
      *
      * @param page 分页页码
      * @return 当季番剧列表，按热度降序排列；异常时返回空列表
      */
     public List<Anime> getCurrentSeasonAnime(int page) {
+        String season = getCurrentSeason();
         LocalDate now = LocalDate.now(ZoneId.of("Asia/Tokyo"));
-        int month = now.getMonthValue();
-        String season;
-        if (month <= 3) {
-            season = "WINTER";
-        } else if (month <= 6) {
-            season = "SPRING";
-        } else if (month <= 9) {
-            season = "SUMMER";
-        } else {
-            season = "FALL";
-        }
 
         String query = """
                 query ($season: MediaSeason, $year: Int, $page: Int) {

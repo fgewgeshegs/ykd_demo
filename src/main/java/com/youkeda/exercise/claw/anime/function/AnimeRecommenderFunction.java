@@ -60,13 +60,7 @@ public class AnimeRecommenderFunction implements LLMFunction {
     public JsonNode getParameters() {
         var root = objectMapper.createObjectNode();
         root.put("type", "object");
-        var properties = root.putObject("properties");
-        var seasonProp = properties.putObject("season");
-        seasonProp.put("type", "string");
-        seasonProp.put("description", "季度：WINTER/SPRING/SUMMER/FALL（可选，默认当前季度）");
-        var yearProp = properties.putObject("year");
-        yearProp.put("type", "number");
-        yearProp.put("description", "年份（可选，默认今年）");
+        root.putObject("properties");
         return root;
     }
 
