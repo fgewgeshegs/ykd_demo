@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw;
 
-import com.youkeda.exercise.claw.command.CommandHandler;
+import com.youkeda.exercise.claw.application.command.CommandHandler;
 import com.youkeda.exercise.claw.ClawException;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;

@@ -12,7 +12,7 @@ import com.youkeda.exercise.claw.campus.store.CampusNoticeStore;
 import com.youkeda.exercise.claw.campus.store.PendingAskStore;
 import com.youkeda.exercise.claw.scout.notifier.NotificationService;
 import com.youkeda.exercise.claw.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.slf4j.LoggerFactory;

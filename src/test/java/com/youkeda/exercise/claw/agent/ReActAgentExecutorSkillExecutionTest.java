@@ -11,7 +11,7 @@ import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
 import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;

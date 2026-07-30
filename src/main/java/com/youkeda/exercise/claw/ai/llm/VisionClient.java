@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.common.PromptLoader;
+import com.youkeda.exercise.claw.infrastructure.common.PromptLoader;
 import com.youkeda.exercise.claw.ai.llm.VisionProperties;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;

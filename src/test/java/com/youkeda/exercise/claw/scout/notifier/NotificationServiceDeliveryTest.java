@@ -1,8 +1,8 @@
 package com.youkeda.exercise.claw.scout.notifier;
 
 import com.youkeda.exercise.claw.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

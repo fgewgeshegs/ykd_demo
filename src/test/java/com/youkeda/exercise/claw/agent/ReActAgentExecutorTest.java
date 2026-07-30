@@ -19,7 +19,7 @@ import com.youkeda.exercise.claw.agent.skill.SkillKnowledgeService;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

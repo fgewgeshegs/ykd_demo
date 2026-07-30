@@ -5,7 +5,7 @@ import com.youkeda.exercise.claw.task.executor.AgentTaskExecutor;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
 import com.youkeda.exercise.claw.task.service.RepeatCalculator;
-import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;

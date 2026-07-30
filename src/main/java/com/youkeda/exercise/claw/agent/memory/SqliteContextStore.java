@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.agent.memory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

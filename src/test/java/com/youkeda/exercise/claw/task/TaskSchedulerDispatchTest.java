@@ -6,7 +6,7 @@ import com.youkeda.exercise.claw.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.task.repository.ScheduledTaskRepository;
 import com.youkeda.exercise.claw.task.scheduler.TaskSchedulerService;
 import com.youkeda.exercise.claw.task.service.RepeatCalculator;
-import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

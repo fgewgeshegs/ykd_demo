@@ -5,11 +5,11 @@ import com.youkeda.exercise.claw.tool.voice.VoiceTool;
 import com.youkeda.exercise.claw.tool.file.FileGenerationTool;
 import com.youkeda.exercise.claw.tool.image.ImageGenerationTool;
 import com.youkeda.exercise.claw.tool.map.PlaceImageTool;
-import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
-import com.youkeda.exercise.claw.wechat.model.MessageType;
-import com.youkeda.exercise.claw.wechat.model.WechatMessage;
-import com.youkeda.exercise.claw.wechat.model.WechatReply;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatReply;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;

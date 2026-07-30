@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.map;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.common.HttpClientUtil;
+import com.youkeda.exercise.claw.infrastructure.common.HttpClientUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

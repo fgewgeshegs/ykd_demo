@@ -1,10 +1,10 @@
-package com.youkeda.exercise.claw.wechat.service;
+package com.youkeda.exercise.claw.infrastructure.channel.wechat.service;
 
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
-import com.youkeda.exercise.claw.wechat.MessageRouter;
-import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
-import com.youkeda.exercise.claw.wechat.config.WechatProperties;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.MessageRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.config.WechatProperties;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
 
 import static org.mockito.Mockito.*;

@@ -1,8 +1,8 @@
 package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.WechatMessageHandler;
-import com.youkeda.exercise.claw.wechat.model.WechatMessage;
-import com.youkeda.exercise.claw.wechat.model.WechatReply;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatReply;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

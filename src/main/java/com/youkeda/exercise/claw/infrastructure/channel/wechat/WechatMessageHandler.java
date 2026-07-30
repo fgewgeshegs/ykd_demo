@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.infrastructure.channel.wechat;
 
-import com.youkeda.exercise.claw.wechat.model.WechatMessage;
-import com.youkeda.exercise.claw.wechat.model.WechatReply;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatReply;
 
 /**
  * 微信消息处理器接口

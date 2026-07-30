@@ -2,8 +2,8 @@ package com.youkeda.exercise.claw.agent;
 
 import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
-import com.youkeda.exercise.claw.wechat.model.MessageType;
-import com.youkeda.exercise.claw.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
 
 /**
  * Agent 执行上下文

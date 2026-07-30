@@ -23,7 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import com.youkeda.exercise.claw.agent.skill.*;
-import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 
 /**
  * ReAct 模式 Agent 执行器

@@ -1,11 +1,11 @@
-package com.youkeda.exercise.claw.wechat.login;
+package com.youkeda.exercise.claw.infrastructure.channel.wechat.login;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.activity.ActivityEventType;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityEvent;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityStore;
-import com.youkeda.exercise.claw.wechat.bot.BotSessionManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotSessionManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

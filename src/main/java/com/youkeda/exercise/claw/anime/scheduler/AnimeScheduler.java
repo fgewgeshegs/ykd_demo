@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.anime.scheduler;
 
-import com.youkeda.exercise.claw.anime.source.AnimeSource;
-import com.youkeda.exercise.claw.anime.source.AnimeSeasonSource;
+import com.youkeda.exercise.claw.notification.source.AnimeSource;
+import com.youkeda.exercise.claw.notification.source.AnimeSeasonSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

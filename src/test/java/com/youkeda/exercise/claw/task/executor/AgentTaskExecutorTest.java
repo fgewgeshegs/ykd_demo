@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.task.executor;
 
 import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
 import com.youkeda.exercise.claw.task.model.ScheduledTask;
-import com.youkeda.exercise.claw.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,7 +58,7 @@ class AgentTaskExecutorTest {
         com.youkeda.exercise.claw.agent.AgentContext ctx = contextCaptor.getValue();
         assertEquals("test_user", ctx.getUserId());
         assertEquals("总结今天AI新闻", ctx.getMessage());
-        assertEquals(com.youkeda.exercise.claw.wechat.model.MessageType.TEXT, ctx.getMessageType());
+        assertEquals(com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType.TEXT, ctx.getMessageType());
 
         // 验证：结果发送到微信
         verify(wechatClient, times(1)).sendTextMessage(eq("test_user"), anyString());

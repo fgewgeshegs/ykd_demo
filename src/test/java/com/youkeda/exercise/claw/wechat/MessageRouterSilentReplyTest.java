@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.wechat;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.MessageRouter;
 
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.ChatHandler;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.FileHandler;
@@ -7,9 +8,9 @@ import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.VisionHan
 import com.youkeda.exercise.claw.tool.voice.VoiceTool;
 import com.youkeda.exercise.claw.schedule.CourseImportHandler;
 import com.youkeda.exercise.claw.schedule.CourseImportStateManager;
-import com.youkeda.exercise.claw.wechat.model.MessageType;
-import com.youkeda.exercise.claw.wechat.model.WechatMessage;
-import com.youkeda.exercise.claw.wechat.model.WechatReply;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatReply;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
