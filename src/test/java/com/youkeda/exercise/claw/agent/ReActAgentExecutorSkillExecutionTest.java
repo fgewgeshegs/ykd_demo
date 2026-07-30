@@ -8,6 +8,8 @@ import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
 import com.youkeda.exercise.claw.agent.skill.*;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
+import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
@@ -47,14 +49,22 @@ class ReActAgentExecutorSkillExecutionTest {
                 .thenAnswer(invocation -> SkillExecutionResult.handledSilent(
                         invocation.getArgument(2)));
 
+        ToolRegistry toolRegistry = mock(ToolRegistry.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        PlanStore planStore = mock(PlanStore.class);
+        ToolExecutor toolExecutor = new ToolExecutor(
+                toolRegistry, mock(SafetyPolicy.class), mock(SkillPendingCoordinator.class),
+                mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
+                planStore, objectMapper);
+        ExecutionLoop executionLoop = new ExecutionLoop(
+                llmClient, toolExecutor, planStore, mock(PlanValidator.class), objectMapper);
+
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient,
-                mock(ToolRegistry.class),
+                toolRegistry,
                 mock(ContextStore.class),
-                new ObjectMapper(),
-                mock(PlanStore.class),
-                mock(PlanValidator.class),
-                mock(SafetyPolicy.class),
+                objectMapper,
+                planStore,
                 mock(LongTermMemoryService.class),
                 skillRouter,
                 sessionStore,
@@ -63,9 +73,8 @@ class ReActAgentExecutorSkillExecutionTest {
                 mock(WechatUserManager.class),
                 mock(SkillKnowledgeService.class),
                 activityRecorder,
-                mock(SkillPendingCoordinator.class),
                 dispatcher,
-                mock(ToolResultStatusParser.class));
+                executionLoop);
 
         String result = executor.execute(new AgentContext()
                 .setUserId("owner")

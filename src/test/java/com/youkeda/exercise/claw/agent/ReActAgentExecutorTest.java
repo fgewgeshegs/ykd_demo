@@ -13,6 +13,8 @@ import com.youkeda.exercise.claw.agent.skill.*;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
+import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
 import com.youkeda.exercise.claw.agent.skill.SkillKnowledgeService;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
@@ -184,15 +186,21 @@ class ReActAgentExecutorTest {
                 .thenAnswer(invocation -> SkillExecutionResult.notHandled(
                         invocation.getArgument(2)));
 
+        ToolExecutor toolExecutor = new ToolExecutor(
+                registry, safetyPolicy, mock(SkillPendingCoordinator.class),
+                mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
+                planStore, objectMapper);
+        ExecutionLoop executionLoop = new ExecutionLoop(
+                llmClient, toolExecutor, planStore, planValidator, objectMapper);
+
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
-                planStore, planValidator, safetyPolicy, longTermMemoryService,
+                planStore, longTermMemoryService,
                 skillRouter, skillSessionStore, skillRegistry, skillsProperties, wechatUserManager,
                 mock(SkillKnowledgeService.class),
                 mock(AgentActivityRecorder.class),
-                mock(SkillPendingCoordinator.class),
                 skillExecutionDispatcher,
-                mock(ToolResultStatusParser.class));
+                executionLoop);
         return new Fixture(llmClient, executor, contextStore);
     }
 
