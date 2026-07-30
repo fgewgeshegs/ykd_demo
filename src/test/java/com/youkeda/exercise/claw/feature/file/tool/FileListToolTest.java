@@ -3,8 +3,8 @@ import com.youkeda.exercise.claw.tool.file.FileListTool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.ai.file.FileParseProperties;
-import com.youkeda.exercise.claw.ai.file.FileParseService;
+import com.youkeda.exercise.claw.infrastructure.document.FileParseProperties;
+import com.youkeda.exercise.claw.infrastructure.document.FileParseService;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.file.FileLocalStorage;
@@ -21,7 +21,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class FileListFunctionTest {
+class FileListToolTest {
 
     @TempDir
     Path tempDir;

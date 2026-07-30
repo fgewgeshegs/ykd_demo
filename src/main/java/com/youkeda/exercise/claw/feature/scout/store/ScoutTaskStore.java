@@ -1,5 +1,7 @@
-package com.youkeda.exercise.claw.agent.scout;
+package com.youkeda.exercise.claw.feature.scout.store;
 
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTask;
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTaskStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import java.sql.ResultSet;

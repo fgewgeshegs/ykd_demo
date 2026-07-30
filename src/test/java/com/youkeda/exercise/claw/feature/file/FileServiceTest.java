@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.feature.file;
 
-import com.youkeda.exercise.claw.ai.file.FileParseService;
+import com.youkeda.exercise.claw.infrastructure.document.FileParseService;
 import com.youkeda.exercise.claw.domain.file.FileMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,7 +39,7 @@ class FileServiceTest {
     @BeforeEach
     void setUp() {
         // 初始化 FileParseService
-        var parseProperties = new com.youkeda.exercise.claw.ai.file.FileParseProperties();
+        var parseProperties = new com.youkeda.exercise.claw.infrastructure.document.FileParseProperties();
         parseProperties.setMaxFileSize(10 * 1024 * 1024);
         parseProperties.setMaxTextLength(10000);
         parseProperties.setMaxEmbeddedImages(5);

@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.feature.weather;
 
-import com.youkeda.exercise.claw.ClawException;
+import com.youkeda.exercise.claw.application.ClawException;
 import com.youkeda.exercise.claw.application.command.CommandHandler;
 import org.springframework.stereotype.Component;
 

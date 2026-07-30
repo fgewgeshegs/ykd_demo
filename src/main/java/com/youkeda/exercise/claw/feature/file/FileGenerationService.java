@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.file;
+package com.youkeda.exercise.claw.feature.file;
 
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;

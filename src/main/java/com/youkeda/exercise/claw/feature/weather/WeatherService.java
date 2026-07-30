@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.feature.weather;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.ClawException;
+import com.youkeda.exercise.claw.application.ClawException;
 import com.youkeda.exercise.claw.infrastructure.common.HttpClientUtil;
 import com.youkeda.exercise.claw.feature.weather.WeatherConfig;
 import com.youkeda.exercise.claw.feature.weather.WeatherResponse;

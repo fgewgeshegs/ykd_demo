@@ -1,5 +1,7 @@
-package com.youkeda.exercise.claw.agent.scout;
+package com.youkeda.exercise.claw.feature.scout;
 
+import com.youkeda.exercise.claw.feature.scout.store.ScoutTaskStore;
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTask;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

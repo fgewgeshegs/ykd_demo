@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw;
+package com.youkeda.exercise.claw.application;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

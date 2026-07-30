@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ScoutFunctionPendingAvailabilityTest {
+class ScoutToolPendingAvailabilityTest {
 
     private final ScoutTool function = new ScoutTool(
             null, null, null, null);

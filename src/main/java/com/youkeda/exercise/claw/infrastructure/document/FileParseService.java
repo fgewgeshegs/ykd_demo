@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.file;
+package com.youkeda.exercise.claw.infrastructure.document;
 
 import org.apache.tika.exception.TikaException;
 import org.apache.tika.extractor.EmbeddedDocumentExtractor;

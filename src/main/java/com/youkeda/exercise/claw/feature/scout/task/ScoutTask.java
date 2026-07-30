@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.agent.scout;
+package com.youkeda.exercise.claw.feature.scout.task;
 
 import java.time.Instant;
 

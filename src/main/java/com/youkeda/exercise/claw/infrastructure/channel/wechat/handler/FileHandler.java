@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.infrastructure.channel.wechat.handler;
 
-import com.youkeda.exercise.claw.ai.file.FileParseService;
-import com.youkeda.exercise.claw.ai.chat.ChatService;
+import com.youkeda.exercise.claw.infrastructure.document.FileParseService;
+import com.youkeda.exercise.claw.ai.llm.ChatService;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.feature.file.FileService;

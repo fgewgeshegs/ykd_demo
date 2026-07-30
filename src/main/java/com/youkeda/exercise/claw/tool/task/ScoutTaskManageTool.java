@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.tool.task;
-import com.youkeda.exercise.claw.agent.scout.ScoutTaskManager;
-import com.youkeda.exercise.claw.agent.scout.ScoutTask;
+import com.youkeda.exercise.claw.feature.scout.ScoutTaskManager;
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTask;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

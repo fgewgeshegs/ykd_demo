@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.feature.scout;
 
-import com.youkeda.exercise.claw.agent.scout.ScoutTaskManager;
-import com.youkeda.exercise.claw.agent.scout.ScoutTaskStatus;
+import com.youkeda.exercise.claw.feature.scout.ScoutTaskManager;
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTaskStatus;
 import com.youkeda.exercise.claw.skill.WorkflowDefinition;
 import com.youkeda.exercise.claw.skill.WorkflowRegistry;
 import com.youkeda.exercise.claw.skill.WorkflowRequest;

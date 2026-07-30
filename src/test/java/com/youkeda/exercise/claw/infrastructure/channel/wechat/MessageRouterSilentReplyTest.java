@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.wechat;
+package com.youkeda.exercise.claw.infrastructure.channel.wechat;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.MessageRouter;
 
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.handler.ChatHandler;

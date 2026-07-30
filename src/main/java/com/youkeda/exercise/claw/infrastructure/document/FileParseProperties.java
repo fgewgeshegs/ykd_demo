@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.ai.file;
+package com.youkeda.exercise.claw.infrastructure.document;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;

@@ -1,5 +1,7 @@
-package com.youkeda.exercise.claw.agent.scout;
+package com.youkeda.exercise.claw.feature.scout.store;
 
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTaskStatus;
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTask;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;

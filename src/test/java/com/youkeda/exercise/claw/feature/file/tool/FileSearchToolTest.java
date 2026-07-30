@@ -1,16 +1,15 @@
 package com.youkeda.exercise.claw.feature.file.tool;
-import com.youkeda.exercise.claw.tool.file.FileUpdateTool;
+import com.youkeda.exercise.claw.tool.file.FileSearchTool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.ai.file.FileParseProperties;
-import com.youkeda.exercise.claw.ai.file.FileParseService;
+import com.youkeda.exercise.claw.infrastructure.document.FileParseProperties;
+import com.youkeda.exercise.claw.infrastructure.document.FileParseService;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.file.FileLocalStorage;
 import com.youkeda.exercise.claw.feature.file.FileMetadataRepository;
 import com.youkeda.exercise.claw.feature.file.FileService;
-import com.youkeda.exercise.claw.domain.file.FileMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,12 +21,12 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class FileUpdateFunctionTest {
+class FileSearchToolTest {
 
     @TempDir
     Path tempDir;
 
-    private FileUpdateTool function;
+    private FileSearchTool function;
     private FileService fileService;
     private ObjectMapper objectMapper;
     private String userId = "testUser";
@@ -53,35 +52,56 @@ class FileUpdateFunctionTest {
         fileService = new FileService(fileLocalStorage, metadataRepository, fileParseService, fileLocalStorage);
 
         var registry = new ToolRegistry();
-        function = new FileUpdateTool(fileService, registry, objectMapper);
+        function = new FileSearchTool(fileService, registry, objectMapper);
         function.init();
     }
 
     @Test
-    @DisplayName("重命名文件")
-    void renameFile() throws Exception {
-        FileMetadata meta = fileService.saveFile(userId, "content".getBytes(StandardCharsets.UTF_8), "oldname.md");
+    @DisplayName("按关键词搜索文件")
+    void searchByKeyword() throws Exception {
+        fileService.saveFile(userId, "content".getBytes(StandardCharsets.UTF_8), "数据库笔记.md");
+        fileService.saveFile(userId, "content".getBytes(StandardCharsets.UTF_8), "Java面试题.md");
 
-        String args = "{\"file_id\":" + meta.getId() + ",\"filename\":\"newname.md\"}";
+        String args = "{\"keyword\":\"数据库\"}";
         String result = function.execute(args, context(userId));
         JsonNode json = objectMapper.readTree(result);
 
         assertEquals("success", json.get("status").asText());
-        assertEquals("newname.md", json.get("new_filename").asText());
+        assertEquals(1, json.get("total").asInt());
+        assertEquals("数据库笔记.md", json.get("files").get(0).get("filename").asText());
     }
 
     @Test
-    @DisplayName("不存在的文件返回错误")
-    void nonExistentFile() throws Exception {
-        String args = "{\"file_id\":99999,\"filename\":\"new.md\"}";
+    @DisplayName("搜索不存在关键词返回空列表")
+    void searchNonExistent() throws Exception {
+        fileService.saveFile(userId, "content".getBytes(StandardCharsets.UTF_8), "test.md");
+
+        String args = "{\"keyword\":\"不存在的\"}";
         String result = function.execute(args, context(userId));
         JsonNode json = objectMapper.readTree(result);
-        assertEquals("error", json.get("status").asText());
+
+        assertEquals("success", json.get("status").asText());
+        assertEquals(0, json.get("total").asInt());
     }
 
     @Test
-    @DisplayName("缺少参数返回错误")
-    void missingArgs() throws Exception {
+    @DisplayName("按文件类型过滤")
+    void filterByType() throws Exception {
+        fileService.saveFile(userId, "content".getBytes(StandardCharsets.UTF_8), "笔记.md");
+        fileService.saveFile(userId, "content".getBytes(StandardCharsets.UTF_8), "文档.pdf");
+
+        String args = "{\"keyword\":\"笔记\",\"file_type\":\"md\"}";
+        String result = function.execute(args, context(userId));
+        JsonNode json = objectMapper.readTree(result);
+
+        assertEquals("success", json.get("status").asText());
+        assertEquals(1, json.get("total").asInt());
+        assertEquals("笔记.md", json.get("files").get(0).get("filename").asText());
+    }
+
+    @Test
+    @DisplayName("缺少关键词返回错误")
+    void missingKeyword() throws Exception {
         String args = "{}";
         String result = function.execute(args, context(userId));
         JsonNode json = objectMapper.readTree(result);

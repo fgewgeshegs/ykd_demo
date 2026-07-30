@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.feature.file;
 
-import com.youkeda.exercise.claw.ai.file.FileParseService;
+import com.youkeda.exercise.claw.infrastructure.document.FileParseService;
 import com.youkeda.exercise.claw.domain.file.FileMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

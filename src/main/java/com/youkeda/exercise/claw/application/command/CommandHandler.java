@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.application.command;
 
-import com.youkeda.exercise.claw.ClawException;
+import com.youkeda.exercise.claw.application.ClawException;
 
 /**
  * 命令处理器接口

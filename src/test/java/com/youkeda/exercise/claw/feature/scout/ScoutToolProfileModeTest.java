@@ -12,7 +12,7 @@ import java.util.Map;
 
 import static org.mockito.Mockito.*;
 
-class ScoutFunctionProfileModeTest {
+class ScoutToolProfileModeTest {
 
     @Test
     void startsTaskWithoutUserIdentity() {

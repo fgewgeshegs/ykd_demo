@@ -1,5 +1,8 @@
-package com.youkeda.exercise.claw.agent.scout;
+package com.youkeda.exercise.claw.feature.scout;
 
+import com.youkeda.exercise.claw.feature.scout.store.ScoutTaskStore;
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTask;
+import com.youkeda.exercise.claw.feature.scout.task.ScoutTaskStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
