@@ -12,13 +12,64 @@ import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SkillsPropertiesYamlBindingTest {
 
     @Test
     void bindsBackgroundWorkflowExecutionMetadataFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        SkillDefinition scout = properties.getSkills().get("information-scout");
+
+        assertNotNull(scout);
+        assertNotNull(scout.execution());
+        assertEquals(SkillExecutionMode.BACKGROUND_WORKFLOW, scout.execution().mode());
+        assertEquals("informationScoutSkillExecutor", scout.execution().executorName());
+        assertEquals("scoutWorkflow",
+                properties.getSkillWorkflowBindings().get("information-scout"));
+    }
+
+    @Test
+    void bindsCampusSkillWithScheduleToolsFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        SkillDefinition campus = properties.getSkills().get("campus");
+
+        assertNotNull(campus, "campus 技能必须在 skills.yml 中定义，否则「查看课表」无法路由到 course_schedule");
+        assertEquals("prompts/skills/campus.txt", campus.systemPromptResource());
+        Set<String> tools = campus.allowedTools();
+        assertTrue(tools.contains("course_schedule"));
+        assertTrue(tools.contains("exam_schedule"));
+        assertTrue(tools.contains("exam_reminder_setup"));
+    }
+
+    @Test
+    void bindsCommonSkillWithGeneralPurposeToolsFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        SkillDefinition common = properties.getSkills().get("common");
+
+        assertNotNull(common);
+        Set<String> tools = common.allowedTools();
+        assertTrue(tools.contains("create_schedule_task"),
+                "create_schedule_task 必须由 common 暴露，否则「设置提醒」永远不会真正创建定时任务");
+        assertTrue(tools.contains("web_search"));
+    }
+
+    @Test
+    void bindsTransportSkillWithRideToolFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        SkillDefinition transport = properties.getSkills().get("transport");
+
+        assertNotNull(transport);
+        assertTrue(transport.allowedTools().contains("didi_ride"),
+                "transport 必须声明 didi_ride，且 DidiRideTool.getName() 必须一致（见 DidiRideToolTest）");
+        assertTrue(transport.allowedTools().contains("transport_recommend"));
+    }
+
+    private SkillsProperties bindSkillsProperties() throws Exception {
         MutablePropertySources sources = new MutablePropertySources();
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
         for (PropertySource<?> source : loader.load(
@@ -28,16 +79,8 @@ class SkillsPropertiesYamlBindingTest {
         StandardEnvironment environment = new StandardEnvironment();
         environment.getPropertySources().addFirst(sources.iterator().next());
 
-        SkillsProperties properties = Binder.get(environment)
+        return Binder.get(environment)
                 .bind("claw", Bindable.of(SkillsProperties.class))
                 .orElseThrow(() -> new IllegalStateException("skills.yml bind failed"));
-        SkillDefinition scout = properties.getSkills().get("information-scout");
-
-        assertNotNull(scout);
-        assertNotNull(scout.execution());
-        assertEquals(SkillExecutionMode.BACKGROUND_WORKFLOW, scout.execution().mode());
-        assertEquals("informationScoutSkillExecutor", scout.execution().executorName());
-        assertEquals("scoutWorkflow",
-                properties.getSkillWorkflowBindings().get("information-scout"));
     }
 }

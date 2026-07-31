@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
  * 滴滴打车 LLM Function
  *
  * <p>将滴滴 MCP 打车能力以 LLM Function Calling 的方式暴露给 ReActAgentExecutor。
- * 注册函数名 {@code didi_taxi}，是一个统一的滴滴领域入口。
+ * 注册函数名 {@code didi_ride}，是一个统一的滴滴领域入口。
  *
  * <p>支持的 action：
  * <ul>
@@ -54,12 +54,12 @@ public class DidiRideTool implements Tool {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("DidiRideTool 已注册到 ToolRegistry（didi_taxi）");
+        log.info("DidiRideTool 已注册到 ToolRegistry（didi_ride）");
     }
 
     @Override
     public String getName() {
-        return "didi_taxi";
+        return "didi_ride";
     }
 
     @Override

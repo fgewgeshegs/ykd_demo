@@ -31,7 +31,10 @@ public class TransportTriggerPolicy implements SkillTriggerPolicy {
         if (hasTransportVerb && hasPlace && !hasSearchVerb) {
             return new SkillTriggerMatch(true, 0.9, "transport: place + verb", false);
         } else if (hasTransportVerb) {
-            return new SkillTriggerMatch(true, 0.75, "transport: verb only", false);
+            // 打车/叫车/代驾/坐车 本身已是强出行意图信号。
+            // 置信度必须 >= SkillRouter.route() 的 0.8 门槛，否则该匹配会被丢弃，
+            // 导致「帮我打车去X」永远路由不到 transport 技能。
+            return new SkillTriggerMatch(true, 0.85, "transport: verb only", false);
         }
 
         return SkillTriggerMatch.noMatch();
