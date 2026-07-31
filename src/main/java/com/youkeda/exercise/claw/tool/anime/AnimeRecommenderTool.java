@@ -100,10 +100,13 @@ public class AnimeRecommenderTool implements Tool {
                 "candidates", candidates.stream().map(a -> Map.of(
                     "id", a.getAnilistId(),
                     "title", a.getTitle(),
+                    "title_ja", a.getTitleJa() != null ? a.getTitleJa() : "",
                     "genres", a.getGenres(),
                     "score", a.getAverageScore()
                 )).toList(),
-                "message", "请根据用户的订阅历史和候选番剧信息，推荐 5 部最合适的番剧并说明理由"
+                "message", "请根据用户的订阅历史和候选番剧信息，推荐 5 部最合适的番剧并说明理由。\n"
+                    + "展示番剧时必须使用中文译名（官方中文译名优先，如 Grand Blue 译为「碧蓝之海」），"
+                    + "无法确认中文译名时，用「原片名（中文译名）」的形式补充说明，不要只显示罗马音或日文原片名。"
             ));
         } catch (Exception e) {
             log.error("AnimeRecommenderTool 执行失败", e);
