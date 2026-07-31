@@ -8,6 +8,11 @@ package com.youkeda.exercise.claw.infrastructure.channel.wechat.model;
 public class WechatMessage {
 
     /**
+     * 微信服务端消息 ID（SDK WeixinMessage.message_id 透传），用于幂等去重与日志排查
+     */
+    private String messageId;
+
+    /**
      * 消息发送者 userId
      */
     private String userId;
@@ -100,6 +105,14 @@ public class WechatMessage {
      * 文件大小（字符串形式，如 "1024"）
      */
     private String fileLen;
+
+    public String getMessageId() {
+        return messageId;
+    }
+
+    public void setMessageId(String messageId) {
+        this.messageId = messageId;
+    }
 
     public String getUserId() {
         return userId;

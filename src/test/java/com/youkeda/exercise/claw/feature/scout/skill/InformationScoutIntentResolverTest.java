@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InformationScoutIntentResolverTest {
 
@@ -37,6 +38,18 @@ class InformationScoutIntentResolverTest {
 
         assertEquals(InformationScoutIntent.Action.TOPIC_SEARCH, intent.action());
         assertEquals("Claude Code 最近的更新", intent.query());
+    }
+
+    @Test
+    void resolvesCollectNewsRequestAsTopicSearch() {
+        SkillSession session = SkillSession.create("owner")
+                .withActiveSkill("information-scout");
+
+        InformationScoutIntent intent = resolver.resolve(
+                "帮我搜集一些关于AI的新闻", session);
+
+        assertEquals(InformationScoutIntent.Action.TOPIC_SEARCH, intent.action());
+        assertTrue(intent.query().contains("AI"));
     }
 
     @Test

@@ -25,6 +25,7 @@ public final class ScoutTriggerPolicy {
 
     private static final Pattern DISCOVERY_ACTION = Pattern.compile(
             "(?:看看|看一下|找找|找一下|找一找|搜搜看|搜一下|搜一搜|搜索一下|"
+                    + "搜集|收集|汇总|"
                     + "查查|查一下|查一查|检索一下|调研一下|跟踪|追踪|监控|关注)"
     );
 

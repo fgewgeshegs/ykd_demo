@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.infrastructure.channel.wechat.service;
 
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.core.InstanceLockManager;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.MessageRouter;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.config.WechatProperties;
@@ -36,6 +37,7 @@ public class WechatMessageService {
     private final MessageRouter messageRouter;
     private final ContextStore contextStore;
     private final WechatUserManager userManager;
+    private final MessageDeduplicationService messageDeduplicationService;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
@@ -46,12 +48,14 @@ public class WechatMessageService {
                                 WechatProperties wechatProperties,
                                 MessageRouter messageRouter,
                                 ContextStore contextStore,
-                                WechatUserManager userManager) {
+                                WechatUserManager userManager,
+                                MessageDeduplicationService messageDeduplicationService) {
         this.wechatClient = wechatClient;
         this.wechatProperties = wechatProperties;
         this.messageRouter = messageRouter;
         this.contextStore = contextStore;
         this.userManager = userManager;
+        this.messageDeduplicationService = messageDeduplicationService;
     }
 
     @PostConstruct
@@ -62,7 +66,8 @@ public class WechatMessageService {
         }
 
         // 不阻塞应用启动——轮询线程自动等待登录完成后开始处理消息
-        log.info("微信消息服务准备就绪，登录完成后将自动开始监听消息");
+        log.info("微信消息服务准备就绪，登录完成后将自动开始监听消息 | instance={}",
+                InstanceLockManager.instanceId());
         running.set(true);
         pollThread = new Thread(this::pollLoop, "wechat-poll-thread");
         pollThread.setDaemon(true);
@@ -90,7 +95,7 @@ public class WechatMessageService {
                 List<WeixinMessage> messages = wechatClient.receiveMessages();
 
                 if (messages != null && !messages.isEmpty()) {
-                    log.info("收到{}条消息", messages.size());
+                    log.info("收到{}条消息 | instance={}", messages.size(), InstanceLockManager.instanceId());
                     for (WeixinMessage msg : messages) {
                         String fromUserId = msg.getFrom_user_id();
                         String contextToken = msg.getContext_token();
@@ -99,9 +104,26 @@ public class WechatMessageService {
                         recordSender(fromUserId);
 
                         if (msg.getItem_list() != null) {
+                            int itemIndex = 0;
                             for (var item : msg.getItem_list()) {
-                                WechatMessage wechatMsg = buildWechatMessage(item, fromUserId, contextToken);
+                                int index = itemIndex++;
+                                WechatMessage wechatMsg = buildWechatMessage(item, fromUserId, contextToken,
+                                        msg.getMessage_id());
                                 if (wechatMsg == null) continue;
+
+                                // 幂等去重：同一 messageId 的重复投递直接跳过（兜底 SDK/服务端重复推送）
+                                String dedupKey = wechatMsg.getMessageId() != null
+                                        ? wechatMsg.getMessageId() + "|" + index
+                                        : null;
+                                if (messageDeduplicationService.isDuplicate(dedupKey)) {
+                                    log.info("消息去重跳过 | instance={} | messageId={} | userId={}",
+                                            InstanceLockManager.instanceId(), wechatMsg.getMessageId(), fromUserId);
+                                    continue;
+                                }
+
+                                log.info("收到微信消息 | instance={} | messageId={} | userId={} | type={}",
+                                        InstanceLockManager.instanceId(), wechatMsg.getMessageId(), fromUserId,
+                                        wechatMsg.getType());
 
                                 // 统一上下文：发一条存一条（文字/语音/图片）
                                 saveMessageToContext(wechatMsg);
@@ -149,11 +171,12 @@ public class WechatMessageService {
      */
     private WechatMessage buildWechatMessage(
             com.github.wechat.ilink.sdk.core.model.MessageItem item,
-            String fromUserId, String contextToken) {
+            String fromUserId, String contextToken, Long messageId) {
 
         WechatMessage wechatMsg = new WechatMessage();
         wechatMsg.setUserId(fromUserId);
         wechatMsg.setContextToken(contextToken);
+        wechatMsg.setMessageId(messageId != null ? String.valueOf(messageId) : null);
 
         // 文本消息
         if (item.getText_item() != null && item.getText_item().getText() != null
