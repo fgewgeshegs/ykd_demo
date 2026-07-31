@@ -52,12 +52,12 @@ public class DidiRideFunction implements LLMFunction {
     @PostConstruct
     public void init() {
         functionRegistry.register(this);
-        log.info("DidiRideFunction 已注册到 LLMFunctionRegistry（didi_taxi）");
+        log.info("DidiRideFunction 已注册到 LLMFunctionRegistry（didi_ride）");
     }
 
     @Override
     public String getName() {
-        return "didi_taxi";
+        return "didi_ride";
     }
 
     @Override

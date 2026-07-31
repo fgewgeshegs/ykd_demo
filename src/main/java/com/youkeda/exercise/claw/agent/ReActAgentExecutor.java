@@ -302,6 +302,17 @@ public class ReActAgentExecutor implements AgentExecutor {
                     response = new LLMResponse(
                             null, List.of(fallbackCall.get()), "tool_calls");
                 } else {
+                    // 防幻觉检测：用户要求创建定时提醒，但 create_schedule_task 未被调用
+                    // LLM 经常在 reasoning 中"想"了要调用但实际上输出跳过，导致提醒未真正保存
+                    if (!wasScheduleTaskCalled(executedCalls) && isScheduleTaskRequest(userMessage)) {
+                        log.warn("LLM 幻觉检测：用户要求创建提醒但 create_schedule_task 未被调用，注入提示重试");
+                        messages.add(new Message("system",
+                                "注意：你刚才未调用 create_schedule_task 工具。"
+                                        + "用户明确要求创建定时提醒，请先调用 create_schedule_task 完成创建，"
+                                        + "创建成功后再回复用户。不要重复调用已经执行过的 time_query。"));
+                        continue;
+                    }
+
                     String reply = response.getContent();
                     log.info("LLM 直接回复 | reply={}", reply);
                     contextStore.append("assistant", reply);
@@ -599,6 +610,43 @@ public class ReActAgentExecutor implements AgentExecutor {
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
+    }
+
+    /**
+     * 检查 executedCalls 中是否已包含 create_schedule_task 的调用记录。
+     */
+    private boolean wasScheduleTaskCalled(Set<String> executedCalls) {
+        for (String sig : executedCalls) {
+            if (sig.startsWith("create_schedule_task|")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断用户消息是否要求创建定时提醒/任务。
+     * 使用精确匹配，避免"谢谢提醒"等非创建类消息误触发防幻觉逻辑。
+     */
+    private boolean isScheduleTaskRequest(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) return false;
+        String msg = userMessage.replaceAll("\\s+", "");
+        // 精确匹配：提醒我、帮我提醒、设置提醒
+        if (msg.contains("提醒我") || msg.contains("帮我提醒")
+                || msg.contains("设置提醒") || msg.contains("定提醒")
+                || msg.contains("创建提醒") || msg.contains("添加提醒")) {
+            return true;
+        }
+        // 周期模式：每天/每周/每月/每隔 + 时间
+        if ((msg.contains("每天") || msg.contains("每周")
+                || msg.contains("每月") || msg.contains("每隔"))
+                && msg.matches(".*[0-9时点分秒早中晚上午下午].*")) {
+            return true;
+        }
+        // 显式关键词
+        return msg.contains("定时") || msg.contains("闹钟")
+                || msg.contains("备忘") || msg.contains("分钟后")
+                || msg.contains("小时提醒");
     }
 
     private boolean historyContainsCurrentMessage(List<Message> history, String userMessage) {

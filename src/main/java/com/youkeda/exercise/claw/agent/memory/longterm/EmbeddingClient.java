@@ -22,10 +22,15 @@ public class EmbeddingClient {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddingClient.class);
     private static final int TIMEOUT_SECONDS = 120;
+    private static final int HEALTH_CHECK_TIMEOUT_SECONDS = 5;
 
     private final EmbeddingProperties props;
     private final HttpClient httpClient;
+    private final HttpClient healthCheckClient;
     private final ObjectMapper objectMapper;
+
+    /** 服务是否可用（启动时检查，不可用则跳过后续所有调用） */
+    private volatile boolean available = true;
 
     public EmbeddingClient(EmbeddingProperties props, ObjectMapper objectMapper) {
         this.props = props;
@@ -33,6 +38,52 @@ public class EmbeddingClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build();
+        this.healthCheckClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(HEALTH_CHECK_TIMEOUT_SECONDS))
+                .build();
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        checkHealth();
+    }
+
+    /**
+     * 启动时检查 Embedding 服务是否可用。
+     * 不可用时标记为不可用，避免每次用户消息都发连接失败的错误日志。
+     */
+    private void checkHealth() {
+        try {
+            // 尝试连接 embedding 服务根路径，看是否能连上
+            String url = props.getBaseUrl().replaceAll("/+$", "") + "/v1/embeddings";
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(HEALTH_CHECK_TIMEOUT_SECONDS))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"model\":\"" + props.getModel() + "\",\"input\":[\"ping\"]}"))
+                    .build();
+            if (props.getApiKey() != null && !props.getApiKey().isBlank()) {
+                // 需要 API Key 的服务跳过预检查
+                this.available = true;
+                return;
+            }
+
+            HttpResponse<String> response = healthCheckClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 200 && response.statusCode() < 500) {
+                log.info("Embedding 服务连接成功 | url={} | status={}", url, response.statusCode());
+                this.available = true;
+            } else {
+                log.warn("Embedding 服务返回异常状态码 | url={} | status={} | body={}",
+                        url, response.statusCode(), truncate(response.body(), 200));
+                this.available = false;
+            }
+        } catch (Exception e) {
+            log.warn("Embedding 服务不可用，已禁用向量嵌入。后续将静默跳过 Embedding 调用。"
+                    + " 如需启用请确认 Ollama/Xinference 已运行 | url={} | error={}",
+                    props.getBaseUrl(), e.getMessage());
+            this.available = false;
+        }
     }
 
     public float[] embed(String text) {
@@ -47,6 +98,9 @@ public class EmbeddingClient {
         if (texts == null || texts.isEmpty()) return List.of();
         if (texts.stream().anyMatch(text -> text == null || text.isBlank())) {
             throw new IllegalArgumentException("Embedding text must not be blank");
+        }
+        if (!available) {
+            throw new IllegalStateException("Embedding service is not available (startup health check failed)");
         }
 
         try {
@@ -74,10 +128,10 @@ public class EmbeddingClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Embedding call interrupted", e);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            log.error("Embedding call failed: {}", e.getMessage());
+            log.debug("Embedding call skipped: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.error("Embedding call failed", e);
+            log.warn("Embedding call failed (embedding service may be unavailable)", e);
             throw new IllegalStateException("Embedding call failed", e);
         }
     }
@@ -137,5 +191,10 @@ public class EmbeddingClient {
             vectors.add(vector);
         }
         return vectors;
+    }
+
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
     }
 }
