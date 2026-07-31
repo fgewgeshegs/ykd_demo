@@ -81,7 +81,7 @@ public class LongTermMemoryService {
             }
             return results;
         } catch (Exception e) {
-            log.error("记忆召回失败", e);
+            log.warn("记忆召回失败（Embedding 服务不可用），跳过记忆注入", e);
             return List.of();
         }
     }
