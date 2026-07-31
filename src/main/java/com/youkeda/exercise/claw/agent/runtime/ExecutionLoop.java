@@ -155,19 +155,34 @@ public class ExecutionLoop {
 
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
-                // 防幻觉检测：用户明确要求创建定时提醒但 create_schedule_task 未被调用。
-                // 只对 CREATE 意图生效——查询/修改/取消不触发，避免误判死循环。
-                if (ScheduleIntentResolver.resolve(userMessage) == ScheduleIntent.CREATE
-                        && !wasScheduleTaskCalled(executedCalls)) {
-                    log.warn("LLM 幻觉检测：用户要求创建提醒但 create_schedule_task 未被调用，注入提示重试");
-                    messages.add(new Message("system",
-                            "注意：你刚才未调用 create_schedule_task 工具。"
-                                    + "用户明确要求创建定时提醒，请先调用 create_schedule_task 完成创建，"
-                                    + "创建成功后再回复用户。不要重复调用已经执行过的工具。"));
-                    continue;
+                String reply = response.getContent();
+                boolean createIntent =
+                        ScheduleIntentResolver.resolve(userMessage) == ScheduleIntent.CREATE;
+                boolean toolCalled = wasScheduleTaskCalled(executedCalls);
+
+                // 防幻觉（仅用户确为创建意图时）：
+                // 层1 模型声称已创建/设置提醒，但未实际调用 create_schedule_task → 幻觉，强制重试；
+                // 层2 模型既未声称完成、也未向用户澄清（卡壳/敷衍）→ 提示补做。
+                // 反问「几点提醒你呢？」属于澄清，放行，避免「帮我设置提醒」场景死循环。
+                if (createIntent && !toolCalled) {
+                    boolean claimsDone = ScheduleReplyInspector.claimsCreation(reply);
+                    boolean asksClarification = ScheduleReplyInspector.asksForClarification(reply);
+                    if (claimsDone || !asksClarification) {
+                        String hint = claimsDone
+                                ? "注意：你刚才的回复声称已创建/设置定时提醒，但并未实际调用"
+                                  + " create_schedule_task 工具。请先调用 create_schedule_task 完成创建，"
+                                  + "创建成功后再回复用户。不要重复调用已经执行过的工具。"
+                                : "注意：用户要求创建定时提醒，但你尚未调用 create_schedule_task 工具。"
+                                  + "请调用 create_schedule_task 完成创建；若必要信息不足，"
+                                  + "请先向用户提问澄清，不要直接结束。";
+                        log.warn("LLM 幻觉检测：{}，注入提示重试",
+                                claimsDone ? "声称已创建但未调用 create_schedule_task"
+                                           : "创建意图未执行且未向用户澄清");
+                        messages.add(new Message("system", hint));
+                        continue;
+                    }
                 }
 
-                String reply = response.getContent();
                 log.info("LLM 直接回复 | reply={}", reply);
                 return Result.textReply(reply, messages, planState, session);
             }
@@ -308,8 +323,9 @@ public class ExecutionLoop {
         return false;
     }
 
-    // 注：用户消息 → 创建/查询/修改/取消 意图的解析已迁移到
-    // ScheduleIntentResolver（动词驱动，取代本类的布尔关键词判断）。
+    // 注：防幻觉判定已拆到两个可单测的类：
+    // - ScheduleIntentResolver —— 用户消息 → 创建/查询/修改/取消 意图（动词驱动）；
+    // - ScheduleReplyInspector —— 模型回复是否「声称已完成」/「在向用户澄清」。
 
     // ==================== 消息辅助方法 ====================
 
