@@ -328,6 +328,9 @@ public class DidiRideService {
 
     /**
      * 生成跳转滴滴 App/小程序的深度链接
+     *
+     * <p>与 estimate 一样，需要先通过 maps_textsearch 获取坐标，
+     * 因为 taxi_generate_ride_app_link 要求传入经纬度坐标。
      */
     public String generateLink(JsonNode args) {
         String originName = args.path("origin_name").asText("");
@@ -340,9 +343,26 @@ public class DidiRideService {
         log.info("生成跳转链接 | from={} | to={}", originName, destinationName);
 
         try {
+            // 1. 获取起点坐标
+            log.info("调用 maps_textsearch 获取起点坐标 | query={}", originName);
+            JsonNode originGeo = callMapsTextsearch(originName);
+            String fromLng = extractLng(originGeo);
+            String fromLat = extractLat(originGeo);
+
+            // 2. 获取终点坐标
+            log.info("调用 maps_textsearch 获取终点坐标 | query={}", destinationName);
+            JsonNode destGeo = callMapsTextsearch(destinationName);
+            String toLng = extractLng(destGeo);
+            String toLat = extractLat(destGeo);
+
+            // 3. 调用 taxi_generate_ride_app_link（携带坐标）
             Map<String, Object> linkArgs = new LinkedHashMap<>();
             linkArgs.put("from_name", originName);
+            linkArgs.put("from_lng", fromLng);
+            linkArgs.put("from_lat", fromLat);
             linkArgs.put("to_name", destinationName);
+            linkArgs.put("to_lng", toLng);
+            linkArgs.put("to_lat", toLat);
 
             JsonNode result = mcpClient.callToolWithTextResult("taxi_generate_ride_app_link", linkArgs);
             log.debug("taxi_generate_ride_app_link 响应 | result={}", result);
