@@ -11,7 +11,7 @@ public class ScoutTriggerPolicy implements SkillTriggerPolicy {
         if (message == null || message.isBlank()) return SkillTriggerMatch.noMatch();
 
         // 委托给旧的高精度策略（正则 + 否定检测 + 非请求过滤）
-        boolean triggered = com.youkeda.exercise.claw.scout.ScoutTriggerPolicy.hasExplicitRequest(message);
+        boolean triggered = com.youkeda.exercise.claw.feature.scout.ScoutTriggerPolicy.hasExplicitRequest(message);
         if (triggered) {
             return new SkillTriggerMatch(true, 0.9, "scout explicit request", false);
         }

@@ -1,4 +1,5 @@
 package com.youkeda.exercise.claw.agent.skill;
+import com.youkeda.exercise.claw.skill.SkillRegistry;
 
 import org.junit.jupiter.api.Test;
 

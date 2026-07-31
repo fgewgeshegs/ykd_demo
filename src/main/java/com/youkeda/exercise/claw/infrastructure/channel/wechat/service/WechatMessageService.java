@@ -1,0 +1,275 @@
+package com.youkeda.exercise.claw.infrastructure.channel.wechat.service;
+
+import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
+import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.MessageRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.config.WechatProperties;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatReply;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * 微信消息监听服务
+ *
+ * 职责：
+ * - 定时轮询微信消息（新 SDK getUpdates）
+ * - 将消息交由 MessageRouter 路由分发
+ * - 根据 WechatReply 类型（TEXT/IMAGE/VOICE/FILE）调用对应的发送方法
+ */
+@Service
+public class WechatMessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(WechatMessageService.class);
+
+    private final WechatILinkClient wechatClient;
+    private final WechatProperties wechatProperties;
+    private final MessageRouter messageRouter;
+    private final ContextStore contextStore;
+    private final WechatUserManager userManager;
+
+    private final AtomicBoolean running = new AtomicBoolean(false);
+    private Thread pollThread;
+
+    private static final int ERROR_SLEEP_MS = 5000;
+
+    public WechatMessageService(WechatILinkClient wechatClient,
+                                WechatProperties wechatProperties,
+                                MessageRouter messageRouter,
+                                ContextStore contextStore,
+                                WechatUserManager userManager) {
+        this.wechatClient = wechatClient;
+        this.wechatProperties = wechatProperties;
+        this.messageRouter = messageRouter;
+        this.contextStore = contextStore;
+        this.userManager = userManager;
+    }
+
+    @PostConstruct
+    public void start() {
+        if (!wechatProperties.isEnabled()) {
+            log.info("微信消息服务未启用 (wechat.ilink.enabled=false)");
+            return;
+        }
+
+        // 不阻塞应用启动——轮询线程自动等待登录完成后开始处理消息
+        log.info("微信消息服务准备就绪，登录完成后将自动开始监听消息");
+        running.set(true);
+        pollThread = new Thread(this::pollLoop, "wechat-poll-thread");
+        pollThread.setDaemon(true);
+        pollThread.start();
+    }
+
+    /**
+     * 消息轮询主循环（适配新 SDK getUpdates + snake_case 模型）
+     */
+    private void pollLoop() {
+        boolean loginWarned = false;
+        while (running.get()) {
+            try {
+                // 未登录时跳过本轮，不阻塞
+                if (!wechatClient.isLoggedIn()) {
+                    if (!loginWarned) {
+                        log.info("等待微信登录完成...");
+                        loginWarned = true;
+                    }
+                    Thread.sleep(2000);
+                    continue;
+                }
+                loginWarned = false;
+
+                List<WeixinMessage> messages = wechatClient.receiveMessages();
+
+                if (messages != null && !messages.isEmpty()) {
+                    log.info("收到{}条消息", messages.size());
+                    for (WeixinMessage msg : messages) {
+                        String fromUserId = msg.getFrom_user_id();
+                        String contextToken = msg.getContext_token();
+
+                        if (fromUserId == null || fromUserId.isEmpty()) continue;
+                        recordSender(fromUserId);
+
+                        if (msg.getItem_list() != null) {
+                            for (var item : msg.getItem_list()) {
+                                WechatMessage wechatMsg = buildWechatMessage(item, fromUserId, contextToken);
+                                if (wechatMsg == null) continue;
+
+                                // 统一上下文：发一条存一条（文字/语音/图片）
+                                saveMessageToContext(wechatMsg);
+
+                                wechatClient.startTyping(fromUserId);
+
+                                try {
+                                    WechatReply reply = messageRouter.route(wechatMsg);
+                                    if (reply != null && reply.hasContent()) {
+                                        sendReply(fromUserId, reply);
+                                    }
+                                } catch (Exception e) {
+                                    log.error("消息路由处理异常 | error={}", e.getMessage());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Thread.sleep(wechatProperties.getPollIntervalMs());
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.info("微信消息轮询服务被中断");
+                break;
+            } catch (Exception e) {
+                log.warn("接收消息异常，将在{}ms后重试: {}", ERROR_SLEEP_MS, e.getMessage());
+                try {
+                    Thread.sleep(ERROR_SLEEP_MS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        log.info("微信消息轮询服务已停止");
+    }
+
+    void recordSender(String fromUserId) {
+        userManager.recordInteraction(fromUserId);
+    }
+
+    /**
+     * 将 SDK 的 MessageItem 转换为统一消息模型 WechatMessage
+     */
+    private WechatMessage buildWechatMessage(
+            com.github.wechat.ilink.sdk.core.model.MessageItem item,
+            String fromUserId, String contextToken) {
+
+        WechatMessage wechatMsg = new WechatMessage();
+        wechatMsg.setUserId(fromUserId);
+        wechatMsg.setContextToken(contextToken);
+
+        // 文本消息
+        if (item.getText_item() != null && item.getText_item().getText() != null
+                && !item.getText_item().getText().isEmpty()) {
+            wechatMsg.setType(MessageType.TEXT);
+            wechatMsg.setText(item.getText_item().getText());
+            log.info("收到文本消息 | from={} | text={}", fromUserId, item.getText_item().getText());
+            return wechatMsg;
+        }
+
+        // 图片消息
+        if (item.getImage_item() != null) {
+            var img = item.getImage_item();
+            wechatMsg.setType(MessageType.IMAGE);
+            wechatMsg.setImageUrl(img.getUrl());
+            if (img.getMedia() != null) {
+                wechatMsg.setEncryptQueryParam(img.getMedia().getEncrypt_query_param());
+                wechatMsg.setAesKey(img.getMedia().getAes_key());
+            }
+            log.info("收到图片消息 | from={}", fromUserId);
+            return wechatMsg;
+        }
+
+        // 语音消息
+        if (item.getVoice_item() != null) {
+            var voice = item.getVoice_item();
+            wechatMsg.setType(MessageType.VOICE);
+            wechatMsg.setVoiceText(voice.getText());
+            wechatMsg.setPlaytime(voice.getPlaytime());
+            wechatMsg.setEncodeType(voice.getEncode_type());
+            wechatMsg.setVoiceSampleRate(voice.getSample_rate());
+            if (voice.getMedia() != null) {
+                wechatMsg.setVoiceEncryptQueryParam(voice.getMedia().getEncrypt_query_param());
+                wechatMsg.setVoiceAesKey(voice.getMedia().getAes_key());
+            }
+            log.info("收到语音消息 | from={} | voiceText={} | playtime={}ms | sampleRate={}Hz",
+                    fromUserId, voice.getText(), voice.getPlaytime(), voice.getSample_rate());
+            return wechatMsg;
+        }
+
+        // 文件消息
+        if (item.getFile_item() != null) {
+            var fileItem = item.getFile_item();
+            wechatMsg.setType(MessageType.FILE);
+            wechatMsg.setFileName(fileItem.getFile_name());
+            wechatMsg.setFileMd5(fileItem.getMd5());
+            wechatMsg.setFileLen(fileItem.getLen());
+            if (fileItem.getMedia() != null) {
+                wechatMsg.setFileEncryptQueryParam(fileItem.getMedia().getEncrypt_query_param());
+                wechatMsg.setFileAesKey(fileItem.getMedia().getAes_key());
+            }
+            log.info("收到文件消息 | from={} | fileName={} | fileLen={}",
+                    fromUserId, fileItem.getFile_name(), fileItem.getLen());
+            return wechatMsg;
+        }
+
+        return null;
+    }
+
+    /**
+     * 统一上下文存储：发一条存一条，文字/语音/图片全部进入对话历史
+     */
+    private void saveMessageToContext(WechatMessage msg) {
+        switch (msg.getType()) {
+            case TEXT -> {
+                if (msg.getText() != null && !msg.getText().isEmpty()) {
+                    contextStore.append("user", msg.getText());
+                }
+            }
+            case VOICE -> {
+                String vEnc = msg.getVoiceEncryptQueryParam();
+                String vKey = msg.getVoiceAesKey();
+                String vText = msg.getVoiceText() != null ? msg.getVoiceText() : "";
+                String content = !vText.isEmpty() ? "[语音]" + vText : "[语音消息]";
+                contextStore.append("user", content, vEnc, vKey, null);
+            }
+            case IMAGE -> {
+                String iEnc = msg.getEncryptQueryParam();
+                String iKey = msg.getAesKey();
+                String iUrl = msg.getImageUrl() != null ? msg.getImageUrl() : "";
+                contextStore.append("user", "[图片]", iEnc, iKey, iUrl);
+            }
+            case FILE -> {
+                String fEnc = msg.getFileEncryptQueryParam();
+                String fKey = msg.getFileAesKey();
+                String fName = msg.getFileName() != null ? msg.getFileName() : "";
+                contextStore.append("user", "[文件: " + fName + "]", fEnc, fKey, null);
+            }
+        }
+    }
+
+    /**
+     * 根据 WechatReply 类型发送回复
+     */
+    private void sendReply(String toUserId, WechatReply reply) {
+        switch (reply.getType()) {
+            case IMAGE -> {
+                wechatClient.sendImageMessage(toUserId, reply.getImageBytes(),
+                        "抱歉，图片发送失败，请稍后再试。");
+            }
+            case FILE -> {
+                wechatClient.sendFileMessage(toUserId, reply.getFileBytes(),
+                        reply.getFileName(), reply.getFileDescription());
+            }
+            default -> {
+                wechatClient.sendTextMessage(toUserId, reply.getText());
+            }
+        }
+    }
+
+    @PreDestroy
+    public void stop() {
+        log.info("微信消息服务正在关闭...");
+        running.set(false);
+        if (pollThread != null) {
+            pollThread.interrupt();
+        }
+    }
+}

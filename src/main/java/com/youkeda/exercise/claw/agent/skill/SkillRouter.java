@@ -1,5 +1,7 @@
 package com.youkeda.exercise.claw.agent.skill;
 
+import com.youkeda.exercise.claw.skill.SkillDefinition;
+import com.youkeda.exercise.claw.skill.SkillRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

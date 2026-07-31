@@ -11,7 +11,7 @@ import java.util.List;
  * Agent 媒体回复模型
  *
  * <p>描述 LLM 返回给用户的富媒体回复内容。
- * ChatTool 通过 {@link #tryParse(String)} 从 LLM 回复文本中提取媒体信息，
+ * ChatHandler 通过 {@link #tryParse(String)} 从 LLM 回复文本中提取媒体信息，
  * 不关心媒体来自哪个具体的 Function。
  *
  * <p>LLM 约定格式：

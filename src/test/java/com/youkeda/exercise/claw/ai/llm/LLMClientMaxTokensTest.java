@@ -2,7 +2,7 @@ package com.youkeda.exercise.claw.ai.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.youkeda.exercise.claw.common.PromptLoader;
+import com.youkeda.exercise.claw.infrastructure.common.PromptLoader;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
