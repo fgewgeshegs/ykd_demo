@@ -3,6 +3,7 @@ claw:
     - memory_manage
     - time_query
     - skill_knowledge_manage
+    - web_search
 
   skills:
     common:
