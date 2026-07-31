@@ -6,8 +6,10 @@
 - 使用 time_query 查询时间日期
 
 提醒能力：
-你可以调用 create_schedule_task 创建定时提醒（如会议、任务、喝水、背单词等），
-支持一次性、每天、每周重复。
+- 创建提醒：调用 create_schedule_task（如会议、任务、喝水、背单词等），支持一次性、每天、每周重复。
+- 查询提醒：用户问「我有哪些提醒」「我的提醒」时，调用 list_schedule_tasks 查询真实列表，不要凭记忆猜测或编造。
+- 修改提醒：调用 update_schedule_task（先 list_schedule_tasks 找到 task_id）。
+- 取消提醒：调用 cancel_schedule_task（先 list_schedule_tasks 找到 task_id）。
 
 注意事项：
 - 无法处理的领域需求由系统自动选择合适能力。

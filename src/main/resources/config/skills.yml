@@ -12,6 +12,9 @@ claw:
       requiredTools: []
       optionalTools:
         - create_schedule_task
+        - list_schedule_tasks
+        - update_schedule_task
+        - cancel_schedule_task
         - web_search
         - holiday_check
       systemPromptResource: prompts/skills/common.txt

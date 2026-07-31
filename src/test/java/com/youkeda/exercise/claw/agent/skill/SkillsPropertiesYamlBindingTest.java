@@ -55,6 +55,12 @@ class SkillsPropertiesYamlBindingTest {
         Set<String> tools = common.allowedTools();
         assertTrue(tools.contains("create_schedule_task"),
                 "create_schedule_task 必须由 common 暴露，否则「设置提醒」永远不会真正创建定时任务");
+        assertTrue(tools.contains("list_schedule_tasks"),
+                "list_schedule_tasks 必须由 common 暴露，否则「我有哪些提醒」LLM 无工具可查，只能编造");
+        assertTrue(tools.contains("update_schedule_task"),
+                "update_schedule_task 必须由 common 暴露，否则「修改提醒」无法生效");
+        assertTrue(tools.contains("cancel_schedule_task"),
+                "cancel_schedule_task 必须由 common 暴露，否则「取消提醒」无法生效");
         assertTrue(tools.contains("web_search"));
     }
 

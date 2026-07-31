@@ -155,9 +155,10 @@ public class ExecutionLoop {
 
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
-                // 防幻觉检测：用户要求创建定时提醒但 create_schedule_task 未被调用
-                if (!wasScheduleTaskCalled(executedCalls)
-                        && isScheduleTaskRequest(userMessage)) {
+                // 防幻觉检测：用户明确要求创建定时提醒但 create_schedule_task 未被调用。
+                // 只对 CREATE 意图生效——查询/修改/取消不触发，避免误判死循环。
+                if (ScheduleIntentResolver.resolve(userMessage) == ScheduleIntent.CREATE
+                        && !wasScheduleTaskCalled(executedCalls)) {
                     log.warn("LLM 幻觉检测：用户要求创建提醒但 create_schedule_task 未被调用，注入提示重试");
                     messages.add(new Message("system",
                             "注意：你刚才未调用 create_schedule_task 工具。"
@@ -307,29 +308,8 @@ public class ExecutionLoop {
         return false;
     }
 
-    /**
-     * 判断用户消息是否要求创建定时提醒/任务。
-     */
-    private static boolean isScheduleTaskRequest(String userMessage) {
-        if (userMessage == null || userMessage.isBlank()) return false;
-        String msg = userMessage.replaceAll("\\s+", "");
-        // 精确匹配：提醒我、帮我提醒、设置提醒
-        if (msg.contains("提醒我") || msg.contains("帮我提醒")
-                || msg.contains("设置提醒") || msg.contains("定提醒")
-                || msg.contains("创建提醒") || msg.contains("添加提醒")) {
-            return true;
-        }
-        // 周期模式：每天/每周/每月/每隔 + 时间
-        if ((msg.contains("每天") || msg.contains("每周")
-                || msg.contains("每月") || msg.contains("每隔"))
-                && msg.matches(".*[0-9时点分秒早中晚上午下午].*")) {
-            return true;
-        }
-        // 显式关键词
-        return msg.contains("定时") || msg.contains("闹钟")
-                || msg.contains("备忘") || msg.contains("分钟后")
-                || msg.contains("小时提醒");
-    }
+    // 注：用户消息 → 创建/查询/修改/取消 意图的解析已迁移到
+    // ScheduleIntentResolver（动词驱动，取代本类的布尔关键词判断）。
 
     // ==================== 消息辅助方法 ====================
 
