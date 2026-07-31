@@ -100,6 +100,7 @@ claw:
       enabled: true
       priority: 4
       tags: [动漫, 番剧]
+      description: 动漫番剧订阅与推荐。管理追番列表、搜索番剧、订阅/取消订阅、查询播出时间、推荐当季新番。
       requiredTools: []
       optionalTools:
         - anime_recommend
@@ -115,7 +116,7 @@ claw:
     information-scout:
       enabled: true
       priority: 3
-      description: 主动发现与用户兴趣、项目和目标相关的最新资讯；仅在用户明确要求查找新动态、趋势或机会时运行。
+      description: 创建信息猎手持续关注任务，后台定期发现与用户兴趣、项目和目标相关的高价值资讯并推送；仅在用户明确要求持续关注/订阅新动态、趋势或机会时触发，现场即时查询请用 web_search。
       tags: [信息, 搜索]
       requiredTools: []
       optionalTools: []

@@ -31,11 +31,12 @@ class InformationScoutSkillExecutorTest {
 
         SkillExecutionResult result = executor.execute(new SkillExecutionRequest(
                 null,
-                "查一下 Claude Code 最近的更新",
+                "跟踪 Claude Code 最近的更新",
                 session,
                 "scoutWorkflow"));
 
-        assertEquals(SkillExecutionResult.Status.HANDLED_SILENT, result.status());
+        assertEquals(SkillExecutionResult.Status.REPLY, result.status());
+        assertEquals("已创建关注任务，发现重要内容会通知你。", result.message());
         assertFalse(result.session().hasPendingAction(
                 SkillPendingCoordinator.START_INFORMATION_SCOUT));
         verify(submissionService).submit(
@@ -51,10 +52,11 @@ class InformationScoutSkillExecutorTest {
                 new InformationScoutIntentResolver(), submissionService);
 
         SkillExecutionResult result = executor.execute(new SkillExecutionRequest(
-                null, "查一下 AI Agent 最近动态",
+                null, "跟踪 AI Agent 最近动态",
                 SkillSession.create("owner"), "scoutWorkflow"));
 
-        assertEquals(SkillExecutionResult.Status.HANDLED_SILENT, result.status());
+        assertEquals(SkillExecutionResult.Status.REPLY, result.status());
+        assertEquals("已创建关注任务，发现重要内容会通知你。", result.message());
     }
 
     @Test

@@ -54,7 +54,8 @@ public class InformationScoutSkillExecutor implements SkillExecutor {
         ScoutSubmissionResult result = submissionService.submit(query, workflowName);
         return switch (result.status()) {
             case STARTED, DUPLICATE ->
-                    SkillExecutionResult.handledSilent(session.clearPendingAction());
+                    SkillExecutionResult.reply(
+                            "已创建关注任务，发现重要内容会通知你。", session.clearPendingAction());
             case UNAVAILABLE, FAILED -> SkillExecutionResult.failed(
                     "信息猎手暂时无法启动，请稍后重试。", session.clearPendingAction());
         };

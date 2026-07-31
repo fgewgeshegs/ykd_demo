@@ -91,7 +91,33 @@ public class GithubCollector implements Collector {
                 .GET()
                 .build();
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        // 采集失败重试（SSL/网络等瞬时错误），最多 2 次
+        HttpResponse<String> response = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                break;
+            } catch (Exception e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                log.warn("GitHub 采集失败（第 {}/2 次）| query={} | domain=api.github.com | error={}",
+                        attempt, query, e.getMessage());
+                if (attempt == 1) {
+                    try {
+                        Thread.sleep(1000L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw ie;
+                    }
+                }
+            }
+        }
+
+        if (response == null) {
+            throw new IllegalStateException("GitHub API 请求重试 2 次仍失败");
+        }
         if (response.statusCode() != 200) {
             log.warn("GitHub API 请求失败 | status={} | body={}", response.statusCode(), response.body());
             return List.of();

@@ -67,7 +67,14 @@ public class CandidateMatcher {
                         .toList();
             }
 
-            List<float[]> facetVectors = embeddingClient.embedBatch(facets);
+            // 尝试 Embedding；失败时降级为关键词匹配，不让一个 AI 增强能力失败导致 0 输出
+            List<float[]> facetVectors;
+            try {
+                facetVectors = embeddingClient.embedBatch(facets);
+            } catch (Exception e) {
+                log.warn("Embedding 不可用，信息匹配降级为关键词匹配 | {}", e.getMessage());
+                return keywordMatch(freshItems, facets, explicitQuery);
+            }
             boolean hasExplicitQuery = explicitQuery != null && !explicitQuery.isBlank();
 
             // 每条信息取与单个画像维度的最佳相似度，避免整份画像相互稀释。
@@ -180,5 +187,51 @@ public class CandidateMatcher {
         if (denominator == 0) return 0f;
 
         return (float) (dotProduct / denominator);
+    }
+
+    private List<MatchedCandidate> keywordMatch(List<InformationItem> items,
+                                                 List<String> facets,
+                                                 String explicitQuery) {
+        List<MatchedCandidate> ranked = new ArrayList<>();
+        for (InformationItem item : items) {
+            float score = keywordOverlapScore(facets, item);
+            if (score <= 0f) continue;
+            String reason = (explicitQuery != null && !explicitQuery.isBlank())
+                    ? "关键词匹配本次主题：" + explicitQuery.trim()
+                    : "关键词匹配画像";
+            ranked.add(new MatchedCandidate(item, score, reason));
+        }
+        ranked.sort(Comparator.comparingDouble(MatchedCandidate::semanticScore).reversed());
+        return ranked.stream()
+                .limit(props.getMaxCandidates())
+                .toList();
+    }
+
+    private float keywordOverlapScore(List<String> facets, InformationItem item) {
+        String haystack = (item.getTitle() + " " + safe(item.getSummary())
+                + " " + safe(item.getContent())).toLowerCase();
+        int hits = 0;
+        for (String facet : facets) {
+            String core = facet
+                    .replaceFirst("^(兴趣|当前项目|技术栈|目标|上下文|本次关注主题)：", "")
+                    .toLowerCase();
+            if (core.length() >= 2 && haystack.contains(core)) {
+                hits++;
+            } else if (core.length() >= 4) {
+                boolean hit = false;
+                for (int i = 0; i + 2 <= core.length(); i += 2) {
+                    if (haystack.contains(core.substring(i, i + 2))) {
+                        hit = true;
+                        break;
+                    }
+                }
+                if (hit) hits++;
+            }
+        }
+        return facets.isEmpty() ? 0f : (float) hits / facets.size();
+    }
+
+    private static String safe(String s) {
+        return s == null ? "" : s;
     }
 }

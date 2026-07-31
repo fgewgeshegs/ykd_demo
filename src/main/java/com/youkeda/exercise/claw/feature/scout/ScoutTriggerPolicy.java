@@ -23,20 +23,25 @@ public final class ScoutTriggerPolicy {
             "(?:启动|运行|调用|开启|使用|用一下|让).{0,6}信息猎手"
                     + "|信息猎手.{0,6}(?:启动|运行|调用|开启|查|找|搜)");
 
-    private static final Pattern DISCOVERY_ACTION = Pattern.compile(
-            "(?:看看|看一下|找找|找一下|找一找|搜搜看|搜一下|搜一搜|搜索一下|"
-                    + "查查|查一下|查一查|检索一下|调研一下|跟踪|追踪|监控|关注)"
-    );
+    /**
+     * 持续监控动作：用户要建立"未来持续关注"关系。
+     * 判别核心是动词，不是时间/主题词。频率词（每天/每周/定期）刻意不包含，
+     * 避免与 create_schedule_task（定时提醒）抢语义。
+     */
+    private static final Pattern MONITORING_ACTION = Pattern.compile(
+            "(?:关注|订阅|跟踪|追踪|监控|持续|帮我留意|帮我盯着|有(?:什么)?消息(?:就|再)?通知我)");
 
-    private static final Pattern SCOUT_ACTIVITY = Pattern.compile(
-            "(?:最新|最近|近期|本周|今天|动态|更新|版本|新闻|资讯|消息|趋势|机会|"
-                    + "政策|变化|岗位|比赛|竞赛|情报|资料|值得关注)"
-    );
+    /**
+     * 纯信息流主题词。
+     * 实体词（比赛/竞赛/岗位/版本/活动/番剧/课程/考试/游戏/项目）已移除，
+     * 否则"关注这场比赛""订阅这个活动"会被信息猎手抢走。
+     */
+    private static final Pattern INFO_STREAM_TOPIC = Pattern.compile(
+            "(?:新闻|资讯|动态|消息|趋势|机会|政策|变化|情报|资料|值得关注|更新|前沿|业界|行业)");
 
-    private static final Pattern BROAD_DISCOVERY_REQUEST = Pattern.compile(
-            "(?:有什么|有没有).{0,12}(?:新消息|新动态|新资讯|新闻|值得关注)"
-                    + "|(?:今天|近期|最近).{0,12}有什么值得关注"
-    );
+    /** 即时查询信号：用户想知道"现在"的答案 → 不得进入后台任务 */
+    private static final Pattern REALTIME_QUERY = Pattern.compile(
+            "(?:查|搜|看|找|问|推荐|告诉|介绍|发生了什么|出了什么|有什么大事)");
 
     private ScoutTriggerPolicy() {
     }
@@ -54,16 +59,15 @@ public final class ScoutTriggerPolicy {
                 || NON_REQUEST_MENTION.matcher(normalized).find()) {
             return false;
         }
-        if ("运行信息猎手".equals(normalized)
-                || "启动信息猎手".equals(normalized)) {
+        if (DIRECT_SCOUT_REQUEST.matcher(normalized).find()) {
             return true;
         }
-        if (DIRECT_SCOUT_REQUEST.matcher(normalized).find()
-                || BROAD_DISCOVERY_REQUEST.matcher(normalized).find()) {
-            return true;
-        }
-        return DISCOVERY_ACTION.matcher(normalized).find()
-                && SCOUT_ACTIVITY.matcher(normalized).find();
+
+        // 持续监控语义：监控动词 ∧ 纯信息流主题 ∧ 非即时查询
+        boolean monitoring = MONITORING_ACTION.matcher(normalized).find();
+        boolean topic = INFO_STREAM_TOPIC.matcher(normalized).find();
+        boolean realtime = REALTIME_QUERY.matcher(normalized).find();
+        return monitoring && topic && !realtime;
     }
 
     public static boolean isCancellation(String currentMessage) {
