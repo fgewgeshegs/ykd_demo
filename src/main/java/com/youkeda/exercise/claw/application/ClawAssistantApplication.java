@@ -12,7 +12,7 @@ import java.nio.charset.Charset;
  *
  * 自动扫描 com.youkeda.exercise.claw 包及其子包下的所有组件
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.youkeda.exercise.claw")
 @EnableScheduling
 @ConfigurationPropertiesScan("com.youkeda.exercise.claw")
 public class ClawAssistantApplication {
