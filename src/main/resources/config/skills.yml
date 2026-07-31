@@ -93,6 +93,22 @@ claw:
       systemPromptResource: prompts/skills/weather.txt
       triggerPolicyName: keywordTriggerPolicy
 
+    anime:
+      enabled: true
+      priority: 4
+      tags: [动漫, 番剧]
+      requiredTools: []
+      optionalTools:
+        - anime_recommend
+        - anime_subscribe
+      systemPromptResource: prompts/skills/anime.txt
+      knowledge:
+        enabled: false
+        namespaces: []
+        topK: 0
+        minScore: 0.0
+        maxContextChars: 0
+
     information-scout:
       enabled: true
       priority: 3
