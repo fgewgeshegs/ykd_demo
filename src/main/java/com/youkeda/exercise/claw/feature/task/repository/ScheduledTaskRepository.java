@@ -120,6 +120,17 @@ public class ScheduledTaskRepository {
             ORDER BY created_time DESC
             """.formatted(COLUMNS);
 
+    private static final String SELECT_ACTIVE_EQUIVALENT = """
+            SELECT %s FROM scheduled_task
+            WHERE user_id = ?
+              AND content = ?
+              AND status = 'ACTIVE'
+              AND substr(execute_time, 1, 16) = substr(?, 1, 16)
+              AND (repeat_type = ?
+                   OR (repeat_type IN ('NONE','ONCE') AND ? IN ('NONE','ONCE')))
+            LIMIT 1
+            """.formatted(COLUMNS);
+
     // ==================== 更新 ====================
 
     private static final String UPDATE_STATUS = """
@@ -249,6 +260,45 @@ public class ScheduledTaskRepository {
             }
         } catch (SQLException e) {
             log.error("查询任务失败 | id={}", id, e);
+        }
+        return null;
+    }
+
+    /**
+     * 查询与给定条件完全等价的 ACTIVE 任务（用于创建幂等检查）。
+     *
+     * <p>匹配规则：
+     * <ul>
+     *   <li>userId 相同</li>
+     *   <li>content 相同</li>
+     *   <li>repeatType 相同（NONE/ONCE 视为等价，与 {@link ScheduledTask#normalizeRepeatType} 语义一致）</li>
+     *   <li>executeTime 分钟级相同（忽略秒）</li>
+     *   <li>状态为 ACTIVE</li>
+     * </ul>
+     *
+     * @param userId     用户标识
+     * @param content    任务内容
+     * @param repeatType 周期类型（建议传入规范化后的值）
+     * @param executeTime 首次执行时间（精确到分钟即可）
+     * @return 命中的已存在任务；不存在返回 null
+     */
+    public ScheduledTask findActiveEquivalent(String userId, String content,
+                                              String repeatType, LocalDateTime executeTime) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_ACTIVE_EQUIVALENT)) {
+            String timeStr = executeTime.format(DTF);
+            ps.setString(1, userId);
+            ps.setString(2, content);
+            ps.setString(3, timeStr);
+            ps.setString(4, repeatType != null ? repeatType : ScheduledTask.REPEAT_TYPE_NONE);
+            ps.setString(5, repeatType != null ? repeatType : ScheduledTask.REPEAT_TYPE_NONE);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapTask(rs);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("查询等价任务失败 | userId={} | content={}", userId, content, e);
         }
         return null;
     }

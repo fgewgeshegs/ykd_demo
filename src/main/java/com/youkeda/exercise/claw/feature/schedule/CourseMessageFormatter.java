@@ -115,9 +115,13 @@ public class CourseMessageFormatter {
             return "📋 还没有导入课表，快上传课表文件或告诉我课程信息吧！";
         }
 
-        // 按 dayOfWeek 分组
+        // 按 dayOfWeek 分组（实践课无星期，单独展示）
         Map<Integer, List<CourseEntity>> grouped = courses.stream()
+                .filter(c -> !c.isPractice())
                 .collect(Collectors.groupingBy(CourseEntity::getDayOfWeek));
+        List<CourseEntity> practiceCourses = courses.stream()
+                .filter(CourseEntity::isPractice)
+                .toList();
 
         StringBuilder sb = new StringBuilder();
         sb.append("📋 **本周课表**");
@@ -143,6 +147,17 @@ public class CourseMessageFormatter {
                     sb.append(" 🏫").append(c.getClassroom());
                 }
                 sb.append("\n");
+            }
+        }
+
+        if (!practiceCourses.isEmpty()) {
+            sb.append("\n**实践课程**\n");
+            for (CourseEntity c : practiceCourses) {
+                sb.append("  📖 ").append(c.getCourseName());
+                if (c.getClassroom() != null && !c.getClassroom().isBlank()) {
+                    sb.append(" 🏫").append(c.getClassroom());
+                }
+                sb.append("  ").append(c.getWeekDisplay()).append("\n");
             }
         }
 
@@ -195,9 +210,13 @@ public class CourseMessageFormatter {
         sb.append("📋 **课表预览**\n");
         sb.append("共解析到 ").append(courses.size()).append(" 门课程\n\n");
 
-        // 按星期几分组展示
+        // 按星期几分组展示（实践课无星期，单独展示）
         Map<Integer, List<CourseEntity>> grouped = courses.stream()
+                .filter(c -> !c.isPractice())
                 .collect(Collectors.groupingBy(CourseEntity::getDayOfWeek));
+        List<CourseEntity> practiceCourses = courses.stream()
+                .filter(CourseEntity::isPractice)
+                .toList();
 
         for (int day = 1; day <= 7; day++) {
             List<CourseEntity> dayCourses = grouped.getOrDefault(day, List.of());
@@ -211,6 +230,17 @@ public class CourseMessageFormatter {
                     sb.append(" 🏫").append(c.getClassroom());
                 }
                 sb.append("\n");
+            }
+        }
+
+        if (!practiceCourses.isEmpty()) {
+            sb.append("**实践课程**\n");
+            for (CourseEntity c : practiceCourses) {
+                sb.append("  📖 ").append(c.getCourseName());
+                if (c.getClassroom() != null && !c.getClassroom().isBlank()) {
+                    sb.append(" 🏫").append(c.getClassroom());
+                }
+                sb.append("  ").append(c.getWeekDisplay()).append("\n");
             }
         }
 
@@ -235,6 +265,9 @@ public class CourseMessageFormatter {
      * 示例：第3-4节 (09:50-11:25)
      */
     public String formatPeriodTime(CourseEntity c) {
+        if (c.isPractice()) {
+            return c.getPeriodDisplay(); // 无固定时间
+        }
         String periodLabel = "第" + c.getPeriodDisplay() + "节";
         String timeRange = timeResolver.formatTimeRange(
                 c.getUserId(), c.getStartPeriod(), c.getEndPeriod());

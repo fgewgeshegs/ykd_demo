@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * LLM ↔ Tool 执行循环。
@@ -48,6 +49,22 @@ public class ExecutionLoop {
 
     /** 工具调用循环最大轮次 */
     private static final int MAX_ROUNDS = 15;
+
+    /**
+     * 取消/删除定时任务的用户意图。
+     * 动词与任务名词成对出现，避免误伤「删除文件」「删除聊天记录」等普通删除请求。
+     */
+    private static final Pattern TASK_CANCEL_REQUEST = Pattern.compile(
+            "(?:删除|取消|移除|去掉|停掉|关掉|暂停).{0,8}(?:提醒|任务|定时任务|闹钟|推送)"
+                    + "|(?:提醒|任务|定时任务|闹钟|推送).{0,10}(?:删除|取消|移除|去掉)");
+
+    /**
+     * 修改/调整定时任务的用户意图。
+     * 「改」字较宽泛，必须与任务名词成对出现，避免误伤「改一下报告」等普通请求。
+     */
+    private static final Pattern TASK_UPDATE_REQUEST = Pattern.compile(
+            "(?:修改|调整|提前|延后|往后|往前|挪).{0,6}(?:提醒|任务|时间|定时|闹钟|推送|计划)"
+                    + "|(?:提醒|任务|定时任务).{0,6}(?:改成|改为|调整|修改|提前|延后)");
 
     private final LLMClient llmClient;
     private final ToolExecutor toolExecutor;
@@ -163,6 +180,28 @@ public class ExecutionLoop {
                             "注意：你刚才未调用 create_schedule_task 工具。"
                                     + "用户明确要求创建定时提醒，请先调用 create_schedule_task 完成创建，"
                                     + "创建成功后再回复用户。不要重复调用已经执行过的工具。"));
+                    continue;
+                }
+
+                // 防幻觉检测：用户要求取消/删除任务但 cancel_schedule_task 未被调用
+                if (!wasScheduleTaskCancelCalled(executedCalls)
+                        && isScheduleTaskCancelRequest(userMessage)) {
+                    log.warn("LLM 幻觉检测：用户要求取消任务但 cancel_schedule_task 未被调用，注入提示重试");
+                    messages.add(new Message("system",
+                            "注意：你刚才未调用 cancel_schedule_task 工具。"
+                                    + "用户明确要求取消/删除定时任务，请先调用 list_schedule_tasks 确认任务 ID，"
+                                    + "再调用 cancel_schedule_task 完成取消，取消成功后再回复用户。"));
+                    continue;
+                }
+
+                // 防幻觉检测：用户要求修改任务但 update_schedule_task 未被调用
+                if (!wasScheduleTaskUpdateCalled(executedCalls)
+                        && isScheduleTaskUpdateRequest(userMessage)) {
+                    log.warn("LLM 幻觉检测：用户要求修改任务但 update_schedule_task 未被调用，注入提示重试");
+                    messages.add(new Message("system",
+                            "注意：你刚才未调用 update_schedule_task 工具。"
+                                    + "用户明确要求修改定时任务，请先调用 list_schedule_tasks 确认任务 ID，"
+                                    + "再调用 update_schedule_task 完成修改，修改成功后再回复用户。"));
                     continue;
                 }
 
@@ -329,6 +368,54 @@ public class ExecutionLoop {
         return msg.contains("定时") || msg.contains("闹钟")
                 || msg.contains("备忘") || msg.contains("分钟后")
                 || msg.contains("小时提醒");
+    }
+
+    /**
+     * 检查 executedCalls 中是否已包含 cancel_schedule_task 的调用记录。
+     */
+    static boolean wasScheduleTaskCancelCalled(Set<String> executedCalls) {
+        for (String sig : executedCalls) {
+            if (sig.startsWith("cancel_schedule_task|")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 检查 executedCalls 中是否已包含 update_schedule_task 的调用记录。
+     */
+    static boolean wasScheduleTaskUpdateCalled(Set<String> executedCalls) {
+        for (String sig : executedCalls) {
+            if (sig.startsWith("update_schedule_task|")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断用户消息是否要求取消/删除定时任务。
+     *
+     * <p>要求「取消/删除类动词」与「任务/提醒类名词」成对出现，
+     * 避免误伤「删除文件」「删除聊天记录」等普通删除请求。
+     */
+    static boolean isScheduleTaskCancelRequest(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) return false;
+        String normalized = userMessage.replaceAll("\\s+", "");
+        return TASK_CANCEL_REQUEST.matcher(normalized).find();
+    }
+
+    /**
+     * 判断用户消息是否要求修改/调整定时任务。
+     *
+     * <p>「改」字较宽泛，必须与任务/时间类名词成对出现，
+     * 避免误伤「改一下报告」「帮我改文案」等普通修改请求。
+     */
+    static boolean isScheduleTaskUpdateRequest(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) return false;
+        String normalized = userMessage.replaceAll("\\s+", "");
+        return TASK_UPDATE_REQUEST.matcher(normalized).find();
     }
 
     // ==================== 消息辅助方法 ====================

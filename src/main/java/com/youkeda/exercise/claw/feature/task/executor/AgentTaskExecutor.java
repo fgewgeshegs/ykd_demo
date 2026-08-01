@@ -62,10 +62,13 @@ public class AgentTaskExecutor {
                 task.getId(), userId, content);
 
         // 1. 创建 AgentContext
+        // 标记为定时任务自动执行：Agent 只完成任务内容本身，
+        // 不得再创建/修改/取消任何定时任务（防止自我复制）。
         AgentContext context = new AgentContext()
                 .setUserId(userId)
                 .setMessage(content)
-                .setMessageType(MessageType.TEXT);
+                .setMessageType(MessageType.TEXT)
+                .setScheduledTaskExecution(true);
 
         // 2. 调用 ReActAgentExecutor
         String result = agentExecutor.execute(context);

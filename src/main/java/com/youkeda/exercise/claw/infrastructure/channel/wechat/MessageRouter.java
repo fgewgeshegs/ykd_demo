@@ -139,8 +139,19 @@ public class MessageRouter {
             return fallbackIfEmpty(reply, message);
         }
 
-        // 文本消息：全部走 ChatHandler，由 ReActAgentExecutor 通过 LLM tool-calling 循环自主路由
+        // 文本消息：检查课表导入状态（粘贴的正方课表文本）
         if (message.getType() == MessageType.TEXT) {
+            String userId = message.getUserId();
+            String text = message.getText();
+            if (courseImportStateManager.getPhase(userId) == CourseImportStateManager.Phase.WAITING_FILE
+                    && looksLikeTimetableText(text)) {
+                log.info("路由：文本消息 → CourseImportHandler（课表文本导入）| from={}", userId);
+                WechatReply reply = courseImportHandler.handleText(message);
+                if (reply != null && reply.hasContent()) {
+                    return reply;
+                }
+            }
+
             log.info("路由：文本消息 → ChatHandler | from={}", message.getUserId());
             WechatReply reply = chatHandler.handle(message);
             return fallbackIfEmpty(reply, message);
@@ -149,6 +160,23 @@ public class MessageRouter {
         // 其他类型：兜底
         log.info("路由：未知消息类型 type={} | from={}", message.getType(), message.getUserId());
         return fallbackHandler.handle(message);
+    }
+
+    /** 周次范围/列表标记：如 1-16周 / 第1,3,5周 */
+    private static final java.util.regex.Pattern TIMETABLE_WEEK_PATTERN =
+            java.util.regex.Pattern.compile("第?\\s*\\d{1,2}(?:\\s*[-~至到]\\s*\\d{1,2})?(?:[,，]\\d{1,2})*\\s*周");
+
+    /**
+     * 判断文本是否像课表数据（含周次范围/星期/课表标记），用于 WAITING_FILE 状态下的启发式路由
+     */
+    private boolean looksLikeTimetableText(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        return TIMETABLE_WEEK_PATTERN.matcher(text).find()
+                || text.contains("星期")
+                || text.contains("课表")
+                || text.contains("周次");
     }
 
     /**

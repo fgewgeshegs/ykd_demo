@@ -114,6 +114,15 @@ public class TaskCreator {
             return CreateResult.failure("不支持的任务类型: " + taskType + "，仅支持 REMINDER/AGENT");
         }
 
+        // 幂等检查：避免完全重复任务堆积（同用户、同内容、同周期、分钟级相同执行时间、ACTIVE）
+        ScheduledTask existing = taskRepository.findActiveEquivalent(
+                userId, content, repeatType, executeTime);
+        if (existing != null) {
+            log.warn("检测到重复任务，跳过创建 | existingId={} | userId={} | content={} | executeTime={}",
+                    existing.getId(), userId, content, executeTime);
+            return CreateResult.failure("已存在相同任务(id=" + existing.getId() + ")，无需重复创建");
+        }
+
         // 创建并保存任务
         ScheduledTask task = new ScheduledTask(userId, content, executeTime);
         task.setRepeatType(repeatType);

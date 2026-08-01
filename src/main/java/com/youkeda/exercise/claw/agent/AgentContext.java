@@ -48,6 +48,12 @@ public class AgentContext {
      */
     private SkillSession skillSession;
 
+    /**
+     * 是否为定时任务自动执行（非用户实时请求）。
+     * 为 true 时 Agent 只执行任务内容本身，不得创建/修改/取消任何定时任务。
+     */
+    private boolean scheduledTaskExecution;
+
 
     public String getUserId() {
         return userId;
@@ -107,6 +113,15 @@ public class AgentContext {
 
     public AgentContext setPlanState(PlanState planState) {
         this.planState = planState;
+        return this;
+    }
+
+    public boolean isScheduledTaskExecution() {
+        return scheduledTaskExecution;
+    }
+
+    public AgentContext setScheduledTaskExecution(boolean scheduledTaskExecution) {
+        this.scheduledTaskExecution = scheduledTaskExecution;
         return this;
     }
 

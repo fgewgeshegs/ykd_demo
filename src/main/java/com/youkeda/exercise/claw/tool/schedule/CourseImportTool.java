@@ -8,6 +8,9 @@ import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.schedule.*;
+import com.youkeda.exercise.claw.feature.schedule.imports.CourseImportPipeline;
+import com.youkeda.exercise.claw.feature.schedule.imports.CourseImportPipeline.ImportBatch;
+import com.youkeda.exercise.claw.feature.schedule.imports.SourceType;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +55,7 @@ public class CourseImportTool implements Tool {
     private final SemesterService semesterService;
     private final CourseMessageFormatter messageFormatter;
     private final SchoolService schoolService;
+    private final CourseImportPipeline importPipeline;
 
     public CourseImportTool(ObjectMapper objectMapper,
                                 ToolRegistry functionRegistry,
@@ -63,7 +67,8 @@ public class CourseImportTool implements Tool {
                                 SemesterRepository semesterRepository,
                                 SemesterService semesterService,
                                 CourseMessageFormatter messageFormatter,
-                                SchoolService schoolService) {
+                                SchoolService schoolService,
+                                CourseImportPipeline importPipeline) {
         this.objectMapper = objectMapper;
         this.functionRegistry = functionRegistry;
         this.courseService = courseService;
@@ -75,6 +80,7 @@ public class CourseImportTool implements Tool {
         this.semesterService = semesterService;
         this.messageFormatter = messageFormatter;
         this.schoolService = schoolService;
+        this.importPipeline = importPipeline;
     }
 
     @PostConstruct
@@ -92,7 +98,9 @@ public class CourseImportTool implements Tool {
     public String getDescription() {
         return "课程表管理。管理用户的个人课程表数据（以userId隔离持久化到SQLite）。\n"
                 + "支持操作：\n"
-                + "- 导入：使用 import -> parse -> confirm 三步流程导入课表（图片/PDF/Excel/直接JSON）\n"
+                + "- 导入：使用 import -> parse -> confirm 三步流程导入课表（图片/PDF/Excel/直接JSON）。"
+                + "用户粘贴正方教务课表文本时，用 parse_raw_text 把原文传给 raw_text 参数。"
+                + "用户回复「重新识别」时调用 reparse。\n"
                 + "- 学校：query_school（查询当前学校信息），set_school（绑定学校，需school_name），\n"
                 + "         list_schools（查看可用的学校模板列表）\n"
                 + "- 查询：query_today（今日课程，自动过滤学期周次和单双周）\n"
@@ -112,17 +120,26 @@ public class CourseImportTool implements Tool {
 
         ObjectNode action = properties.putObject("action");
         action.put("type", "string");
-        action.put("description", "操作类型：import(开始导入), parse(解析并预览), confirm(确认保存), "
-                + "cancel(取消), query_today(今日课程), query_free_time(空闲时间), "
+        action.put("description", "操作类型：import(开始导入), parse(解析并预览), "
+                + "parse_raw_text(用户粘贴正方课表文本时使用，把原文传给raw_text参数), "
+                + "reparse(用户回复重新识别时重跑解析), "
+                + "confirm(确认保存), cancel(取消), "
+                + "query_today(今日课程), query_free_time(空闲时间), "
                 + "query_all(全部课程), query_weekday(指定星期), delete(删除), update(修改), clear(清空), "
                 + "confirm_semester(确认学期), set_semester(设置学期), "
                 + "query_school(查询当前学校), set_school(绑定学校需school_name), "
                 + "list_schools(查看可用学校列表)");
-        action.putArray("enum").add("import").add("parse").add("confirm").add("cancel")
+        action.putArray("enum").add("import").add("parse").add("parse_raw_text").add("reparse")
+                .add("confirm").add("cancel")
                 .add("query_today").add("query_free_time").add("query_all").add("query_weekday")
                 .add("delete").add("update").add("clear")
                 .add("confirm_semester").add("set_semester")
                 .add("query_school").add("set_school").add("list_schools");
+
+        ObjectNode rawText = properties.putObject("raw_text");
+        rawText.put("type", "string");
+        rawText.put("description", "用户粘贴的正方教务课表文本原文（parse_raw_text 操作时必填）。"
+                + "必须原样传递用户粘贴的内容，不要自行改写或截断。");
 
         ObjectNode courses = properties.putObject("courses");
         courses.put("type", "array");
@@ -212,6 +229,8 @@ public class CourseImportTool implements Tool {
             return switch (actionStr) {
                 case "import" -> handleStartImport(userId);
                 case "parse" -> handleParse(args, userId);
+                case "parse_raw_text" -> handleParseRawText(args, userId);
+                case "reparse" -> handleReparse(userId);
                 case "confirm" -> handleConfirm(userId);
                 case "cancel" -> handleCancel(userId);
                 case "confirm_semester" -> handleConfirmSemester(userId);
@@ -249,8 +268,8 @@ public class CourseImportTool implements Tool {
         result.put("action", "import");
         result.put("status", "waiting_file");
         String msg = existingCount > 0
-                ? "已清除旧课表（共 " + existingCount + " 门课程），请发送新课表截图、PDF或Excel文件。"
-                : "请发送课表截图、PDF或Excel文件，我会帮你导入课表。";
+                ? "已清除旧课表（共 " + existingCount + " 门课程）。\n请发送课表，识别准确度：粘贴正方课表文本 > Excel > PDF > 截图。"
+                : "请发送课表，我会帮你导入。\n识别准确度：粘贴正方课表文本 > Excel > PDF > 截图。";
         result.put("message", msg);
         if (existingCount > 0) {
             result.put("cleared_count", existingCount);
@@ -272,58 +291,119 @@ public class CourseImportTool implements Tool {
 
         String jsonStr = coursesNode.toString();
         List<CourseEntity> courses = courseService.parseOnly(userId, jsonStr);
-
         if (courses.isEmpty()) {
             return "{\"action\":\"parse\",\"status\":\"error\","
                     + "\"message\":\"无法从提供的数据中识别出有效的课程信息，请检查格式或重新上传课表。\"}";
         }
 
-        // 内部冲突检测：检查新解析出的课程间是否有同天同时段冲突
-        // 这种冲突通常表示 LLM 的 day_of_week 分配有误
-        List<String> internalConflicts = detectInternalDayConflicts(courses);
-        for (String conflict : internalConflicts) {
-            log.warn("新导入课程间存在同天同时段冲突 | userId={} | {}", userId, conflict);
+        // 统一校验：规范化 / 相邻节次合并 / 组内冲突检测
+        ImportBatch batch = importPipeline.process(courses, SourceType.MANUAL);
+        if (batch.isEmpty()) {
+            return "{\"action\":\"parse\",\"status\":\"error\","
+                    + "\"message\":\"无法从提供的数据中识别出有效的课程信息，请检查格式或重新上传课表。\"}";
         }
 
-        // 冲突检测（与已有课表）
-        List<CourseService.ConflictInfo> conflicts = courseService.detectConflicts(userId, courses);
+        // 学期检测（LLM 参数 → 自动推算）
+        SemesterEntity detectedSemester = detectPendingSemester(args, userId);
 
-        // ====================  Semester 检测 ====================
-        // 从 LLM 参数中尝试提取学期信息
-        int academicYear = args.path("academic_year").asInt(0);
-        String term = args.path("term").asText("");
-
-        SemesterEntity detectedSemester = null;
-        if (academicYear > 0 && !term.isBlank()) {
-            detectedSemester = semesterDetector.detectFromParams(userId, academicYear, term);
-        }
-        if (detectedSemester == null) {
-            // LLM 未提供学期信息，尝试自动推算
-            detectedSemester = semesterDetector.detectAuto(userId);
-            if (detectedSemester != null) {
-                log.info("parse 时自动推算学期 | userId={} | display={}",
-                        userId, detectedSemester.getDisplayName());
-            }
-        }
-
-        // 存储待确认的学期（未持久化）
+        importStateManager.setPendingCourses(userId, batch.courses());
         if (detectedSemester != null) {
             importStateManager.setPendingSemester(userId, detectedSemester);
         }
-        importStateManager.setPendingCourses(userId, courses);
         importStateManager.setWaitingConfirm(userId, jsonStr);
 
+        return buildImportPreviewJson(userId, batch, "parse", detectedSemester);
+    }
+
+    /**
+     * 从 LLM 参数或自动推算检测学期
+     */
+    private SemesterEntity detectPendingSemester(JsonNode args, String userId) {
+        int academicYear = args.path("academic_year").asInt(0);
+        String term = args.path("term").asText("");
+        SemesterEntity detected = null;
+        if (academicYear > 0 && !term.isBlank()) {
+            detected = semesterDetector.detectFromParams(userId, academicYear, term);
+        }
+        if (detected == null) {
+            detected = semesterDetector.detectAuto(userId);
+            if (detected != null) {
+                log.info("parse 时自动推算学期 | userId={} | display={}",
+                        userId, detected.getDisplayName());
+            }
+        }
+        return detected;
+    }
+
+    /**
+     * 解析用户粘贴的正方教务课表文本（raw_text 参数原文）
+     */
+    private String handleParseRawText(JsonNode args, String userId) {
+        String rawText = args.path("raw_text").asText("");
+        if (rawText.isBlank()) {
+            return "{\"action\":\"parse_raw_text\",\"status\":\"error\","
+                    + "\"message\":\"请提供 raw_text 参数（用户粘贴的课表文本原文）。\"}";
+        }
+        log.info("解析粘贴课表文本 | userId={} | textLen={}", userId, rawText.length());
+
+        ImportBatch batch = importPipeline.importZhengFangText(rawText);
+        if (batch.isEmpty()) {
+            return "{\"action\":\"parse_raw_text\",\"status\":\"error\","
+                    + "\"message\":\"未能从文本中识别出课程信息，请确认粘贴的是课表数据，或让用户上传图片/Excel 文件。\"}";
+        }
+
+        SemesterEntity detected = semesterDetector.detectAuto(userId);
+        importStateManager.setPendingCourses(userId, batch.courses());
+        importStateManager.setPendingRawInput(userId, rawText);
+        importStateManager.setPendingSource(userId, SourceType.ZHENGFANG.code());
+        if (detected != null) {
+            importStateManager.setPendingSemester(userId, detected);
+        }
+        importStateManager.setWaitingConfirm(userId, "raw_text");
+
+        return buildImportPreviewJson(userId, batch, "parse_raw_text", detected);
+    }
+
+    /**
+     * 用户回复「重新识别」：从原始输入重跑解析管线
+     */
+    private String handleReparse(String userId) {
+        String sourceCode = importStateManager.getPendingSource(userId);
+        String rawInput = importStateManager.getPendingRawInput(userId);
+        SourceType source = SourceType.fromCode(sourceCode);
+        if (rawInput == null || rawInput.isBlank()) {
+            return "{\"action\":\"reparse\",\"status\":\"error\","
+                    + "\"message\":\"没有可重新识别的原始数据，请重新上传课表。\"}";
+        }
+        log.info("课表重新识别 | userId={} | source={}", userId, source);
+
+        ImportBatch batch = importPipeline.reprocess(source, rawInput);
+        if (batch.isEmpty()) {
+            return "{\"action\":\"reparse\",\"status\":\"error\","
+                    + "\"message\":\"重新识别未得到有效课程，请重新上传课表。\"}";
+        }
+        importStateManager.setPendingCourses(userId, batch.courses());
+        importStateManager.setWaitingConfirm(userId, "reparse");
+        return buildImportPreviewJson(userId, batch, "reparse",
+                importStateManager.getPendingSemester(userId));
+    }
+
+    /**
+     * 构建统一的导入预览 JSON（课程列表 / 学期 / 校验告警 / 冲突 / 快捷回复）
+     */
+    private String buildImportPreviewJson(String userId, ImportBatch batch, String action,
+                                          SemesterEntity detectedSemester) {
         ObjectNode result = objectMapper.createObjectNode();
-        result.put("action", "parse");
+        result.put("action", action);
         result.put("status", "preview");
-        result.put("count", courses.size());
+        result.put("count", batch.courses().size());
 
         int currentWeek = resolveCurrentWeek(userId);
         result.put("current_week", currentWeek);
         result.put("current_week_display", currentWeek > 0 ? "第" + currentWeek + "周" : "学期未开始");
 
         var array = result.putArray("courses");
-        for (CourseEntity c : courses) {
+        for (CourseEntity c : batch.courses()) {
             ObjectNode item = array.addObject();
             item.put("course_name", c.getCourseName());
             item.put("day", c.getDayDisplay());
@@ -347,7 +427,16 @@ public class CourseImportTool implements Tool {
                     + "（第1周：" + detectedSemester.getStartDateDisplay() + "）");
         }
 
-        // 冲突信息
+        // 校验告警（合并 / 冲突 / 实践课 / 缺失信息）
+        if (batch.warnings() != null && !batch.warnings().isEmpty()) {
+            ArrayNode warnArray = result.putArray("warnings");
+            for (String w : batch.warnings()) {
+                warnArray.add(w);
+            }
+        }
+
+        // 与已有课表的冲突
+        List<CourseService.ConflictInfo> conflicts = courseService.detectConflicts(userId, batch.courses());
         if (!conflicts.isEmpty()) {
             ArrayNode conflictArray = result.putArray("conflicts");
             for (CourseService.ConflictInfo cf : conflicts) {
@@ -360,36 +449,12 @@ public class CourseImportTool implements Tool {
         }
 
         result.put("formatted_preview",
-                messageFormatter.formatImportPreview(courses, conflicts, currentWeek));
+                messageFormatter.formatImportPreview(batch.courses(), conflicts, currentWeek));
 
         String conflictSuffix = conflicts.isEmpty() ? "" : "，" + conflicts.size() + " 个时间冲突";
-        result.put("message", "已识别出以下 " + courses.size() + " 门课程" + conflictSuffix
-                + "，请确认是否导入？（回复「确认」或「取消」）");
+        result.put("message", "已识别出以下 " + batch.courses().size() + " 门课程" + conflictSuffix
+                + "，请确认是否导入？（回复「确认保存」保存，回复「重新识别」重试）");
         return result.toString();
-    }
-
-    /**
-     * 检测新解析的课程列表内部是否存在同天同时段冲突
-     * <p>同一用户同一 day_of_week 的同一时间段出现多门课程 → day_of_week 很可能分配错误。
-     * 只记录 warning，不修改数据。</p>
-     */
-    private List<String> detectInternalDayConflicts(List<CourseEntity> courses) {
-        List<String> conflicts = new ArrayList<>();
-        for (int i = 0; i < courses.size(); i++) {
-            for (int j = i + 1; j < courses.size(); j++) {
-                CourseEntity a = courses.get(i);
-                CourseEntity b = courses.get(j);
-                if (a.getDayOfWeek() == b.getDayOfWeek()
-                        && a.getStartPeriod() <= b.getEndPeriod()
-                        && b.getStartPeriod() <= a.getEndPeriod()) {
-                    String desc = String.format("day=%d period=%d-%d: 「%s」与「%s」冲突",
-                            a.getDayOfWeek(), a.getStartPeriod(), a.getEndPeriod(),
-                            a.getCourseName(), b.getCourseName());
-                    conflicts.add(desc);
-                }
-            }
-        }
-        return conflicts;
     }
 
     private String handleConfirm(String userId) {

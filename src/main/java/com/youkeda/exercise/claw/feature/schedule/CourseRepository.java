@@ -31,21 +31,39 @@ public class CourseRepository {
                 user_id      TEXT NOT NULL,
                 course_name  TEXT NOT NULL,
                 teacher      TEXT NOT NULL DEFAULT '',
-                day_of_week  INTEGER NOT NULL,
-                start_period INTEGER NOT NULL,
-                end_period   INTEGER NOT NULL,
+                day_of_week  INTEGER,
+                start_period INTEGER,
+                end_period   INTEGER,
                 classroom    TEXT NOT NULL DEFAULT '',
                 start_week   INTEGER NOT NULL DEFAULT 1,
                 end_week     INTEGER NOT NULL DEFAULT 20,
                 week_type    TEXT NOT NULL DEFAULT 'ALL',
+                week_pattern TEXT,
                 semester_id  INTEGER,
+                source       TEXT NOT NULL DEFAULT 'MANUAL',
                 created_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             )
             """;
 
-    /** 旧数据库迁移：新增 semester_id 列（兼容已有数据库） */
-    private static final String MIGRATE_ADD_SEMESTER_ID = """
-            ALTER TABLE course_schedule ADD COLUMN semester_id INTEGER
+    /** 表重建 DDL：去除 day_of_week/start_period/end_period 的 NOT NULL（SQLite 不支持 ALTER 去约束） */
+    private static final String TABLE_REBUILD_DDL = """
+            CREATE TABLE course_schedule_new (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id      TEXT NOT NULL,
+                course_name  TEXT NOT NULL,
+                teacher      TEXT NOT NULL DEFAULT '',
+                day_of_week  INTEGER,
+                start_period INTEGER,
+                end_period   INTEGER,
+                classroom    TEXT NOT NULL DEFAULT '',
+                start_week   INTEGER NOT NULL DEFAULT 1,
+                end_week     INTEGER NOT NULL DEFAULT 20,
+                week_type    TEXT NOT NULL DEFAULT 'ALL',
+                week_pattern TEXT,
+                semester_id  INTEGER,
+                source       TEXT NOT NULL DEFAULT 'MANUAL',
+                created_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
             """;
 
     private static final String INDEX_USER = """
@@ -61,8 +79,8 @@ public class CourseRepository {
             INSERT INTO course_schedule
                 (user_id, course_name, teacher, day_of_week,
                  start_period, end_period, classroom,
-                 start_week, end_week, week_type, semester_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 start_week, end_week, week_type, week_pattern, semester_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     private static final String SELECT_BY_USER = """
@@ -96,7 +114,7 @@ public class CourseRepository {
                 course_name = ?, teacher = ?, day_of_week = ?,
                 start_period = ?, end_period = ?, classroom = ?,
                 start_week = ?, end_week = ?, week_type = ?,
-                semester_id = ?
+                week_pattern = ?, semester_id = ?, source = ?
             WHERE id = ? AND user_id = ?
             """;
 
@@ -124,6 +142,7 @@ public class CourseRepository {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(TABLE_DDL);
+            migrate(conn, stmt);
             stmt.execute(INDEX_USER);
             // 学期查询索引
             try {
@@ -131,19 +150,82 @@ public class CourseRepository {
             } catch (SQLException e) {
                 log.debug("idx_course_user_semester 索引已存在，跳过创建");
             }
-            // 迁移：为已有数据库添加 semester_id 列（字段已存在时忽略）
-            try {
-                stmt.execute(MIGRATE_ADD_SEMESTER_ID);
-                log.info("数据库迁移完成：已添加 semester_id 列 | table={}", TABLE_NAME);
-            } catch (SQLException e) {
-                // 列已存在时忽略（SQLite 不支持 IF NOT EXISTS）
-                log.debug("semester_id 列已存在，跳过迁移 | table={}", TABLE_NAME);
-            }
             log.info("课表数据库表初始化完成 | table={} | path={}", TABLE_NAME, dbPath);
         } catch (SQLException e) {
             log.error("课表数据库表初始化失败 | path={}", dbPath, e);
             throw new RuntimeException("课表数据库初始化失败", e);
         }
+    }
+
+    /**
+     * 数据库迁移：
+     * <ol>
+     *   <li>为旧库添加 semester_id 列</li>
+     *   <li>旧表 day_of_week/start_period/end_period 仍为 NOT NULL 时重建表（支持实践课程）</li>
+     *   <li>添加 source / week_pattern 列</li>
+     * </ol>
+     */
+    private void migrate(Connection conn, Statement stmt) throws SQLException {
+        // 1. semester_id 列（旧库兼容，新库已存在时跳过）
+        addColumnIfMissing(stmt, "semester_id", "INTEGER");
+        // 2. 表重建去除 NOT NULL（仅旧库触发）
+        if (isColumnNotNull(stmt, "day_of_week")) {
+            rebuildTable(stmt);
+            log.info("数据库迁移完成：course_schedule 表重建，day_of_week/start_period/end_period 改为可空 | table={}", TABLE_NAME);
+        }
+        // 3. source / week_pattern 列（新库已存在时跳过）
+        addColumnIfMissing(stmt, "source", "TEXT NOT NULL DEFAULT 'MANUAL'");
+        addColumnIfMissing(stmt, "week_pattern", "TEXT");
+    }
+
+    private boolean isColumnNotNull(Statement stmt, String column) throws SQLException {
+        try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + TABLE_NAME + ")")) {
+            while (rs.next()) {
+                if (column.equals(rs.getString("name"))) {
+                    return rs.getInt("notnull") == 1;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasColumn(Statement stmt, String column) throws SQLException {
+        try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + TABLE_NAME + ")")) {
+            while (rs.next()) {
+                if (column.equals(rs.getString("name"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void addColumnIfMissing(Statement stmt, String column, String ddl) throws SQLException {
+        if (hasColumn(stmt, column)) {
+            log.debug("{} 列已存在，跳过迁移 | table={}", column, TABLE_NAME);
+            return;
+        }
+        stmt.execute("ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + column + " " + ddl);
+        log.info("数据库迁移完成：已添加 {} 列 | table={}", column, TABLE_NAME);
+    }
+
+    /**
+     * 重建 course_schedule 表：去除 day_of_week/start_period/end_period 的 NOT NULL
+     * <p>SQLite 不支持 ALTER 去除列约束，需 CREATE new → 拷贝 → DROP → RENAME。
+     * 数据量小，一次性迁移可接受。</p>
+     */
+    private void rebuildTable(Statement stmt) throws SQLException {
+        stmt.execute(TABLE_REBUILD_DDL);
+        stmt.execute("""
+                INSERT INTO course_schedule_new
+                    (id, user_id, course_name, teacher, day_of_week, start_period, end_period,
+                     classroom, start_week, end_week, week_type, semester_id, created_time)
+                SELECT id, user_id, course_name, teacher, day_of_week, start_period, end_period,
+                     classroom, start_week, end_week, week_type, semester_id, created_time
+                FROM course_schedule
+                """);
+        stmt.execute("DROP TABLE " + TABLE_NAME);
+        stmt.execute("ALTER TABLE course_schedule_new RENAME TO " + TABLE_NAME);
     }
 
     // ==================== 写入 ====================
@@ -193,18 +275,24 @@ public class CourseRepository {
             ps.setString(1, course.getUserId());
             ps.setString(2, course.getCourseName());
             ps.setString(3, course.getTeacher());
-            ps.setInt(4, course.getDayOfWeek());
-            ps.setInt(5, course.getStartPeriod());
-            ps.setInt(6, course.getEndPeriod());
+            setNullableInt(ps, 4, course.getDayOfWeek());
+            setNullableInt(ps, 5, course.getStartPeriod());
+            setNullableInt(ps, 6, course.getEndPeriod());
             ps.setString(7, course.getClassroom());
             ps.setInt(8, course.getStartWeek());
             ps.setInt(9, course.getEndWeek());
             ps.setString(10, course.getWeekType());
-            if (course.getSemesterId() != null) {
-                ps.setLong(11, course.getSemesterId());
+            if (course.getWeekPattern() != null) {
+                ps.setString(11, course.getWeekPattern());
             } else {
-                ps.setNull(11, Types.INTEGER);
+                ps.setNull(11, Types.VARCHAR);
             }
+            if (course.getSemesterId() != null) {
+                ps.setLong(12, course.getSemesterId());
+            } else {
+                ps.setNull(12, Types.INTEGER);
+            }
+            ps.setString(13, course.getSource() != null ? course.getSource() : CourseEntity.SOURCE_MANUAL);
             ps.executeUpdate();
 
             try (ResultSet rs = ps.getGeneratedKeys()) {
@@ -356,20 +444,26 @@ public class CourseRepository {
              PreparedStatement ps = conn.prepareStatement(UPDATE_SQL)) {
             ps.setString(1, course.getCourseName());
             ps.setString(2, course.getTeacher());
-            ps.setInt(3, course.getDayOfWeek());
-            ps.setInt(4, course.getStartPeriod());
-            ps.setInt(5, course.getEndPeriod());
+            setNullableInt(ps, 3, course.getDayOfWeek());
+            setNullableInt(ps, 4, course.getStartPeriod());
+            setNullableInt(ps, 5, course.getEndPeriod());
             ps.setString(6, course.getClassroom());
             ps.setInt(7, course.getStartWeek());
             ps.setInt(8, course.getEndWeek());
             ps.setString(9, course.getWeekType());
-            if (course.getSemesterId() != null) {
-                ps.setLong(10, course.getSemesterId());
+            if (course.getWeekPattern() != null) {
+                ps.setString(10, course.getWeekPattern());
             } else {
-                ps.setNull(10, Types.INTEGER);
+                ps.setNull(10, Types.VARCHAR);
             }
-            ps.setLong(11, course.getId());
-            ps.setString(12, course.getUserId());
+            if (course.getSemesterId() != null) {
+                ps.setLong(11, course.getSemesterId());
+            } else {
+                ps.setNull(11, Types.INTEGER);
+            }
+            ps.setString(12, course.getSource() != null ? course.getSource() : CourseEntity.SOURCE_MANUAL);
+            ps.setLong(13, course.getId());
+            ps.setString(14, course.getUserId());
             int rows = ps.executeUpdate();
             if (rows > 0) {
                 log.info("课程已更新 | id={} | userId={} | name={}",
@@ -484,18 +578,36 @@ public class CourseRepository {
         c.setUserId(rs.getString("user_id"));
         c.setCourseName(rs.getString("course_name"));
         c.setTeacher(rs.getString("teacher"));
-        c.setDayOfWeek(rs.getInt("day_of_week"));
-        c.setStartPeriod(rs.getInt("start_period"));
-        c.setEndPeriod(rs.getInt("end_period"));
+        c.setDayOfWeek(readNullableInt(rs, "day_of_week"));
+        c.setStartPeriod(readNullableInt(rs, "start_period"));
+        c.setEndPeriod(readNullableInt(rs, "end_period"));
         c.setClassroom(rs.getString("classroom"));
         c.setStartWeek(rs.getInt("start_week"));
         c.setEndWeek(rs.getInt("end_week"));
         c.setWeekType(rs.getString("week_type"));
+        c.setWeekPattern(rs.getString("week_pattern"));
         long semesterId = rs.getLong("semester_id");
         if (!rs.wasNull()) {
             c.setSemesterId(semesterId);
         }
+        String source = rs.getString("source");
+        c.setSource(source != null ? source : CourseEntity.SOURCE_MANUAL);
         return c;
+    }
+
+    /** 读取可空整型列：NULL → null */
+    private Integer readNullableInt(ResultSet rs, String column) throws SQLException {
+        int v = rs.getInt(column);
+        return rs.wasNull() ? null : v;
+    }
+
+    /** 写入可空整型参数：null → setNull */
+    private void setNullableInt(PreparedStatement ps, int index, Integer value) throws SQLException {
+        if (value != null) {
+            ps.setInt(index, value);
+        } else {
+            ps.setNull(index, Types.INTEGER);
+        }
     }
 
     private Connection getConnection() throws SQLException {

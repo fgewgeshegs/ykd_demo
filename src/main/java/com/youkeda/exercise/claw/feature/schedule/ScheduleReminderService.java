@@ -144,6 +144,9 @@ public class ScheduleReminderService {
      * @return true 表示已发送提醒
      */
     private boolean checkCourseEntity(CourseEntity course, int currentWeek, int today, LocalDateTime now) {
+        // 0. 实践课无固定时间，不发提醒
+        if (course.isPractice()) return false;
+
         // 1. 不是今天的课 → 跳过
         if (course.getDayOfWeek() != today) return false;
 

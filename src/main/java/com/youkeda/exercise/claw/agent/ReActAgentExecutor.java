@@ -64,6 +64,36 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     public static final String SILENT_REPLY = "__HANDLED_WITHOUT_USER_REPLY__";
 
+    /** 定时任务自动执行时禁用的任务管理类工具，防止 Agent 在自动执行中自我复制/修改任务 */
+    static final Set<String> TASK_MANAGEMENT_TOOLS = Set.of(
+            "create_schedule_task",
+            "cancel_schedule_task",
+            "update_schedule_task",
+            "pause_agent_task",
+            "resume_agent_task",
+            "plan_tasks",
+            "execute_plan_tasks"
+    );
+
+    /**
+     * 定时任务自动执行时过滤任务管理类工具。
+     *
+     * <p>注意：必须在 globalTools + skill.allowedTools 合并之后调用，
+     * 确保无论工具来自哪个 Skill 都会被统一过滤。
+     *
+     * @param effectiveTools        合并后的工具集（会被修改）
+     * @param scheduledTaskExecution 是否为定时任务自动执行
+     * @return 过滤后的工具集
+     */
+    static Set<String> filterTaskManagementTools(Set<String> effectiveTools,
+                                                 boolean scheduledTaskExecution) {
+        if (!scheduledTaskExecution) {
+            return effectiveTools;
+        }
+        effectiveTools.removeAll(TASK_MANAGEMENT_TOOLS);
+        return effectiveTools;
+    }
+
     private final LLMClient llmClient;
     private final ToolRegistry functionRegistry;
     private final ContextStore contextStore;
@@ -172,6 +202,10 @@ public class ReActAgentExecutor implements AgentExecutor {
         if (activeSkill != null) {
             effectiveTools.addAll(activeSkill.allowedTools());
         }
+
+        // 定时任务自动执行：必须在 globalTools + skill.allowedTools 合并之后过滤，
+        // 移除任务管理类工具，防止 Agent 在自动执行已有任务时自我复制/修改任务。
+        filterTaskManagementTools(effectiveTools, context.isScheduledTaskExecution());
 
         // Build dynamic system prompt
         String systemPrompt = buildSystemPrompt(context, activeSkill);
@@ -400,6 +434,11 @@ public class ReActAgentExecutor implements AgentExecutor {
             } catch (Exception e) {
                 log.warn("Failed to recall skill knowledge for: {}", activeSkill.name(), e);
             }
+        }
+
+        // 定时任务自动执行：明确告知 Agent 本次是自动执行已存在的任务，不要碰定时任务本身
+        if (context.isScheduledTaskExecution()) {
+            sb.append("\n\n当前正在自动执行已存在的定时任务，请直接完成任务内容，不要创建、修改、取消任何定时任务。");
         }
 
         return sb.toString();

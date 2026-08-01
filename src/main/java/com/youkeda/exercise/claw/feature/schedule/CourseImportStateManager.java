@@ -48,6 +48,10 @@ public class CourseImportStateManager {
     private final ConcurrentMap<String, List<CourseEntity>> pendingCourses = new ConcurrentHashMap<>();
     /** 待确认的学期信息（未持久化，确认后写入 DB） */
     private final ConcurrentMap<String, SemesterEntity> pendingSemesters = new ConcurrentHashMap<>();
+    /** 原始输入（用于「重新识别」重跑管线）：图片 dataUrl / 文件字节 Base64 / 粘贴文本原文 */
+    private final ConcurrentMap<String, String> pendingRawInputs = new ConcurrentHashMap<>();
+    /** 原始输入的数据来源（SourceType code，如 OCR / PDF / ZHENGFANG） */
+    private final ConcurrentMap<String, String> pendingSources = new ConcurrentHashMap<>();
 
     // ==================== 状态管理 ====================
 
@@ -55,6 +59,8 @@ public class CourseImportStateManager {
         userStates.put(userId, new ImportState(Phase.WAITING_FILE, null));
         pendingCourses.remove(userId);
         pendingSemesters.remove(userId);
+        pendingRawInputs.remove(userId);
+        pendingSources.remove(userId);
         log.debug("导入状态：等待文件 | userId={}", userId);
     }
 
@@ -72,6 +78,8 @@ public class CourseImportStateManager {
         userStates.remove(userId);
         pendingCourses.remove(userId);
         pendingSemesters.remove(userId);
+        pendingRawInputs.remove(userId);
+        pendingSources.remove(userId);
         log.debug("导入状态已清除 | userId={}", userId);
     }
 
@@ -92,6 +100,26 @@ public class CourseImportStateManager {
 
     public List<CourseEntity> getPendingCourses(String userId) {
         return pendingCourses.getOrDefault(userId, List.of());
+    }
+
+    // ==================== 原始输入（重新识别） ====================
+
+    public void setPendingRawInput(String userId, String rawInput) {
+        pendingRawInputs.put(userId, rawInput);
+        log.debug("原始输入已保存 | userId={} | len={}", userId, rawInput == null ? 0 : rawInput.length());
+    }
+
+    public String getPendingRawInput(String userId) {
+        return pendingRawInputs.get(userId);
+    }
+
+    public void setPendingSource(String userId, String source) {
+        pendingSources.put(userId, source);
+        log.debug("原始来源已保存 | userId={} | source={}", userId, source);
+    }
+
+    public String getPendingSource(String userId) {
+        return pendingSources.get(userId);
     }
 
     // ==================== 待确认学期 ====================

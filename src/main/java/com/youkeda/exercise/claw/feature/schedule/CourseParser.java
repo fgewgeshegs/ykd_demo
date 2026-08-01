@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.feature.schedule;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.youkeda.exercise.claw.feature.schedule.imports.WeekParser;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
@@ -158,19 +159,78 @@ public class CourseParser {
             return null;
         }
 
-        String teacher = getTextField(node, "teacher", "教师", "授课教师");
-        // day_of_week: 先尝试整数解析（LLM 按要求返回 1-7 数字），再降级到中文解析（如"周一"）
-        int dayOfWeek = parseIntField(node, "day_of_week", "dayOfWeek", "weekday", "星期", "星期几");
-        if (dayOfWeek < 0) {
-            String dayText = getTextField(node, "day_of_week", "dayOfWeek", "weekday", "星期", "星期几");
-            dayOfWeek = parseDayOfWeek(dayText);
+        boolean isPractice = node.path("is_practice").asBoolean(false);
+
+        // 周次表达式（weeks 字段）优先，如 "1-17" / "1,3,5" / "1-8,11-17周(单)"
+        WeekParser.WeekSpec weekSpec = null;
+        String weeksExpr = getTextField(node, "weeks", "weeks_str", "week_expr", "周次", "周次范围");
+        if (weeksExpr != null) {
+            weekSpec = WeekParser.parse(weeksExpr);
         }
-        int startPeriod = parseIntField(node, "start_period", "startPeriod", "start", "开始节次", "节次开始");
-        int endPeriod = parseIntField(node, "end_period", "endPeriod", "end", "结束节次", "节次结束");
+
+        String teacher = getTextField(node, "teacher", "教师", "授课教师");
         String classroom = getTextField(node, "classroom", "class_room", "room", "教室", "地点");
-        int startWeek = parseIntField(node, "start_week", "startWeek", "week_start", "开始周", "起始周");
-        int endWeek = parseIntField(node, "end_week", "endWeek", "week_end", "结束周", "终止周");
-        String weekType = parseWeekType(getTextField(node, "week_type", "weekType", "单双周", "周类型"));
+
+        Integer dayOfWeek = null;
+        Integer startPeriod = null;
+        Integer endPeriod = null;
+        if (!isPractice) {
+            // day_of_week: 先尝试整数解析（LLM 按要求返回 1-7 数字），再降级到中文解析（如"周一"）
+            int d = parseIntField(node, "day_of_week", "dayOfWeek", "weekday", "星期", "星期几");
+            if (d < 0) {
+                String dayText = getTextField(node, "day_of_week", "dayOfWeek", "weekday", "星期", "星期几");
+                d = parseDayOfWeek(dayText);
+            }
+            if (d >= 1 && d <= 7) {
+                dayOfWeek = d;
+            }
+
+            int s = parseIntField(node, "start_period", "startPeriod", "start", "开始节次", "节次开始");
+            int e = parseIntField(node, "end_period", "endPeriod", "end", "结束节次", "节次结束");
+            if (s >= 1) {
+                startPeriod = s;
+            }
+            if (e >= 1) {
+                endPeriod = e;
+            }
+            if (startPeriod == null && endPeriod != null) {
+                startPeriod = endPeriod;
+            }
+            if (endPeriod == null && startPeriod != null) {
+                endPeriod = startPeriod;
+            }
+            if (startPeriod != null && endPeriod != null && endPeriod < startPeriod) {
+                endPeriod = startPeriod;
+            }
+        }
+
+        // 缺少星期或节次 → 实践课（无固定时间）
+        if (dayOfWeek == null || startPeriod == null) {
+            dayOfWeek = null;
+            startPeriod = null;
+            endPeriod = null;
+        }
+
+        int startWeek;
+        int endWeek;
+        if (weekSpec != null) {
+            startWeek = weekSpec.startWeek();
+            endWeek = weekSpec.endWeek();
+        } else {
+            startWeek = parseIntField(node, "start_week", "startWeek", "week_start", "开始周", "起始周");
+            endWeek = parseIntField(node, "end_week", "endWeek", "week_end", "结束周", "终止周");
+            if (startWeek < 1) {
+                startWeek = 1;
+            }
+            if (endWeek < 0) {
+                endWeek = Math.max(20, startWeek); // 缺省结束周 → 20
+            } else if (endWeek < startWeek) {
+                endWeek = startWeek;
+            }
+        }
+
+        String weekType = weekSpec != null ? weekSpec.weekType()
+                : parseWeekType(getTextField(node, "week_type", "weekType", "单双周", "周类型"));
 
         // 兜底：如果 LLM 返回 ALL，检查所有文本字段中的单双周标记
         if (CourseEntity.WEEK_ALL.equals(weekType)) {
@@ -181,14 +241,16 @@ public class CourseParser {
             }
         }
 
-        if (dayOfWeek < 1 || dayOfWeek > 7) dayOfWeek = 1;
-        if (startPeriod < 1) startPeriod = 1;
-        if (endPeriod < startPeriod) endPeriod = startPeriod;
-        if (startWeek < 1) startWeek = 1;
-        if (endWeek < startWeek) endWeek = startWeek;
-
-        return new CourseEntity(null, name, teacher, dayOfWeek, startPeriod, endPeriod,
-                classroom, startWeek, endWeek, weekType);
+        CourseEntity c = CourseEntity.create(null, name, teacher,
+                dayOfWeek, startPeriod, endPeriod, classroom, startWeek, endWeek, weekType);
+        if (weekSpec != null) {
+            c.setWeekPattern(weekSpec.weekPattern());
+        }
+        String source = getTextField(node, "source", "来源", "数据来源");
+        if (source != null) {
+            c.setSource(source);
+        }
+        return c;
     }
 
     // ==================== Excel 矩阵格式解析 ====================

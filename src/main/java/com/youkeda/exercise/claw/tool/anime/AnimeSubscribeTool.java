@@ -133,20 +133,29 @@ public class AnimeSubscribeTool implements Tool {
         if (animeId > 0) {
             target = aniListClient.getAnimeById(animeId);
             if (target == null) {
-                return "{\"status\":\"ERROR\",\"message\":\"未找到 ID 为 " + animeId + " 的番剧\"}";
+                return "{\"status\":\"ERROR\",\"message\":\"未找到 ID 为 " + animeId
+                        + " 的番剧，或 AniList 查询失败，请稍后重试或提供番剧名称\"}";
             }
         } else if (!name.isBlank()) {
-            // 兜底：按名称搜索
+            // 兜底：按名称搜索。AniList 不支持中文搜索，中文名/API 异常均返回空结果。
             List<Anime> results = aniListClient.searchAnime(name);
             if (results.isEmpty()) {
-                return "{\"status\":\"SUCCESS\",\"message\":\"未找到与「" + name + "」相关的番剧\"}";
+                // 任何未完成订阅的情况都不能返回 SUCCESS，否则 LLM 会误报"已订阅"
+                return "{\"status\":\"ERROR\",\"message\":\"未找到与「" + name
+                        + "」相关的番剧（AniList 不支持中文搜索），请提供英文/罗马音标题或番剧 ID\"}";
             }
             target = results.get(0);
         } else {
             return "{\"status\":\"ERROR\",\"message\":\"请提供番剧 ID 或名称\"}";
         }
 
-        subscriptionStore.subscribe(target);
+        // 数据库保存失败时必须返回 ERROR，不得让 LLM 误报订阅成功
+        try {
+            subscriptionStore.subscribe(target);
+        } catch (Exception e) {
+            log.error("保存订阅失败 | id={} | title={}", target.getAnilistId(), target.getTitle(), e);
+            return "{\"status\":\"ERROR\",\"message\":\"订阅保存失败，请稍后重试\"}";
+        }
         log.info("用户订阅了番剧 | title={} | id={}", target.getTitle(), target.getAnilistId());
         return "{\"status\":\"SUCCESS\",\"message\":\"已订阅《" + target.getTitle() + "》！播出前会提醒你。\"}";
     }

@@ -125,7 +125,7 @@ public class CourseService {
 
         List<CourseEntity> dayCourses = findSemesterScopedCourses(userId);
         return dayCourses.stream()
-                .filter(c -> c.getDayOfWeek() == today)
+                .filter(c -> !c.isPractice() && c.getDayOfWeek() == today)
                 .filter(c -> c.isActiveInWeek(currentWeek))
                 .collect(Collectors.toList());
     }
@@ -139,7 +139,7 @@ public class CourseService {
 
         List<CourseEntity> courses = findSemesterScopedCourses(userId);
         return courses.stream()
-                .filter(c -> c.getDayOfWeek() == dayOfWeek)
+                .filter(c -> !c.isPractice() && c.getDayOfWeek() == dayOfWeek)
                 .filter(c -> c.isActiveInWeek(currentWeek))
                 .collect(Collectors.toList());
     }
@@ -152,6 +152,9 @@ public class CourseService {
 
         boolean[] occupied = new boolean[MAX_PERIODS + 1];
         for (CourseEntity c : todayCourses) {
+            if (c.isPractice()) {
+                continue; // 实践课无固定节次，不占空闲时间
+            }
             for (int p = c.getStartPeriod(); p <= c.getEndPeriod() && p <= MAX_PERIODS; p++) {
                 occupied[p] = true;
             }
@@ -348,8 +351,12 @@ public class CourseService {
      * </ol>
      */
     private boolean isTimeConflict(CourseEntity a, CourseEntity b) {
+        // 0. 实践课无固定时间，不参与冲突
+        if (a.isPractice() || b.isPractice()) {
+            return false;
+        }
         // 1. 同一天
-        if (a.getDayOfWeek() != b.getDayOfWeek()) {
+        if (!a.getDayOfWeek().equals(b.getDayOfWeek())) {
             return false;
         }
 

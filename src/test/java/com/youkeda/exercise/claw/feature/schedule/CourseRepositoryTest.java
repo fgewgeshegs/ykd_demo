@@ -249,4 +249,99 @@ class CourseRepositoryTest {
             assertNull(all.get(0).getSemesterId());
         }
     }
+
+    @Nested
+    @DisplayName("source / week_pattern / 实践课可空")
+    class SourceWeekPatternTest {
+
+        @Test
+        @DisplayName("source 与 week_pattern 读写往返")
+        void persistSourceAndWeekPattern() {
+            CourseEntity c = new CourseEntity("user009", "高数", "段老师",
+                    1, 1, 2, "教2-203", 1, 16, CourseEntity.WEEK_ALL);
+            c.setSource("ZHENGFANG");
+            c.setWeekPattern("1,3,5");
+
+            List<CourseEntity> saved = repository.replaceAll("user009", List.of(c));
+            assertEquals(1, saved.size());
+            assertEquals("ZHENGFANG", saved.get(0).getSource());
+            assertEquals("1,3,5", saved.get(0).getWeekPattern());
+            assertEquals(1, saved.get(0).getDayOfWeek());
+        }
+
+        @Test
+        @DisplayName("source 默认 MANUAL")
+        void defaultSourceIsManual() {
+            CourseEntity c = new CourseEntity("user010", "英语", "李老师",
+                    3, 3, 4, "B202", 1, 16, CourseEntity.WEEK_ALL);
+            List<CourseEntity> saved = repository.replaceAll("user010", List.of(c));
+            assertEquals(CourseEntity.SOURCE_MANUAL, saved.get(0).getSource());
+        }
+
+        @Test
+        @DisplayName("实践课（day/period 为 null）可持久化")
+        void practiceCoursePersistsNullDayPeriod() {
+            CourseEntity c = CourseEntity.create("user011", "金工实习", "", null, null, null,
+                    "实训基地", 3, 15, CourseEntity.WEEK_ALL);
+            List<CourseEntity> saved = repository.replaceAll("user011", List.of(c));
+            assertEquals(1, saved.size());
+            assertTrue(saved.get(0).isPractice());
+            assertNull(saved.get(0).getDayOfWeek());
+            assertNull(saved.get(0).getStartPeriod());
+            assertEquals(3, saved.get(0).getStartWeek());
+            assertEquals(15, saved.get(0).getEndWeek());
+        }
+    }
+
+    @Nested
+    @DisplayName("旧库迁移（NOT NULL → 可空）")
+    class MigrationTest {
+
+        @Test
+        @DisplayName("旧表 day_of_week NOT NULL 迁移后可读写，且能存实践课")
+        void migrateOldNotNullTable() throws Exception {
+            String dbPath = new File(tempDir.toFile(), "old-schema.db").getAbsolutePath();
+
+            // 创建旧 schema（day_of_week/start_period/end_period NOT NULL，无 source/week_pattern 列）
+            try (var conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                 var stmt = conn.createStatement()) {
+                stmt.execute("""
+                        CREATE TABLE course_schedule (
+                            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id      TEXT NOT NULL,
+                            course_name  TEXT NOT NULL,
+                            teacher      TEXT NOT NULL DEFAULT '',
+                            day_of_week  INTEGER NOT NULL,
+                            start_period INTEGER NOT NULL,
+                            end_period   INTEGER NOT NULL,
+                            classroom    TEXT NOT NULL DEFAULT '',
+                            start_week   INTEGER NOT NULL DEFAULT 1,
+                            end_week     INTEGER NOT NULL DEFAULT 20,
+                            week_type    TEXT NOT NULL DEFAULT 'ALL',
+                            semester_id  INTEGER,
+                            created_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+                        )
+                        """);
+                stmt.execute("INSERT INTO course_schedule (user_id, course_name, day_of_week, start_period, end_period, start_week, end_week, week_type) "
+                        + "VALUES ('user009', '旧课', 1, 1, 2, 1, 16, 'ALL')");
+            }
+
+            CourseRepository migrated = new CourseRepository();
+            setField(migrated, "dbPath", dbPath);
+            migrated.init();
+
+            // 迁移后旧数据仍可读，source 回填默认值
+            List<CourseEntity> courses = migrated.findByUserId("user009");
+            assertEquals(1, courses.size());
+            assertEquals("旧课", courses.get(0).getCourseName());
+            assertEquals(Integer.valueOf(1), courses.get(0).getDayOfWeek());
+            assertEquals(CourseEntity.SOURCE_MANUAL, courses.get(0).getSource());
+
+            // 迁移后 day_of_week 已可空，可写入实践课
+            CourseEntity practice = CourseEntity.create("user009", "金工实习", "", null, null, null,
+                    "基地", 3, 15, CourseEntity.WEEK_ALL);
+            migrated.replaceAll("user009", List.of(practice));
+            assertTrue(migrated.findByUserId("user009").get(0).isPractice());
+        }
+    }
 }
