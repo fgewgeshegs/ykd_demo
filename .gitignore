@@ -74,6 +74,9 @@ io/
 grpc/
 META-INF/
 
+# 单实例进程锁文件（运行时生成，不应提交）
+.clawassistant.lock
+
 # SQLite 数据库文件
 data/
 *.sqlite

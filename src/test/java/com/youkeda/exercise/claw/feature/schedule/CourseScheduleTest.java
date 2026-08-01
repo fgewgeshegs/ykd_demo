@@ -316,6 +316,306 @@ class CourseScheduleTest {
         }
     }
 
+    // ==================== Vision 坏输出下的 Parser 行为基线（诊断用） ====================
+    //
+    // 诊断课表导入识别问题时使用：不依赖真实图片，直接喂 GPT 观察到的三类典型坏输出，
+    // 锁定"问题在 Vision 端还是在 Parser 端"。
+    // 所有断言都是"如实记录 Parser 当前行为"，测试通过 = Parser 行为符合预期，问题指向上游 Vision。
+    // 拿到真实 Vision 原始输出后，对照本组测试即可快速分类（结构错 / Parser 错 / 格式不守）。
+
+    @Nested
+    @DisplayName("CourseParser - Vision 坏输出行为基线（诊断）")
+    class CourseParserVisionDiagnosticTest {
+
+        private CourseParser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = new CourseParser(new ObjectMapper());
+        }
+
+        @Test
+        @DisplayName("情况A：合并单元格被拆成多条 → Parser 忠实转换，不自动合并（去重不是 Parser 职责）")
+        void mergedCellSplitIntoMultipleCourses() {
+            String json = """
+                    [
+                      {"course_name":"高等数学A(1)","teacher":"段代凤","day_of_week":3,"start_period":1,"end_period":2,"classroom":"教2-203","week_type":"ALL"},
+                      {"course_name":"高等数学A(1)","teacher":"段代凤","day_of_week":3,"start_period":3,"end_period":4,"classroom":"教2-203","week_type":"ALL"}
+                    ]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            // Parser 如实保留两条，不做合并 → 若真实输出长这样，问题在 Vision 的结构理解
+            assertEquals(2, courses.size());
+            assertEquals("高等数学A(1)", courses.get(0).getCourseName());
+            assertEquals(3, courses.get(0).getDayOfWeek());
+            assertEquals(1, courses.get(0).getStartPeriod());
+            assertEquals(4, courses.get(1).getEndPeriod());
+        }
+
+        @Test
+        @DisplayName("情况A2：模型若正确输出跨 1-4 节的合并范围，Parser 保留整段")
+        void mergedRangePreserved() {
+            String json = """
+                    [{"course_name":"高等数学A(1)","day_of_week":3,"start_period":1,"end_period":4,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertEquals(1, courses.size());
+            assertEquals(1, courses.get(0).getStartPeriod());
+            assertEquals(4, courses.get(0).getEndPeriod());
+            assertEquals("1-4", courses.get(0).getPeriodDisplay());
+        }
+
+        @Test
+        @DisplayName("情况B：day_of_week 越界(8)被丢弃（不再静默夹成周一）")
+        void outOfRangeDayIsDropped() {
+            String json = """
+                    [{"course_name":"高等数学","day_of_week":8,"start_period":1,"end_period":2,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            // 越界星期无法定位，整条丢弃并告警，而非悄悄变成"周一"（防止整体错位一列时数据静默污染）
+            assertTrue(courses.isEmpty());
+        }
+
+        @Test
+        @DisplayName("情况B2：day_of_week 为 0 同样被丢弃")
+        void zeroDayIsDropped() {
+            String json = """
+                    [{"course_name":"体育","day_of_week":0,"start_period":5,"end_period":6,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertTrue(courses.isEmpty());
+        }
+
+        @Test
+        @DisplayName("情况B3：缺 day_of_week 的课程被丢弃（Agent 只传课程名时的核心防护）")
+        void missingDayIsDropped() {
+            String json = """
+                    [{"course_name":"高等数学","start_period":1,"end_period":2,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            // 只传课程名（缺星期）→ 丢弃，不会退化成"周一第1节"
+            assertTrue(courses.isEmpty());
+        }
+
+        @Test
+        @DisplayName("情况B4：缺 start_period 的课程被丢弃")
+        void missingStartPeriodIsDropped() {
+            String json = """
+                    [{"course_name":"高等数学","day_of_week":1,"end_period":2,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertTrue(courses.isEmpty());
+        }
+
+        @Test
+        @DisplayName("情况C：模型按星期分组的对象结构 → Parser 无法解析，整体丢弃")
+        void dayGroupedObjectUnparseable() {
+            String json = """
+                    {"星期一":[{"course_name":"高等数学","start_period":1,"end_period":2,"week_type":"ALL"}],
+                     "星期三":[{"course_name":"大学英语","start_period":3,"end_period":4,"week_type":"ALL"}]}
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            // 非数组、非 {courses:[...]} → 返回空，用户会收到"未能识别出有效的课程信息"
+            assertTrue(courses.isEmpty());
+        }
+
+        @Test
+        @DisplayName("污染：教师/周次混入 course_name → 名称原样保留，但 week_type 被兜底纠正为 ODD")
+        void pollutedCourseNameStillTriggersWeekTypeFallback() {
+            String json = """
+                    [{"course_name":"物理实验（上）周一周三3,4,5节单周","teacher":"何学敏",
+                      "day_of_week":1,"start_period":3,"end_period":5,"week_type":"ALL"}]
+                    """;
+            List<CourseEntity> courses = parser.parseFromJson(json);
+            assertEquals(1, courses.size());
+            // Parser 不负责清洗 course_name，污染原样保留（预览时用户会看到脏名称）
+            assertEquals("物理实验（上）周一周三3,4,5节单周", courses.get(0).getCourseName());
+            // 但 week_type 兜底仍生效：检测到"单周" → ODD
+            assertEquals(CourseEntity.WEEK_ODD, courses.get(0).getWeekType());
+        }
+
+        // ==================== 方案5：第二轮校验结果合并（applyVisionCorrections） ====================
+
+        private CourseEntity course(String name, int day, int start, int end) {
+            return new CourseEntity(null, name, "", day, start, end, "", 1, 20, CourseEntity.WEEK_ALL);
+        }
+
+        @Test
+        @DisplayName("校验：仅 ok:true → 课程列表原样返回")
+        void verifyOkOnlyKeepsCoursesUnchanged() {
+            List<CourseEntity> before = List.of(course("高数", 1, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before, "{\"ok\":true}");
+            assertEquals(1, after.size());
+            assertEquals("高数", after.get(0).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：deletions 删除指定索引课程")
+        void verifyDeletionRemovesCourses() {
+            List<CourseEntity> before = List.of(course("高数", 1, 1, 2), course("离散", 2, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before, "{\"deletions\":[0]}");
+            assertEquals(1, after.size());
+            assertEquals("离散", after.get(0).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：多条 deletions 倒序删除，无索引漂移")
+        void verifyMultipleDeletionsDoNotShiftIndices() {
+            List<CourseEntity> before = List.of(
+                    course("A", 1, 1, 2), course("B", 2, 1, 2), course("C", 3, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before, "{\"deletions\":[0,2]}");
+            assertEquals(1, after.size());
+            assertEquals("B", after.get(0).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：corrections 局部覆盖字段（合并单元格节次偏移 11-12 → 10-12）")
+        void verifyCorrectionMergesFields() {
+            List<CourseEntity> before = List.of(course("中外戏剧鉴赏", 1, 11, 12));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"corrections\":[{\"index\":0,\"start_period\":10,\"end_period\":12}]}");
+            assertEquals(1, after.size());
+            CourseEntity c = after.get(0);
+            assertEquals(10, c.getStartPeriod());
+            assertEquals(12, c.getEndPeriod());
+            // 未覆盖字段保持原值
+            assertEquals("中外戏剧鉴赏", c.getCourseName());
+            assertEquals(1, c.getDayOfWeek());
+        }
+
+        @Test
+        @DisplayName("校验：corrections 未列字段保持原值，只改节次")
+        void verifyCorrectionPreservesUnmentionedFields() {
+            List<CourseEntity> before = List.of(
+                    new CourseEntity(null, "高数", "段代凤", 5, 3, 4, "教2-203", 1, 17, CourseEntity.WEEK_ALL));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"corrections\":[{\"index\":0,\"end_period\":4}]}");
+            CourseEntity c = after.get(0);
+            assertEquals("段代凤", c.getTeacher());
+            assertEquals("教2-203", c.getClassroom());
+            assertEquals(1, c.getStartWeek());
+            assertEquals(17, c.getEndWeek());
+            assertEquals(CourseEntity.WEEK_ALL, c.getWeekType());
+        }
+
+        @Test
+        @DisplayName("校验：additions 补录完整课程")
+        void verifyAdditionAppendsNewCourse() {
+            List<CourseEntity> before = List.of(course("高数", 1, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"additions\":[{\"course_name\":\"物理实验\",\"day_of_week\":1,"
+                    + "\"start_period\":3,\"end_period\":5,\"classroom\":\"实验室\","
+                    + "\"start_week\":1,\"end_week\":17,\"week_type\":\"ODD\"}]}");
+            assertEquals(2, after.size());
+            CourseEntity added = after.get(1);
+            assertEquals("物理实验", added.getCourseName());
+            assertEquals(1, added.getDayOfWeek());
+            assertEquals(3, added.getStartPeriod());
+            assertEquals(5, added.getEndPeriod());
+            assertEquals(CourseEntity.WEEK_ODD, added.getWeekType());
+        }
+
+        @Test
+        @DisplayName("校验：additions 缺星期/节次的新增被丢弃（复用严格解析）")
+        void verifyAdditionMissingDayIsDropped() {
+            List<CourseEntity> before = List.of(course("高数", 1, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"additions\":[{\"course_name\":\"无时间课程\"}]}");
+            assertEquals(1, after.size());
+            assertEquals("高数", after.get(0).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：越界 deletions 索引被忽略")
+        void verifyOutOfRangeDeletionIgnored() {
+            List<CourseEntity> before = List.of(course("高数", 1, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before, "{\"deletions\":[99]}");
+            assertEquals(1, after.size());
+        }
+
+        @Test
+        @DisplayName("校验：markdown fence 包裹的 JSON 同样可解析")
+        void verifyFencedJsonIsAccepted() {
+            List<CourseEntity> before = List.of(course("高数", 1, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "```json\n{\"deletions\":[0]}\n```");
+            assertTrue(after.isEmpty());
+        }
+
+        @Test
+        @DisplayName("校验：非对象结构（数组/裸文本）返回 null 触发降级")
+        void verifyNonObjectReturnsNull() {
+            List<CourseEntity> before = List.of(course("高数", 1, 1, 2));
+            assertNull(parser.applyVisionCorrections(before, "这不是JSON"));
+            assertNull(parser.applyVisionCorrections(before, "[{\"index\":0}]"));
+        }
+
+        // ==================== additions 确定性防线（幻觉补录拦截） ====================
+
+        @Test
+        @DisplayName("校验：additions 同格重复（同名同天同时段）被丢弃")
+        void verifyAdditionDuplicateSlotDropped() {
+            List<CourseEntity> before = List.of(course("高数", 5, 3, 4));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"additions\":[{\"course_name\":\"高数\",\"day_of_week\":5,"
+                    + "\"start_period\":3,\"end_period\":4,\"week_type\":\"ALL\"}]}");
+            // 校验轮把已有课程再补一遍 → 去重丢弃，不产生重复
+            assertEquals(1, after.size());
+            assertEquals("高数", after.get(0).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：additions 与已有课同天同时段冲突（全周）被丢弃")
+        void verifyAdditionConflictingSlotDropped() {
+            List<CourseEntity> before = List.of(course("大学英语IV", 5, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"additions\":[{\"course_name\":\"高等数学\",\"day_of_week\":5,"
+                    + "\"start_period\":1,\"end_period\":2,\"week_type\":\"ALL\"}]}");
+            // 该格已被英语IV占用，高数补录是幻觉 → 丢弃
+            assertEquals(1, after.size());
+            assertEquals("大学英语IV", after.get(0).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：additions 单双周互不重叠的同格课程合法保留")
+        void verifyAdditionOddEvenSplitKept() {
+            List<CourseEntity> before = List.of(
+                    new CourseEntity(null, "体育A", "", 3, 1, 2, "", 1, 17, CourseEntity.WEEK_ODD));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"additions\":[{\"course_name\":\"体育B\",\"day_of_week\":3,"
+                    + "\"start_period\":1,\"end_period\":2,\"start_week\":1,\"end_week\":17,"
+                    + "\"week_type\":\"EVEN\"}]}");
+            // ODD 与 EVEN 无同时活跃周次 → 合法同格课程，保留
+            assertEquals(2, after.size());
+            assertEquals("体育B", after.get(1).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：additions 周次不重叠的同格课程合法保留")
+        void verifyAdditionNonOverlappingWeeksKept() {
+            List<CourseEntity> before = List.of(
+                    new CourseEntity(null, "课程A", "", 4, 5, 6, "", 1, 8, CourseEntity.WEEK_ALL));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"additions\":[{\"course_name\":\"课程B\",\"day_of_week\":4,"
+                    + "\"start_period\":5,\"end_period\":6,\"start_week\":10,\"end_week\":17,"
+                    + "\"week_type\":\"ALL\"}]}");
+            // 周次 1-8 与 10-17 不重叠 → 合法，保留
+            assertEquals(2, after.size());
+            assertEquals("课程B", after.get(1).getCourseName());
+        }
+
+        @Test
+        @DisplayName("校验：additions 全周 vs 单周同格（同时活跃）被丢弃")
+        void verifyAdditionAllVsOddConflictDropped() {
+            List<CourseEntity> before = List.of(course("英语IV", 5, 1, 2));
+            List<CourseEntity> after = parser.applyVisionCorrections(before,
+                    "{\"additions\":[{\"course_name\":\"高数\",\"day_of_week\":5,"
+                    + "\"start_period\":1,\"end_period\":2,\"week_type\":\"ODD\"}]}");
+            // 英语IV 每周都有 → 单周高数仍与之重叠（奇数周同时在），矛盾 → 丢弃
+            assertEquals(1, after.size());
+        }
+    }
+
     // ==================== SemesterConfig 测试 ====================
 
     @Nested

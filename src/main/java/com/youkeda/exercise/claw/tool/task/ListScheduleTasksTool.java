@@ -59,7 +59,9 @@ public class ListScheduleTasksTool implements Tool {
         return "查询当前用户的定时提醒任务列表。\n"
                 + "当用户问「我的提醒有哪些」「待办提醒」「已完成的提醒」「我的任务」等时调用。\n"
                 + "可通过 status 参数筛选：ACTIVE=待执行, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消。\n"
-                + "不带 status 参数时返回用户全部任务。";
+                + "不带 status 参数时返回用户全部任务。\n"
+                + "每个任务返回两个时间字段：execute_time 是配置的基准时间（周期任务可能已过期），"
+                + "next_execute_time 才是真正的下次触发时间。回答「下次提醒」「什么时候提醒」时必须用 next_execute_time。";
     }
 
     @Override
@@ -132,6 +134,7 @@ public class ListScheduleTasksTool implements Tool {
                     taskNode.put("id", task.getId());
                     taskNode.put("content", task.getContent());
                     taskNode.put("execute_time", task.getExecuteTimeAsString());
+                    taskNode.put("next_execute_time", task.getNextExecuteTimeAsString());
                     taskNode.put("repeat_type", task.getRepeatType());
                     taskNode.put("repeat_label", task.getRepeatTypeDisplay());
                     taskNode.put("task_type", task.getTaskType());

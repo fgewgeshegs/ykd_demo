@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillExecutionResult;
@@ -379,6 +381,11 @@ public class ReActAgentExecutor implements AgentExecutor {
     private String buildSystemPrompt(AgentContext context, SkillDefinition activeSkill) {
         StringBuilder sb = new StringBuilder();
         sb.append(llmClient.getSystemPrompt()).append("\n\n");
+
+        // 注入当前系统时间，供 LLM 判断「今晚/明天/已过去」等时间相关表述
+        sb.append("当前系统时间：")
+                .append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                .append("\n\n");
 
         if (activeSkill != null && activeSkill.systemPromptResource() != null) {
             String skillPrompt = loadSkillPrompt(activeSkill.systemPromptResource());

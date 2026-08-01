@@ -16,13 +16,15 @@ public class InformationScoutIntentResolver {
     private static final Pattern TOPIC_MISSING = Pattern.compile(
             "(?:帮我|请|麻烦|给我|替我|为我|能不能|可以帮我)?"
                     + "(?:找找|找一下|找一找|搜搜看|搜一下|搜一搜|搜索一下|"
+                    + "搜集|收集|汇总|"
                     + "查查|查一下|查一查|检索一下|调研一下)[吗呢吧？?]*");
     private static final Pattern TOPIC_REQUEST_PREFIX = Pattern.compile(
             "^(?:请|麻烦|能不能|可以)?\\s*"
                     + "(?:帮我|替我|给我|为我|我想|我需要)?\\s*"
                     + "(?:查一下|查一查|查查|找一下|找一找|找找|"
-                    + "搜一下|搜一搜|搜搜看|搜索一下|检索一下|调研一下|"
-                    + "看看|看一下|关注(?:一下)?|跟踪(?:一下)?|追踪(?:一下)?|监控(?:一下)?)"
+                    + "搜一下|搜一搜|搜搜看|搜索一下|搜集|收集|汇总|"
+                    + "检索一下|调研一下|"
+                    + "看看|看一下|关注(?:一下)?|跟踪(?:一下)?|追踪(?:一下)?|监控(?:一下)?|订阅(?:一下)?)"
                     + "\\s*[：:，,]?\\s*");
     private static final Pattern PENDING_NON_TOPIC = Pattern.compile(
             "(?:好的?|知道了?|明白了?|嗯+|哦+|行|可以|随便|都可以|不知道|"
@@ -32,7 +34,7 @@ public class InformationScoutIntentResolver {
                     + "值得关注|相关|方面|内容|信息|资料|信息猎手|谢谢|感谢|然后呢?|"
                     + "好的?|知道了?|明白了?|不知道|随便|都可以|没想好|暂时没有|"
                     + "以后再说|使用|启动|运行|调用|开启|请|帮我|麻烦|给我|替我|"
-                    + "为我|看看|看一下|关注|跟踪|追踪|监控)");
+                    + "为我|看看|看一下|关注|跟踪|追踪|监控|订阅)");
 
     public InformationScoutIntent resolve(String currentMessage, SkillSession session) {
         String message = currentMessage == null ? "" : currentMessage.trim();

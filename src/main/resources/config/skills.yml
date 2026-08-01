@@ -13,6 +13,9 @@ claw:
       requiredTools: []
       optionalTools:
         - create_schedule_task
+        - list_schedule_tasks
+        - update_schedule_task
+        - cancel_schedule_task
         - web_search
         - holiday_check
       systemPromptResource: prompts/skills/common.txt
@@ -27,6 +30,7 @@ claw:
       enabled: true
       priority: 4
       tags: [校园, 课程]
+      description: 校园课程管理。导入/查询/修改/删除个人课表，管理考试安排与考试提醒。适用于课表导入、课程查询、考试安排等校园事务。
       requiredTools: []
       optionalTools:
         - course_schedule
@@ -101,6 +105,7 @@ claw:
       enabled: true
       priority: 4
       tags: [动漫, 番剧]
+      description: 动漫番剧订阅与推荐。管理追番列表、搜索番剧、订阅/取消订阅、查询播出时间、推荐当季新番。
       requiredTools: []
       optionalTools:
         - anime_recommend
@@ -116,7 +121,7 @@ claw:
     information-scout:
       enabled: true
       priority: 3
-      description: 主动发现与用户兴趣、项目和目标相关的最新资讯；仅在用户明确要求查找新动态、趋势或机会时运行。
+      description: 创建信息猎手持续关注任务，后台定期发现与用户兴趣、项目和目标相关的高价值资讯并推送；仅在用户明确要求持续关注/订阅新动态、趋势或机会时触发，现场即时查询请用 web_search。
       tags: [信息, 搜索]
       requiredTools: []
       optionalTools: []
