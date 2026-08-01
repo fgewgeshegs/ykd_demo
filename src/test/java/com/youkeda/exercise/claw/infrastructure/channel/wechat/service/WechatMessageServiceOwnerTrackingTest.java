@@ -19,7 +19,8 @@ class WechatMessageServiceOwnerTrackingTest {
                 new WechatProperties(),
                 mock(MessageRouter.class),
                 mock(ContextStore.class),
-                userManager);
+                userManager,
+                new MessageDeduplicationService());
 
         service.recordSender("wechat-owner-1");
 

@@ -15,6 +15,9 @@ class ScoutTriggerPolicyTest {
         assertTrue(ScoutTriggerPolicy.hasExplicitRequest("帮我订阅科技资讯"));
         assertTrue(ScoutTriggerPolicy.hasExplicitRequest("帮我留意有什么最新动态"));
         assertTrue(ScoutTriggerPolicy.hasExplicitRequest("启动信息猎手"));
+        assertTrue(ScoutTriggerPolicy.hasExplicitRequest("今天11:20帮我搜集一些关于AI的新闻"));
+        assertTrue(ScoutTriggerPolicy.hasExplicitRequest("帮我收集一些最新的 AI 资讯"));
+        assertTrue(ScoutTriggerPolicy.hasExplicitRequest("帮我汇总一下最近的行业动态"));
     }
 
     @Test

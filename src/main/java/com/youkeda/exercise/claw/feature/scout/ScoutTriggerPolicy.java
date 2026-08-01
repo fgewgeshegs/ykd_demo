@@ -29,7 +29,7 @@ public final class ScoutTriggerPolicy {
      * 避免与 create_schedule_task（定时提醒）抢语义。
      */
     private static final Pattern MONITORING_ACTION = Pattern.compile(
-            "(?:关注|订阅|跟踪|追踪|监控|持续|帮我留意|帮我盯着|有(?:什么)?消息(?:就|再)?通知我)");
+            "(?:关注|订阅|跟踪|追踪|监控|持续|搜集|收集|汇总|帮我留意|帮我盯着|有(?:什么)?消息(?:就|再)?通知我)");
 
     /**
      * 纯信息流主题词。
@@ -41,7 +41,7 @@ public final class ScoutTriggerPolicy {
 
     /** 即时查询信号：用户想知道"现在"的答案 → 不得进入后台任务 */
     private static final Pattern REALTIME_QUERY = Pattern.compile(
-            "(?:查|搜|看|找|问|推荐|告诉|介绍|发生了什么|出了什么|有什么大事)");
+            "(?:查|搜(?!集)|看|找|问|推荐|告诉|介绍|发生了什么|出了什么|有什么大事)");
 
     private ScoutTriggerPolicy() {
     }
