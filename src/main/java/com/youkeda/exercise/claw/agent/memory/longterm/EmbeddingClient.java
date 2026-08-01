@@ -70,7 +70,7 @@ public class EmbeddingClient {
 
             HttpResponse<String> response = healthCheckClient.send(request,
                     HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() >= 200 && response.statusCode() < 500) {
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 log.info("Embedding 服务连接成功 | url={} | status={}", url, response.statusCode());
                 this.available = true;
             } else {

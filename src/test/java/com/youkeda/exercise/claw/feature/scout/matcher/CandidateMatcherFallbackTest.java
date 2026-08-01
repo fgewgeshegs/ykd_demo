@@ -147,6 +147,47 @@ class CandidateMatcherFallbackTest {
         assertSame(recent, candidates.get(0).item());
     }
 
+    @Test
+    void fallsBackToKeywordMatchingWhenEmbeddingThrows() {
+        EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
+        when(embeddingClient.embedBatch(anyList()))
+                .thenThrow(new IllegalStateException("Embedding service is not available"));
+        ScoutProperties properties = new ScoutProperties();
+        properties.setMaxCandidates(10);
+        CandidateMatcher matcher = new CandidateMatcher(embeddingClient, properties);
+        UserProfile profile = new UserProfile(
+                List.of("AI Agent"), List.of(), List.of(), List.of(), "");
+        InformationItem relevant = item("AI Agent 框架发布", new float[0]);
+        InformationItem irrelevant = item("考研政策调整", new float[0]);
+
+        List<MatchedCandidate> candidates = matcher.match(
+                profile, List.of(relevant, irrelevant));
+
+        assertEquals(1, candidates.size());
+        assertSame(relevant, candidates.get(0).item());
+        assertTrue(candidates.get(0).matchReason().contains("关键词匹配"));
+    }
+
+    @Test
+    void keywordFallbackFiltersOutIrrelevantItems() {
+        EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
+        when(embeddingClient.embedBatch(anyList()))
+                .thenThrow(new IllegalStateException("Embedding service is not available"));
+        ScoutProperties properties = new ScoutProperties();
+        properties.setMaxCandidates(10);
+        CandidateMatcher matcher = new CandidateMatcher(embeddingClient, properties);
+        UserProfile profile = new UserProfile(
+                List.of("自动驾驶"), List.of(), List.of(), List.of(), "");
+
+        List<MatchedCandidate> candidates = matcher.match(profile, List.of(
+                item("自动驾驶技术最新进展", new float[0]),
+                item("餐饮行业分析", new float[0]),
+                item("演唱会门票开售", new float[0])));
+
+        assertEquals(1, candidates.size());
+        assertEquals("自动驾驶技术最新进展", candidates.get(0).item().getTitle());
+    }
+
     private InformationItem item(String title, float[] vector) {
         InformationItem item = InformationItem.create(title, title, "https://example.com/" + title,
                 "WEB_SEARCH", "NEWS");

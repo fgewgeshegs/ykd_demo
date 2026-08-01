@@ -34,22 +34,22 @@ class InformationScoutIntentResolverTest {
                 .withActiveSkill("information-scout");
 
         InformationScoutIntent intent = resolver.resolve(
-                "查一下 Claude Code 最近的更新", session);
+                "跟踪 Claude Code 最近的更新", session);
 
         assertEquals(InformationScoutIntent.Action.TOPIC_SEARCH, intent.action());
         assertEquals("Claude Code 最近的更新", intent.query());
     }
 
     @Test
-    void resolvesCollectNewsRequestAsTopicSearch() {
+    void stripsSubscriptionVerbFromTopicQuery() {
         SkillSession session = SkillSession.create("owner")
                 .withActiveSkill("information-scout");
 
-        InformationScoutIntent intent = resolver.resolve(
-                "帮我搜集一些关于AI的新闻", session);
+        InformationScoutIntent intent = resolver.resolve("帮我订阅科技资讯", session);
 
         assertEquals(InformationScoutIntent.Action.TOPIC_SEARCH, intent.action());
-        assertTrue(intent.query().contains("AI"));
+        assertEquals("科技资讯", intent.query());
+
     }
 
     @Test
@@ -129,7 +129,7 @@ class InformationScoutIntentResolverTest {
 
     @Test
     void genericActivityWordsWithoutTopicNeedClarification() {
-        for (String request : List.of("帮我看看最近的更新", "关注动态")) {
+        for (String request : List.of("帮我关注最近动态", "关注动态")) {
             InformationScoutIntent intent = resolver.resolve(
                     request, SkillSession.create("owner"));
             assertEquals(InformationScoutIntent.Action.NEED_CLARIFICATION,

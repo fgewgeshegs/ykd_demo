@@ -172,15 +172,32 @@ public class ExecutionLoop {
 
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
-                // 防幻觉检测：用户要求创建定时提醒但 create_schedule_task 未被调用
-                if (!wasScheduleTaskCalled(executedCalls)
-                        && isScheduleTaskRequest(userMessage)) {
-                    log.warn("LLM 幻觉检测：用户要求创建提醒但 create_schedule_task 未被调用，注入提示重试");
-                    messages.add(new Message("system",
-                            "注意：你刚才未调用 create_schedule_task 工具。"
-                                    + "用户明确要求创建定时提醒，请先调用 create_schedule_task 完成创建，"
-                                    + "创建成功后再回复用户。不要重复调用已经执行过的工具。"));
-                    continue;
+                String reply = response.getContent();
+                boolean createIntent =
+                        ScheduleIntentResolver.resolve(userMessage) == ScheduleIntent.CREATE;
+                boolean toolCalled = wasScheduleTaskCalled(executedCalls);
+
+                // 防幻觉（仅用户确为创建意图时）：
+                // 层1 模型声称已创建/设置提醒，但未实际调用 create_schedule_task → 幻觉，强制重试；
+                // 层2 模型既未声称完成、也未向用户澄清（卡壳/敷衍）→ 提示补做。
+                // 反问「几点提醒你呢？」属于澄清，放行，避免「帮我设置提醒」场景死循环。
+                if (createIntent && !toolCalled) {
+                    boolean claimsDone = ScheduleReplyInspector.claimsCreation(reply);
+                    boolean asksClarification = ScheduleReplyInspector.asksForClarification(reply);
+                    if (claimsDone || !asksClarification) {
+                        String hint = claimsDone
+                                ? "注意：你刚才的回复声称已创建/设置定时提醒，但并未实际调用"
+                                  + " create_schedule_task 工具。请先调用 create_schedule_task 完成创建，"
+                                  + "创建成功后再回复用户。不要重复调用已经执行过的工具。"
+                                : "注意：用户要求创建定时提醒，但你尚未调用 create_schedule_task 工具。"
+                                  + "请调用 create_schedule_task 完成创建；若必要信息不足，"
+                                  + "请先向用户提问澄清，不要直接结束。";
+                        log.warn("LLM 幻觉检测：{}，注入提示重试",
+                                claimsDone ? "声称已创建但未调用 create_schedule_task"
+                                           : "创建意图未执行且未向用户澄清");
+                        messages.add(new Message("system", hint));
+                        continue;
+                    }
                 }
 
                 // 防幻觉检测：用户要求取消/删除任务但 cancel_schedule_task 未被调用
@@ -204,8 +221,6 @@ public class ExecutionLoop {
                                     + "再调用 update_schedule_task 完成修改，修改成功后再回复用户。"));
                     continue;
                 }
-
-                String reply = response.getContent();
                 log.info("LLM 直接回复 | reply={}", reply);
                 return Result.textReply(reply, messages, planState, session);
             }
@@ -346,29 +361,9 @@ public class ExecutionLoop {
         return false;
     }
 
-    /**
-     * 判断用户消息是否要求创建定时提醒/任务。
-     */
-    private static boolean isScheduleTaskRequest(String userMessage) {
-        if (userMessage == null || userMessage.isBlank()) return false;
-        String msg = userMessage.replaceAll("\\s+", "");
-        // 精确匹配：提醒我、帮我提醒、设置提醒
-        if (msg.contains("提醒我") || msg.contains("帮我提醒")
-                || msg.contains("设置提醒") || msg.contains("定提醒")
-                || msg.contains("创建提醒") || msg.contains("添加提醒")) {
-            return true;
-        }
-        // 周期模式：每天/每周/每月/每隔 + 时间
-        if ((msg.contains("每天") || msg.contains("每周")
-                || msg.contains("每月") || msg.contains("每隔"))
-                && msg.matches(".*[0-9时点分秒早中晚上午下午].*")) {
-            return true;
-        }
-        // 显式关键词
-        return msg.contains("定时") || msg.contains("闹钟")
-                || msg.contains("备忘") || msg.contains("分钟后")
-                || msg.contains("小时提醒");
-    }
+    // 注：防幻觉判定已拆到两个可单测的类：
+    // - ScheduleIntentResolver —— 用户消息 → 创建/查询/修改/取消 意图（动词驱动）；
+    // - ScheduleReplyInspector —— 模型回复是否「声称已完成」/「在向用户澄清」。
 
     /**
      * 检查 executedCalls 中是否已包含 cancel_schedule_task 的调用记录。
