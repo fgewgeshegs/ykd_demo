@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -120,6 +121,206 @@ public class CourseParser {
     }
 
     /**
+     * 将第二轮"校验结果"合并到第一轮提取的课程列表（方案5 对账）。
+     *
+     * <p>图片识别第一轮提取难免出错（幻觉补空/节次偏移/合并单元格截断），
+     * 第二轮把第一轮结果整理成清单连同原图再喂一次模型"逐条挑错"，
+     * 返回结构如下（由视觉模型按 {@code COURSE_VERIFY_PROMPT} 生成）：</p>
+     * <pre>
+     * {
+     *   "deletions": [0, 5],                 // 该格实际为空 → 删除对应清单索引
+     *   "corrections": [                      // 字段局部覆盖，只列需改的字段
+     *     {"index": 18, "start_period": 10, "end_period": 12}
+     *   ],
+     *   "additions": [                        // 第一轮漏掉的课程（完整课程对象）
+     *     {"course_name":"...", "day_of_week":3, "start_period":1, "end_period":2, ...}
+     *   ]
+     * }
+     * </pre>
+     *
+     * @param courses   第一轮提取的课程列表（其索引即清单索引）
+     * @param verifyJson 校验轮返回的 JSON 文本
+     * @return 合并后的课程列表；verifyJson 无法解析时返回 null（由调用方降级回第一轮结果）
+     */
+    public List<CourseEntity> applyVisionCorrections(List<CourseEntity> courses, String verifyJson) {
+        if (courses == null || courses.isEmpty()) {
+            return courses;
+        }
+        try {
+            String clean = verifyJson.trim();
+            if (clean.startsWith("```json")) {
+                clean = clean.substring(7);
+            } else if (clean.startsWith("```")) {
+                clean = clean.substring(3);
+            }
+            if (clean.endsWith("```")) {
+                clean = clean.substring(0, clean.length() - 3);
+            }
+            clean = clean.trim();
+
+            JsonNode root = objectMapper.readTree(clean);
+            if (root == null || !root.isObject()) {
+                log.warn("课表校验结果非对象结构，无法合并 | text={}", truncate(verifyJson, 200));
+                return null;
+            }
+
+            List<CourseEntity> result = new ArrayList<>(courses);
+
+            // 1) deletions：倒序删除避免索引漂移
+            JsonNode deletions = root.path("deletions");
+            if (deletions.isArray() && deletions.size() > 0) {
+                List<Integer> idxs = new ArrayList<>();
+                for (JsonNode d : deletions) {
+                    int idx = d.asInt(-1);
+                    if (idx >= 0 && idx < result.size()) {
+                        idxs.add(idx);
+                    }
+                }
+                idxs.sort(Collections.reverseOrder());
+                for (int idx : idxs) {
+                    log.info("课表校验：删除课程 | index={} | course={}", idx, result.get(idx).getCourseName());
+                    result.remove(idx);
+                }
+            }
+
+            // 2) corrections：按索引局部覆盖字段（不增删元素，避免索引漂移）
+            JsonNode corrections = root.path("corrections");
+            if (corrections.isArray() && corrections.size() > 0) {
+                for (JsonNode corr : corrections) {
+                    int idx = corr.path("index").asInt(-1);
+                    if (idx < 0 || idx >= result.size()) {
+                        log.warn("课表校验：correction 索引越界忽略 | index={}", idx);
+                        continue;
+                    }
+                    CourseEntity original = result.get(idx);
+                    CourseEntity updated = mergeCorrection(original, corr);
+                    if (updated != null) {
+                        log.info("课表校验：修正课程 | index={} | {} → {}", idx,
+                                original.getCourseName(), updated.getCourseName());
+                        result.set(idx, updated);
+                    } else {
+                        log.warn("课表校验：修正后仍缺星期/节次，保留原课程 | index={} | course={}",
+                                idx, original.getCourseName());
+                    }
+                }
+            }
+
+            // 3) additions：新增课程复用严格解析（缺星期/节次会被丢弃）。
+            //    校验轮与第一轮同模型，additions 是幻觉高发区（往空格里补课/把已有课再补一遍），
+            //    合并前做确定性防线：同格重复、或与已有课同天同时段且周次重叠 → 丢弃并告警。
+            JsonNode additions = root.path("additions");
+            if (additions.isArray() && additions.size() > 0) {
+                for (JsonNode add : additions) {
+                    CourseEntity c = parseSingleCourse(add);
+                    if (c == null) {
+                        log.warn("课表校验：新增课程缺必要字段，丢弃 | node={}", add);
+                        continue;
+                    }
+                    // 同格重复：同名 + 同天 + 时段重叠（课表一格至多一门课）
+                    boolean duplicate = result.stream().anyMatch(existing ->
+                            existing.getCourseName().equals(c.getCourseName())
+                                    && overlappingPeriods(existing, c));
+                    if (duplicate) {
+                        log.warn("课表校验：新增课程与现有课程同格重复，丢弃 | course={} | {} {}节",
+                                c.getCourseName(), c.getDayDisplay(), c.getPeriodDisplay());
+                        continue;
+                    }
+                    // 时间冲突：不同名但同天同时段，且存在同时活跃的周次（含单双周判定）。
+                    // 合法的单双周同格课程（ODD/EVEN 互不重叠）不会误伤。
+                    boolean conflict = result.stream().anyMatch(existing ->
+                            overlappingPeriods(existing, c) && overlappingWeeks(existing, c));
+                    if (conflict) {
+                        log.warn("课表校验：新增课程与现有课程时间冲突，疑似幻觉补录，丢弃 | course={} | {} {}节",
+                                c.getCourseName(), c.getDayDisplay(), c.getPeriodDisplay());
+                        continue;
+                    }
+                    log.info("课表校验：补录课程 | {}", c.getCourseName());
+                    result.add(c);
+                }
+            }
+
+            return result;
+        } catch (Exception e) {
+            log.error("课表校验结果解析失败 | text={}", truncate(verifyJson, 200), e);
+            return null;
+        }
+    }
+
+    /**
+     * 将校验 correction 节点的字段局部覆盖到原课程。
+     *
+     * <p>只更新 JSON 中出现且合法的字段；correction 只列出需改的字段，
+     * 未出现的字段保持原值。若覆盖后缺星期/节次（无法定位），返回 null。</p>
+     */
+    private CourseEntity mergeCorrection(CourseEntity original, JsonNode corr) {
+        String name = original.getCourseName();
+        String teacher = original.getTeacher();
+        int dayOfWeek = original.getDayOfWeek();
+        int startPeriod = original.getStartPeriod();
+        int endPeriod = original.getEndPeriod();
+        String classroom = original.getClassroom();
+        int startWeek = original.getStartWeek();
+        int endWeek = original.getEndWeek();
+        String weekType = original.getWeekType();
+
+        String nameField = getTextField(corr, "course_name");
+        if (nameField != null) name = nameField;
+        String teacherField = getTextField(corr, "teacher");
+        if (teacherField != null) teacher = teacherField;
+        String classroomField = getTextField(corr, "classroom", "class_room", "room", "教室");
+        if (classroomField != null) classroom = classroomField;
+
+        int d = parseIntField(corr, "day_of_week", "dayOfWeek", "weekday", "星期");
+        if (d >= 0) dayOfWeek = d;
+        int s = parseIntField(corr, "start_period", "startPeriod", "start", "开始节次");
+        if (s >= 0) startPeriod = s;
+        int e = parseIntField(corr, "end_period", "endPeriod", "end", "结束节次");
+        if (e >= 0) endPeriod = e;
+        int sw = parseIntField(corr, "start_week", "startWeek", "week_start", "开始周");
+        if (sw >= 0) startWeek = sw;
+        int ew = parseIntField(corr, "end_week", "endWeek", "week_end", "结束周");
+        if (ew >= 0) endWeek = ew;
+
+        String wt = getTextField(corr, "week_type", "weekType", "单双周");
+        if (wt != null) weekType = parseWeekType(wt);
+
+        // 与 parseSingleCourse 相同的严格定位规则：缺星期/节次 → 无法定位
+        if (dayOfWeek < 1 || dayOfWeek > 7 || startPeriod < 1) {
+            return null;
+        }
+        if (endPeriod < startPeriod) endPeriod = startPeriod;
+        if (startWeek < 1) startWeek = 1;
+        if (endWeek < startWeek) endWeek = startWeek;
+
+        CourseEntity updated = new CourseEntity(original.getUserId(), name, teacher,
+                dayOfWeek, startPeriod, endPeriod, classroom, startWeek, endWeek, weekType);
+        updated.setId(original.getId());
+        return updated;
+    }
+
+    /**
+     * 两门课是否占用了相同的 (星期, 节次区间)
+     */
+    private boolean overlappingPeriods(CourseEntity a, CourseEntity b) {
+        return a.getDayOfWeek() == b.getDayOfWeek()
+                && a.getStartPeriod() <= b.getEndPeriod()
+                && b.getStartPeriod() <= a.getEndPeriod();
+    }
+
+    /**
+     * 两门课是否存在同时活跃的周次（考虑开始/结束周与单双周）
+     */
+    private boolean overlappingWeeks(CourseEntity a, CourseEntity b) {
+        int start = Math.max(a.getStartWeek(), b.getStartWeek());
+        int end = Math.min(a.getEndWeek(), b.getEndWeek());
+        if (start > end) return false;
+        for (int w = start; w <= end; w++) {
+            if (a.isActiveInWeek(w) && b.isActiveInWeek(w)) return true;
+        }
+        return false;
+    }
+
+    /**
      * 从 Excel 字节数据解析课表
      *
      * <p>支持两种格式：
@@ -181,8 +382,14 @@ public class CourseParser {
             }
         }
 
-        if (dayOfWeek < 1 || dayOfWeek > 7) dayOfWeek = 1;
-        if (startPeriod < 1) startPeriod = 1;
+        // 缺星期或节次：课程无法在网格中定位，丢弃并告警。
+        // 不再静默默认成"周一第1节"——历史上 Agent 只传课程名时，全部课程因此退化成同一天同一节。
+        if (dayOfWeek < 1 || dayOfWeek > 7 || startPeriod < 1) {
+            log.warn("课程缺少星期/节次信息，已丢弃 | course={} | dayOfWeek={} | startPeriod={} | node={}",
+                    name, dayOfWeek, startPeriod, node);
+            return null;
+        }
+
         if (endPeriod < startPeriod) endPeriod = startPeriod;
         if (startWeek < 1) startWeek = 1;
         if (endWeek < startWeek) endWeek = startWeek;

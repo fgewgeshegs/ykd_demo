@@ -59,7 +59,26 @@ public class CourseImportHandler {
             + "注意：▲标记表示课程名称所在行。";
 
     private static final String COURSE_IMAGE_PROMPT =
-            "你是一位课表识别专家。请从这张课表图片中提取所有课程信息。\n"
+            "你是一位课表结构解析器。请从这张课表图片中提取所有课程信息。\n"
+            + "课表本质是【星期 × 节次】的二维网格，每个格子最多容纳一门课。\n"
+            + "\n"
+            + "【工作流程】\n"
+            + "1. 先在脑内重建完整网格：最左列是节次（第1节、第2节...），最上一行是星期。\n"
+            + "2. 逐格（每星期 × 每节次）判定该格是否有课，然后输出。\n"
+            + "3. 严格按图片里网格的结构走，禁止按文字出现的先后顺序流水账式输出。\n"
+            + "\n"
+            + "【铁律】\n"
+            + "1. 空白格子不输出任何课程。禁止把已识别的课程复制、臆造、补到其他格子。\n"
+            + "2. 禁止在空白格/其他课所在的格子里凭空造一门课（如把「高等数学」复制到周三1-2）。\n"
+            + "3. 输出完成后自检：若两个对象占用相同的(day_of_week, start_period, end_period)，\n"
+            + "   则必然有一处是错的，删除多余的那个，只保留图片中真实存在的一门。\n"
+            + "4. 一门课若跨连续多节（如第3-5节），start_period=3、end_period=5，禁止截断成3-4。\n"
+            + "5. 单元格内形如「周一周三4,5节(第1-17周)(单周)」的文字是排课信息，必须解析进\n"
+            + "   day_of_week / start_period / end_period / start_week / end_week / week_type 字段，\n"
+            + "   禁止整串塞入 classroom 或 teacher。\n"
+            + "6. 节次以课表最左列「第N节」表头为准，禁止默认从1递增。\n"
+            + "   例：最左列表头是「第10节」，则 start_period=10，禁止写成11。\n"
+            + "\n"
             + "请严格按照以下 JSON 数组格式返回，不要添加额外说明：\n"
             + "[\n"
             + "  {\n"
@@ -94,6 +113,38 @@ public class CourseImportHandler {
             + "  如果课表文本中出现(单)、单周，则填 ODD\n"
             + "  如果出现(双)、双周，则填 EVEN\n"
             + "  只有确认每周都有课才填 ALL\n";
+
+    private static final String COURSE_VERIFY_PROMPT =
+            "你是课表校验器。下面是「第一轮」从同一张课表图片中提取出的课程清单，"
+            + "请逐条与图片核对，找出清单与图片不符之处，只报告差异。\n"
+            + "\n"
+            + "【核对规则】（以图片为准）\n"
+            + "1. 图片左列「第N节」表头决定真实节次范围；列标题决定星期。\n"
+            + "2. 清单里出现在空白格子中的课程必须加入 deletions（第一轮常把空白格补成幻觉课程）。\n"
+            + "3. 跨多行合并单元格（如第10-12节一整块）的课程，start_period/end_period 必须覆盖整块，"
+            + "禁止偏移或只取其中一段。\n"
+            + "4. 星期/周次/单双周不对的，用 corrections 改正。\n"
+            + "5. 图片中存在但清单里没有的课程，加入 additions。\n"
+            + "6. 核对无误的条目不要出现在任何数组里；全部无误则只返回 {\"ok\":true}。\n"
+            + "\n"
+            + "请严格返回如下 JSON 对象，不要添加任何说明文字：\n"
+            + "{\n"
+            + "  \"deletions\": [清单索引...],\n"
+            + "  \"corrections\": [\n"
+            + "    {\"index\": 清单索引, \"course_name\":\"...\", \"teacher\":\"...\", \"day_of_week\":n,"
+            + " \"start_period\":n, \"end_period\":n, \"classroom\":\"...\", \"start_week\":n, \"end_week\":n,"
+            + " \"week_type\":\"ALL|ODD|EVEN\"}\n"
+            + "  ],\n"
+            + "  \"additions\": [\n"
+            + "    {\"course_name\":\"...\", \"teacher\":\"...\", \"day_of_week\":n,"
+            + " \"start_period\":n, \"end_period\":n, \"classroom\":\"...\", \"start_week\":n, \"end_week\":n,"
+            + " \"week_type\":\"ALL|ODD|EVEN\"}\n"
+            + "  ]\n"
+            + "}\n"
+            + "字段说明：\n"
+            + "- corrections 是覆盖式，只列出需要改的字段即可，其余保持原值。\n"
+            + "- day_of_week: 星期一=1, 星期二=2, ..., 星期日=7。\n"
+            + "- week_type: 图片中出现(单)、单周填 ODD；(双)、双周填 EVEN；每周都有才填 ALL。\n";
 
     private static final String COURSE_DOC_PROMPT =
             "你是一位课表识别专家。以下是从课表文档中提取的文本内容，"
@@ -184,9 +235,15 @@ public class CourseImportHandler {
         String userId = message.getUserId();
         log.info("课表导入：处理图片 | userId={}", userId);
 
-        if (importStateManager.getPhase(userId) != CourseImportStateManager.Phase.WAITING_FILE) {
+        CourseImportStateManager.Phase phase = importStateManager.getPhase(userId);
+        if (phase == CourseImportStateManager.Phase.NONE) {
             log.warn("用户未处于课表导入状态，跳过图片处理 | userId={}", userId);
             return null;
+        }
+        // 导入中途（等学期确认/等确认）收到新图片 = 重新开始导入，重置为等文件
+        if (phase != CourseImportStateManager.Phase.WAITING_FILE) {
+            log.info("导入中途收到新图片，重置为等待文件 | userId={} | phase={}", userId, phase);
+            importStateManager.setWaitingFile(userId);
         }
 
         String imageDataUrl = downloadImageAsDataUrl(message);
@@ -201,13 +258,17 @@ public class CourseImportHandler {
             return WechatReply.text("无法识别课表图片，请确认图片清晰包含课程信息，或尝试发送 Excel 文件。");
         }
 
-        log.info("课表导入：视觉分析完成 | userId={} | resultLen={}", userId, visionResult.length());
+        log.info("课表导入：视觉分析完成 | userId={} | resultLen={} | raw={}",
+                userId, visionResult.length(), visionResult);
 
         List<CourseEntity> courses = courseParser.parseFromJson(visionResult);
         if (courses.isEmpty()) {
             log.warn("课表导入：视觉结果无法解析为课程 | userId={}", userId);
             return WechatReply.text("从图片中未能识别出有效的课程信息，请确认图片为课表截图，或尝试发送 Excel 文件。");
         }
+
+        // 方案5 第二轮校验：第一轮结果整理成清单，连同原图让模型逐条「挑错」
+        courses = verifyCoursesWithImage(imageDataUrl, courses, userId);
 
         importStateManager.setPendingCourses(userId, courses);
 
@@ -229,9 +290,15 @@ public class CourseImportHandler {
 
         log.info("课表导入：处理文件 | userId={} | fileName={}", userId, fileName);
 
-        if (importStateManager.getPhase(userId) != CourseImportStateManager.Phase.WAITING_FILE) {
+        CourseImportStateManager.Phase phase = importStateManager.getPhase(userId);
+        if (phase == CourseImportStateManager.Phase.NONE) {
             log.warn("用户未处于课表导入状态，跳过文件处理 | userId={}", userId);
             return null;
+        }
+        // 导入中途收到新文件 = 重新开始导入，重置为等文件
+        if (phase != CourseImportStateManager.Phase.WAITING_FILE) {
+            log.info("导入中途收到新文件，重置为等待文件 | userId={} | phase={}", userId, phase);
+            importStateManager.setWaitingFile(userId);
         }
 
         byte[] fileBytes = downloadFile(message);
@@ -287,10 +354,16 @@ public class CourseImportHandler {
             return WechatReply.text("无法识别课表图片，请确认图片清晰包含课程信息。");
         }
 
+        log.info("课表导入：图片文件视觉分析完成 | userId={} | resultLen={} | raw={}",
+                userId, visionResult.length(), visionResult);
+
         List<CourseEntity> courses = courseParser.parseFromJson(visionResult);
         if (courses.isEmpty()) {
             return WechatReply.text("从图片中未能识别出有效的课程信息。");
         }
+
+        // 方案5 第二轮校验：第一轮结果整理成清单，连同原图让模型逐条「挑错」
+        courses = verifyCoursesWithImage(dataUrl, courses, userId);
 
         importStateManager.setPendingCourses(userId, courses);
 
@@ -302,6 +375,71 @@ public class CourseImportHandler {
         contextStore.append("assistant", buildPreviewText(userId, courses));
 
         return WechatReply.text(buildPreview(userId, courses));
+    }
+
+    // ==================== 方案5：两轮校验（提取 → 对账） ====================
+
+    /**
+     * 第二轮校验：把第一轮提取的课程整理成清单，连同原图再喂视觉模型逐条「挑错」。
+     *
+     * <p>第一轮开放提取容易出错（空白格幻觉补全、合并单元格节次偏移/截断、漏课）。
+     * 校验轮是「给具体条目对照图片挑错」任务，成功率远高于从零重数一遍。
+     * 校验采用 temperature=0 提高确定性；任何异常（调用失败/返回空/结果无法解析）
+     * 都降级回第一轮结果，不阻塞导入流程。</p>
+     *
+     * @param imageDataUrl 原始课表图片（data URL）
+     * @param firstPass    第一轮提取结果
+     * @param userId       用户标识（仅用于日志）
+     * @return 校验合并后的课程列表；异常时原样返回 firstPass
+     */
+    private List<CourseEntity> verifyCoursesWithImage(String imageDataUrl, List<CourseEntity> firstPass, String userId) {
+        if (firstPass == null || firstPass.isEmpty()) {
+            return firstPass;
+        }
+        try {
+            String checklist = buildVerifyChecklist(firstPass);
+            String verifyResult = visionService.analyze(imageDataUrl, COURSE_VERIFY_PROMPT + "\n\n" + checklist, 0.0);
+            if (verifyResult == null || verifyResult.isBlank()) {
+                log.warn("课表导入：校验轮返回空，降级使用第一轮 | userId={}", userId);
+                return firstPass;
+            }
+
+            log.info("课表导入：校验轮完成 | userId={} | resultLen={} | raw={}",
+                    userId, verifyResult.length(), verifyResult);
+
+            List<CourseEntity> verified = courseParser.applyVisionCorrections(firstPass, verifyResult);
+            if (verified == null) {
+                log.warn("课表导入：校验结果无法解析，降级使用第一轮 | userId={}", userId);
+                return firstPass;
+            }
+            if (verified.size() != firstPass.size()) {
+                log.info("课表导入：校验调整课程数量 | userId={} | before={} | after={}",
+                        userId, firstPass.size(), verified.size());
+            }
+            return verified;
+        } catch (Exception e) {
+            log.error("课表导入：校验轮异常，降级使用第一轮 | userId={}", userId, e);
+            return firstPass;
+        }
+    }
+
+    /**
+     * 构建待校验清单：带索引的课程明细，供校验轮逐条对照图片挑错。
+     * <p>索引与 applyVisionCorrections 的 deletions/corrections.index 一一对应。</p>
+     */
+    private String buildVerifyChecklist(List<CourseEntity> courses) {
+        StringBuilder sb = new StringBuilder("【待核对清单】（索引 + 课程信息，索引从0开始）：\n");
+        for (int i = 0; i < courses.size(); i++) {
+            CourseEntity c = courses.get(i);
+            sb.append(i).append(". ").append(c.getCourseName());
+            sb.append(" | ").append(c.getDayDisplay()).append(" ");
+            sb.append(c.getStartPeriod()).append("-").append(c.getEndPeriod()).append("节");
+            sb.append(" | ").append(c.getWeekDisplay());
+            if (!c.getClassroom().isBlank()) sb.append(" | 教室:").append(c.getClassroom());
+            if (!c.getTeacher().isBlank()) sb.append(" | 教师:").append(c.getTeacher());
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
     private WechatReply handleDocumentFile(String userId, byte[] fileBytes, String fileName) {
@@ -477,6 +615,13 @@ public class CourseImportHandler {
                     + "第1周：" + pendingSemester.getStartDateDisplay() + "\n\n";
         }
 
+        // 内部冲突检测（同天同时段多课 → 图片/文件识别可能拆错/幻觉）
+        List<String> internalConflicts = detectInternalDayConflicts(courses);
+        if (!internalConflicts.isEmpty()) {
+            log.warn("课表导入：识别结果存在同天同时段冲突 | userId={} | conflicts={}",
+                    userId, internalConflicts);
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("📋 已识别出以下 ").append(courses.size()).append(" 门课程").append(weekInfo).append("：\n\n");
         if (!semesterInfo.isEmpty()) {
@@ -493,6 +638,14 @@ public class CourseImportHandler {
             if (!c.getTeacher().isBlank()) sb.append(" ").append(c.getTeacher());
             sb.append(" (").append(c.getWeekDisplay()).append(")");
             sb.append("\n");
+        }
+
+        if (!internalConflicts.isEmpty()) {
+            sb.append("\n⚠️ 检测到 ").append(internalConflicts.size()).append(" 处时间冲突，可能是识别错误：\n");
+            for (String conflict : internalConflicts) {
+                sb.append("   · ").append(conflict).append("\n");
+            }
+            sb.append("建议仔细核对后再「确认」，或告诉我需要修正的课程。\n");
         }
 
         sb.append("\n✅ 回复「确认」保存课表，回复「取消」丢弃。");
@@ -517,6 +670,31 @@ public class CourseImportHandler {
     private String buildPreviewText(String userId, List<CourseEntity> courses) {
         return "已识别 " + courses.size() + " 门课程等待确认导入："
                 + courses.stream().map(CourseEntity::getCourseName).reduce((a, b) -> a + "、" + b).orElse("");
+    }
+
+    /**
+     * 检测新解析的课程列表内部是否存在同天同时段冲突
+     *
+     * <p>同一用户同一 day_of_week 的同一时间段出现多门课程 → day_of_week / 节次很可能分配错误
+     * （图片识别的图案补全幻觉、或拆分错误）。只记录并展示 warning，不修改数据。</p>
+     */
+    private List<String> detectInternalDayConflicts(List<CourseEntity> courses) {
+        List<String> conflicts = new ArrayList<>();
+        for (int i = 0; i < courses.size(); i++) {
+            for (int j = i + 1; j < courses.size(); j++) {
+                CourseEntity a = courses.get(i);
+                CourseEntity b = courses.get(j);
+                if (a.getDayOfWeek() == b.getDayOfWeek()
+                        && a.getStartPeriod() <= b.getEndPeriod()
+                        && b.getStartPeriod() <= a.getEndPeriod()) {
+                    String desc = String.format("%s %s节：「%s」与「%s」冲突",
+                            a.getDayDisplay(), a.getPeriodDisplay(),
+                            a.getCourseName(), b.getCourseName());
+                    conflicts.add(desc);
+                }
+            }
+        }
+        return conflicts;
     }
 
     /**

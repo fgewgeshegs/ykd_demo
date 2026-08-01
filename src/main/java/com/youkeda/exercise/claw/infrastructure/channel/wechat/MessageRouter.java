@@ -62,8 +62,9 @@ public class MessageRouter {
         // 图片消息：检查课表导入状态
         if (message.getType() == MessageType.IMAGE) {
             String userId = message.getUserId();
-            // 检查是否处于课表导入等待文件状态
-            if (courseImportStateManager.getPhase(userId) == CourseImportStateManager.Phase.WAITING_FILE) {
+            // 处于任一导入阶段（等文件/等学期确认/等确认）的图片都按课表导入处理，
+            // 避免用户按提示重发图片时被路由到通用 VisionHandler
+            if (isImportPhase(courseImportStateManager.getPhase(userId))) {
                 log.info("路由：图片消息 → CourseImportHandler（课表导入）| from={}", userId);
                 WechatReply reply = courseImportHandler.handleImage(message);
                 if (reply != null && reply.hasContent()) {
@@ -122,8 +123,8 @@ public class MessageRouter {
         // 文件消息：检查课表导入状态
         if (message.getType() == MessageType.FILE) {
             String userId = message.getUserId();
-            // 检查是否处于课表导入等待文件状态
-            if (courseImportStateManager.getPhase(userId) == CourseImportStateManager.Phase.WAITING_FILE) {
+            // 处于任一导入阶段的文件都按课表导入处理
+            if (isImportPhase(courseImportStateManager.getPhase(userId))) {
                 log.info("路由：文件消息 → CourseImportHandler（课表导入）| from={} | fileName={}",
                         userId, message.getFileName());
                 WechatReply reply = courseImportHandler.handleFile(message);
@@ -149,6 +150,16 @@ public class MessageRouter {
         // 其他类型：兜底
         log.info("路由：未知消息类型 type={} | from={}", message.getType(), message.getUserId());
         return fallbackHandler.handle(message);
+    }
+
+    /**
+     * 是否为课表导入进行中的阶段
+     * <p>覆盖 等文件 / 等学期确认 / 等确认 三个导入阶段；NONE 表示无进行中的导入。</p>
+     */
+    private boolean isImportPhase(CourseImportStateManager.Phase phase) {
+        return phase == CourseImportStateManager.Phase.WAITING_FILE
+                || phase == CourseImportStateManager.Phase.WAITING_SEMESTER
+                || phase == CourseImportStateManager.Phase.WAITING_CONFIRM;
     }
 
     /**

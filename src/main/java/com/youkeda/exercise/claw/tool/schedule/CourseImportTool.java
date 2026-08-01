@@ -264,18 +264,30 @@ public class CourseImportTool implements Tool {
             log.debug("直接解析课表（无前置 import 状态）| userId={}", userId);
         }
 
-        JsonNode coursesNode = args.get("courses");
-        if (coursesNode == null || !coursesNode.isArray() || coursesNode.isEmpty()) {
-            return "{\"action\":\"parse\",\"status\":\"error\","
-                    + "\"message\":\"请从对话上下文中的文件/图片分析结果里提取课程信息后重新调用。\"}";
-        }
+        // 优先使用图片/文件路径已解析并暂存的完整结构化课程（含星期/节次/周次），
+        // 避免 Agent 从对话上下文裸重建时丢失结构（历史上曾全部退化成"周一第1节"）。
+        List<CourseEntity> pending = importStateManager.getPendingCourses(userId);
+        String jsonStr;
+        List<CourseEntity> courses;
+        if (!pending.isEmpty()) {
+            courses = pending;
+            jsonStr = null;
+            log.info("parse 使用图片/文件解析的待确认课程 | userId={} | count={}", userId, pending.size());
+        } else {
+            JsonNode coursesNode = args.get("courses");
+            if (coursesNode == null || !coursesNode.isArray() || coursesNode.isEmpty()) {
+                return "{\"action\":\"parse\",\"status\":\"error\","
+                        + "\"message\":\"请从对话上下文中的文件/图片分析结果里提取课程信息后重新调用。\"}";
+            }
 
-        String jsonStr = coursesNode.toString();
-        List<CourseEntity> courses = courseService.parseOnly(userId, jsonStr);
+            jsonStr = coursesNode.toString();
+            courses = courseService.parseOnly(userId, jsonStr);
 
-        if (courses.isEmpty()) {
-            return "{\"action\":\"parse\",\"status\":\"error\","
-                    + "\"message\":\"无法从提供的数据中识别出有效的课程信息，请检查格式或重新上传课表。\"}";
+            if (courses.isEmpty()) {
+                return "{\"action\":\"parse\",\"status\":\"error\","
+                        + "\"message\":\"无法从提供的数据中识别出有效的课程信息。请重新上传课表图片/文件；"
+                        + "若使用文字导入，每条课程必须包含星期(day_of_week)和节次(start_period/end_period)。\"}";
+            }
         }
 
         // 内部冲突检测：检查新解析出的课程间是否有同天同时段冲突

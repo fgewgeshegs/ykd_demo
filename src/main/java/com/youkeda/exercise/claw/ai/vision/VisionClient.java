@@ -61,8 +61,20 @@ public class VisionClient {
      * @return 图片分析结果，调用失败时返回 null
      */
     public String analyzeImage(String imageUrl, String text) {
+        return analyzeImage(imageUrl, text, null);
+    }
+
+    /**
+     * 分析图片并返回描述（可指定采样温度）
+     *
+     * @param imageUrl    图片 URL
+     * @param text        用户对图片的提问（可选，为空则使用默认描述提示）
+     * @param temperature 采样温度，null 时不写入请求体（保持默认）；结构化对账任务建议传 0 提高确定性
+     * @return 图片分析结果，调用失败时返回 null
+     */
+    public String analyzeImage(String imageUrl, String text, Double temperature) {
         try {
-            String requestBody = buildRequestBody(imageUrl, text);
+            String requestBody = buildRequestBody(imageUrl, text, temperature);
             log.info("调用视觉模型 model={}, imageUrlLen={}", properties.getModel(), imageUrl != null ? imageUrl.length() : 0);
 
             String url = properties.getBaseUrl() + "/chat/completions";
@@ -109,9 +121,12 @@ public class VisionClient {
      *   ]
      * }
      */
-    private String buildRequestBody(String imageUrl, String text) throws Exception {
+    private String buildRequestBody(String imageUrl, String text, Double temperature) throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", properties.getModel());
+        if (temperature != null) {
+            root.put("temperature", temperature);
+        }
 
         ArrayNode messages = root.putArray("messages");
 

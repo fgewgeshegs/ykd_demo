@@ -29,11 +29,23 @@ public class VisionService {
      * @return 分析结果，失败时返回 null
      */
     public String analyze(String imageUrl, String question) {
+        return analyze(imageUrl, question, null);
+    }
+
+    /**
+     * 分析图片内容（可指定采样温度）
+     *
+     * @param imageUrl    图片 URL（支持 HTTP URL 或 base64 data URL）
+     * @param question    用户对图片的提问（可选，为 null 时使用默认描述提示）
+     * @param temperature 采样温度，null 表示不指定（走模型默认）；对账/校验类任务建议传 0
+     * @return 分析结果，失败时返回 null
+     */
+    public String analyze(String imageUrl, String question, Double temperature) {
         log.info("VisionService 开始分析 | imageUrlLen={} | question={}",
                 imageUrl != null ? imageUrl.length() : 0, question);
 
         try {
-            String reply = visionClient.analyzeImage(imageUrl, question);
+            String reply = visionClient.analyzeImage(imageUrl, question, temperature);
             if (reply == null || reply.isEmpty()) {
                 log.warn("VisionService 分析结果为空");
                 return null;
