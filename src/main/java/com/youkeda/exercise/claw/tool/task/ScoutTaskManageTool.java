@@ -5,10 +5,9 @@ import com.youkeda.exercise.claw.feature.scout.task.ScoutTask;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -16,25 +15,17 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
-public class ScoutTaskManageTool implements Tool {
+public class ScoutTaskManageTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(ScoutTaskManageTool.class);
 
-    private final ToolRegistry registry;
     private final ScoutTaskManager taskManager;
-    private final ObjectMapper objectMapper;
 
     public ScoutTaskManageTool(ToolRegistry registry,
                                    ScoutTaskManager taskManager,
                                    ObjectMapper objectMapper) {
-        this.registry = registry;
+        super(registry, objectMapper);
         this.taskManager = taskManager;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        registry.register(this);
     }
 
     @Override
@@ -49,18 +40,15 @@ public class ScoutTaskManageTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-        ObjectNode properties = params.putObject("properties");
-        ObjectNode action = properties.putObject("action");
+        ObjectNode action = objectMapper.createObjectNode();
         action.put("type", "string");
         action.putArray("enum").add("status").add("cancel").add("list").add("retry");
         action.put("description", "操作类型");
-        ObjectNode taskId = properties.putObject("taskId");
-        taskId.put("type", "string");
-        taskId.put("description", "任务ID（status/cancel/retry时需要）");
-        params.putArray("required").add("action");
-        return params;
+
+        return schema()
+                .raw("action", action, true)
+                .string("taskId", "任务ID（status/cancel/retry时需要）", false)
+                .build();
     }
 
     @Override
@@ -109,8 +97,4 @@ public class ScoutTaskManageTool implements Tool {
         return "{\"tasks\":" + tasksJson + "}";
     }
 
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, null);
-    }
 }

@@ -4,12 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.file.FileService;
 import com.youkeda.exercise.claw.domain.file.FileMetadata;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -27,26 +26,17 @@ import java.util.List;
  * <p>纯文本入、JSON 字符串出，不走 pending-consumer 模式。
  */
 @Component
-public class FileListTool implements Tool {
+public class FileListTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(FileListTool.class);
 
     private final FileService fileService;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     public FileListTool(FileService fileService,
                             ToolRegistry functionRegistry,
                             ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.fileService = fileService;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("FileListTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -62,25 +52,10 @@ public class FileListTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode page = properties.putObject("page");
-        page.put("type", "integer");
-        page.put("description", "页码（从 1 开始，默认 1）");
-
-        ObjectNode size = properties.putObject("size");
-        size.put("type", "integer");
-        size.put("description", "每页数量（默认 20，最大 100）");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文\"}";
+        return schema()
+                .integer("page", "页码（从 1 开始，默认 1）", false)
+                .integer("size", "每页数量（默认 20，最大 100）", false)
+                .build();
     }
 
     @Override

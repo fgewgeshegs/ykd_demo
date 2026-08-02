@@ -35,17 +35,14 @@ public class NotificationService {
     }
 
     /**
-     * 普通单条推送入口，供校园提醒等调用方使用。
-     */
-    public void notify(List<Recommendation> recommendations) {
-        deliver(recommendations, false);
-    }
-
-    /**
      * 信息猎手专用入口：先发送推荐明细，再发送本轮综合总结。
+     *
+     * <p>批次 3：原 {@code notify(List<Recommendation>)}（校园/番剧单条直推入口）已删除——
+     * campus/anime 改走 {@code NotificationEventPublisher} 统一事件总线，
+     * 本服务回归信息猎手报告专属（格式化带「🔍 信息猎手」报告头尾）。
      */
     public void notifyWithSummary(List<Recommendation> recommendations) {
-        deliver(recommendations, true);
+        deliver(recommendations);
     }
 
     /** 后台信息猎手真正失败时，只发送简短且可操作的提示。 */
@@ -65,7 +62,7 @@ public class NotificationService {
         }
     }
 
-    private void deliver(List<Recommendation> recommendations, boolean sendSummary) {
+    private void deliver(List<Recommendation> recommendations) {
         if (recommendations == null || recommendations.isEmpty()) {
             log.info("无推荐结果，跳过推送");
             return;
@@ -87,12 +84,10 @@ public class NotificationService {
                 }
             }
 
-            if (sendSummary) {
-                String summary = summaryService.summarize(recommendations);
-                if (summary != null && !summary.isBlank()
-                        && !wechatClient.sendTextMessage(ownerUserId, summary)) {
-                    log.error("推荐明细已发送，但综合总结发送失败");
-                }
+            String summary = summaryService.summarize(recommendations);
+            if (summary != null && !summary.isBlank()
+                    && !wechatClient.sendTextMessage(ownerUserId, summary)) {
+                log.error("推荐明细已发送，但综合总结发送失败");
             }
             log.info("推荐推送成功 | count={} | chunks={}",
                     recommendations.size(), reportChunks.size());

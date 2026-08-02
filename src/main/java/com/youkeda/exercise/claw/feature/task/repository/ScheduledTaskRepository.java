@@ -41,7 +41,8 @@ public class ScheduledTaskRepository {
                 next_execute_time TEXT NOT NULL,
                 status            TEXT NOT NULL DEFAULT 'ACTIVE',
                 task_type         TEXT NOT NULL DEFAULT 'REMINDER',
-                created_time      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+                created_time      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                failure_count     INTEGER DEFAULT 0
             )
             """;
 
@@ -49,6 +50,10 @@ public class ScheduledTaskRepository {
 
     private static final String ALTER_ADD_REPEAT_TYPE = """
             ALTER TABLE scheduled_task ADD COLUMN repeat_type TEXT NOT NULL DEFAULT 'ONCE'
+            """;
+
+    private static final String ALTER_ADD_FAILURE_COUNT = """
+            ALTER TABLE scheduled_task ADD COLUMN failure_count INTEGER DEFAULT 0
             """;
 
     private static final String ALTER_ADD_REPEAT_INTERVAL = """
@@ -79,15 +84,15 @@ public class ScheduledTaskRepository {
     private static final String INSERT_SQL = """
             INSERT INTO scheduled_task
                 (user_id, content, trigger_type, execute_time,
-                 repeat_type, repeat_interval, next_execute_time, status, task_type, created_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 repeat_type, repeat_interval, next_execute_time, status, task_type, created_time, failure_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     // ==================== 查询 ====================
 
     private static final String COLUMNS = """
             id, user_id, content, trigger_type, execute_time,
-            repeat_type, repeat_interval, next_execute_time, status, task_type, created_time
+            repeat_type, repeat_interval, next_execute_time, status, task_type, created_time, failure_count
             """;
 
     private static final String SELECT_PENDING_AND_DUE = """
@@ -130,6 +135,26 @@ public class ScheduledTaskRepository {
             UPDATE scheduled_task SET status = ? WHERE id = ? AND user_id = ?
             """;
 
+    private static final String UPDATE_FAILURE_COUNT = """
+            UPDATE scheduled_task SET failure_count = ? WHERE id = ?
+            """;
+
+    /** 原子 claim：ACTIVE → RUNNING，受影响行数=0 说明已被其他线程 claim（P0-2 防重复提交） */
+    private static final String CLAIM_FOR_EXECUTION = """
+            UPDATE scheduled_task SET status = 'RUNNING' WHERE id = ? AND status = 'ACTIVE'
+            """;
+
+    /** 启动时把残留 RUNNING 重置回 ACTIVE（进程可能执行中被杀） */
+    private static final String RESET_STALE_RUNNING = """
+            UPDATE scheduled_task SET status = 'ACTIVE' WHERE status = 'RUNNING'
+            """;
+
+    /** 执行后归位：RUNNING → ACTIVE。仅当任务仍处于 RUNNING 时生效，
+     *  避免覆盖执行期间被用户取消/标记 DONE 的任务（P0-2 执行态释放） */
+    private static final String RELEASE_FROM_RUNNING = """
+            UPDATE scheduled_task SET status = 'ACTIVE' WHERE id = ? AND status = 'RUNNING'
+            """;
+
     private static final String UPDATE_TASK = """
             UPDATE scheduled_task SET
                 content = ?,
@@ -161,6 +186,7 @@ public class ScheduledTaskRepository {
             try { stmt.execute(ALTER_ADD_REPEAT_INTERVAL); } catch (SQLException ignored) {}
             try { stmt.execute(ALTER_ADD_NEXT_EXECUTE_TIME); } catch (SQLException ignored) {}
             try { stmt.execute(ALTER_ADD_TASK_TYPE); } catch (SQLException ignored) {}
+            try { stmt.execute(ALTER_ADD_FAILURE_COUNT); } catch (SQLException ignored) {}
             // 迁移：旧记录的 next_execute_time 设为 execute_time
             try (Statement migrateStmt = conn.createStatement()) {
                 migrateStmt.execute(MIGRATE_NEXT_EXECUTE_TIME);
@@ -170,6 +196,23 @@ public class ScheduledTaskRepository {
         } catch (SQLException e) {
             log.error("定时任务表初始化失败 | path={}", dbPath, e);
             throw new RuntimeException("定时任务表初始化失败", e);
+        }
+        // 启动时恢复上次进程可能残留的 RUNNING 任务（执行中被杀导致状态未回收）
+        resetStaleRunning();
+    }
+
+    /**
+     * 启动时将残留 RUNNING 任务重置回 ACTIVE（进程执行中被杀时状态未回收）。
+     */
+    public void resetStaleRunning() {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(RESET_STALE_RUNNING)) {
+            int rows = ps.executeUpdate();
+            if (rows > 0) {
+                log.warn("检测到 {} 个残留 RUNNING 任务，已重置为 ACTIVE", rows);
+            }
+        } catch (SQLException e) {
+            log.error("重置残留 RUNNING 任务失败 | error={}", e.getMessage(), e);
         }
     }
 
@@ -191,6 +234,7 @@ public class ScheduledTaskRepository {
             ps.setString(8, task.getStatus());
             ps.setString(9, task.getTaskType());
             ps.setString(10, task.getCreatedTimeAsString());
+            ps.setInt(11, task.getFailureCount());
             ps.executeUpdate();
 
             try (ResultSet rs = ps.getGeneratedKeys()) {
@@ -210,6 +254,44 @@ public class ScheduledTaskRepository {
     }
 
     // ==================== 查询 ====================
+
+    /**
+     * 原子 claim：ACTIVE → RUNNING。
+     *
+     * @return true 表示本线程成功抢到该任务（其他人未 claim）；false 表示已被其他线程 claim，跳过
+     */
+    public boolean claimForExecution(Long id) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(CLAIM_FOR_EXECUTION)) {
+            ps.setLong(1, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            log.error("任务 claim 失败 | id={} | error={}", id, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * 执行后释放：RUNNING → ACTIVE。
+     *
+     * <p>仅当任务仍处于 RUNNING 时生效（P0-2 条件更新）：周期任务执行完必须归位 ACTIVE，
+     * 否则 {@link #findPendingAndDue()} 的 {@code status='ACTIVE'} 条件永远查不到它，
+     * 任务会停在 RUNNING 停摆。条件限定避免覆盖执行期间被取消/标记 DONE 的任务。
+     */
+    public boolean releaseFromRunning(Long id) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(RELEASE_FROM_RUNNING)) {
+            ps.setLong(1, id);
+            boolean released = ps.executeUpdate() > 0;
+            if (released) {
+                log.debug("周期任务执行完已归位 ACTIVE | id={}", id);
+            }
+            return released;
+        } catch (SQLException e) {
+            log.error("周期任务执行完归位失败 | id={} | error={}", id, e.getMessage(), e);
+            return false;
+        }
+    }
 
     /**
      * 查找到期任务（按 next_execute_time）
@@ -408,6 +490,42 @@ public class ScheduledTaskRepository {
         return updated;
     }
 
+    /**
+     * 周期任务失败：连续失败次数 +1（不改变状态，由调度器决定是否达阈值停止）。
+     *
+     * @return 递增后的失败次数；更新失败返回 -1
+     */
+    public int incrementFailureCount(Long id) {
+        ScheduledTask task = findById(id);
+        if (task == null) return -1;
+        int newCount = task.getFailureCount() + 1;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(UPDATE_FAILURE_COUNT)) {
+            ps.setInt(1, newCount);
+            ps.setLong(2, id);
+            ps.executeUpdate();
+            return newCount;
+        } catch (SQLException e) {
+            log.error("递增失败次数失败 | id={} | error={}", id, e.getMessage(), e);
+            return -1;
+        }
+    }
+
+    /**
+     * 周期任务执行成功后清零失败次数。
+     */
+    public boolean resetFailureCount(Long id) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(UPDATE_FAILURE_COUNT)) {
+            ps.setInt(1, 0);
+            ps.setLong(2, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            log.error("清零失败次数失败 | id={} | error={}", id, e.getMessage(), e);
+            return false;
+        }
+    }
+
     public boolean markCancelled(Long id) {
         return updateStatus(id, ScheduledTask.STATUS_CANCELLED);
     }
@@ -498,6 +616,9 @@ public class ScheduledTaskRepository {
         task.setNextExecuteTimeFromString(rs.getString("next_execute_time"));
 
         task.setStatus(rs.getString("status"));
+
+        task.setFailureCount(rs.getObject("failure_count") != null
+                ? rs.getInt("failure_count") : 0);
 
         String taskType = rs.getString("task_type");
         task.setTaskType(taskType != null ? taskType : ScheduledTask.TASK_TYPE_REMINDER);

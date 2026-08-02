@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.travel;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 
@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.feature.travel.TravelPlanService;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -20,25 +19,17 @@ import org.springframework.stereotype.Component;
  * 信息不足时返回 NEED_MORE_INFORMATION 和具体缺失字段，LLM 应据此追问。
  */
 @Component
-public class TravelCollectTool implements Tool {
+public class TravelCollectTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(TravelCollectTool.class);
 
     private final TravelPlanService planService;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry registry;
 
     public TravelCollectTool(TravelPlanService planService,
                                    ObjectMapper objectMapper,
                                    ToolRegistry registry) {
+        super(registry, objectMapper);
         this.planService = planService;
-        this.objectMapper = objectMapper;
-        this.registry = registry;
-    }
-
-    @PostConstruct
-    public void init() {
-        registry.register(this);
     }
 
     @Override
@@ -59,43 +50,30 @@ public class TravelCollectTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode root = objectMapper.createObjectNode();
-        root.put("type", "object");
-        ObjectNode p = root.putObject("properties");
-
-        property(p, "departure_city", "string", "出发城市或集合地点");
-        property(p, "participant_count", "integer", "参加人数，正整数");
-        property(p, "travel_date", "string", "出行日期或时间范围");
-        property(p, "duration", "string", "出行时长，如2天1晚");
-        property(p, "days", "integer", "标准化出行天数");
-        property(p, "nights", "integer", "住宿晚数");
-        property(p, "option_count", "integer", "候选方案数量；用户未指定时默认3个，明确指定时最多5个");
-        property(p, "budget_total", "number", "用户可接受的团队总预算上限，单位元；与人均预算至少提供一个");
-        property(p, "budget_per_person", "number", "用户可接受的人均预算上限，单位元；与总预算至少提供一个");
-        property(p, "budget_level", "string", "可选：经济型、标准型或品质型偏好，不能代替数值预算");
-        property(p, "max_overrun_amount", "number", "可选：用户提前允许的最大超预算金额");
-        property(p, "max_overrun_rate", "number", "可选：用户提前允许的最大超预算比例，百分数");
-        property(p, "destination", "string", "确定的目的地");
-        property(p, "travel_scope", "string", "目的地未定时可接受的范围");
-        property(p, "team_goal", "string", "出行目标");
-        property(p, "activity_preferences", "string", "活动偏好，如户外、室内、水上、文化体验");
-        property(p, "participant_profile", "string", "年龄、体力和人员构成");
-        property(p, "transport_preference", "string", "交通偏好");
-        property(p, "accommodation_preference", "string", "住宿要求");
-        property(p, "meal_preferences", "string", "餐饮、忌口或过敏");
-        property(p, "special_requirements", "string", "安全、无障碍、会议室、发票等要求");
-
-        ObjectNode priorities = p.putObject("priorities");
-        priorities.put("type", "array");
-        priorities.put("description", "用户明确提出的优先因素，按重要程度排列；未提出时不要填写");
-        priorities.putObject("items").put("type", "string");
-
-        return root;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, new ToolExecutionContext(""));
+        return schema()
+                .string("departure_city", "出发城市或集合地点", false)
+                .integer("participant_count", "参加人数，正整数", false)
+                .string("travel_date", "出行日期或时间范围", false)
+                .string("duration", "出行时长，如2天1晚", false)
+                .integer("days", "标准化出行天数", false)
+                .integer("nights", "住宿晚数", false)
+                .integer("option_count", "候选方案数量；用户未指定时默认3个，明确指定时最多5个", false)
+                .number("budget_total", "用户可接受的团队总预算上限，单位元；与人均预算至少提供一个", false)
+                .number("budget_per_person", "用户可接受的人均预算上限，单位元；与总预算至少提供一个", false)
+                .string("budget_level", "可选：经济型、标准型或品质型偏好，不能代替数值预算", false)
+                .number("max_overrun_amount", "可选：用户提前允许的最大超预算金额", false)
+                .number("max_overrun_rate", "可选：用户提前允许的最大超预算比例，百分数", false)
+                .string("destination", "确定的目的地", false)
+                .string("travel_scope", "目的地未定时可接受的范围", false)
+                .string("team_goal", "出行目标", false)
+                .string("activity_preferences", "活动偏好，如户外、室内、水上、文化体验", false)
+                .string("participant_profile", "年龄、体力和人员构成", false)
+                .string("transport_preference", "交通偏好", false)
+                .string("accommodation_preference", "住宿要求", false)
+                .string("meal_preferences", "餐饮、忌口或过敏", false)
+                .string("special_requirements", "安全、无障碍、会议室、发票等要求", false)
+                .arrayOfScalar("priorities", "用户明确提出的优先因素，按重要程度排列；未提出时不要填写", "string", false)
+                .build();
     }
 
     @Override
@@ -107,12 +85,6 @@ public class TravelCollectTool implements Tool {
             log.error("travel_collect 执行失败 | error={}", e.getMessage());
             return error("旅游需求收集失败: " + e.getMessage());
         }
-    }
-
-    private void property(ObjectNode properties, String name, String type, String description) {
-        ObjectNode node = properties.putObject(name);
-        node.put("type", type);
-        node.put("description", description);
     }
 
     private String error(String message) {

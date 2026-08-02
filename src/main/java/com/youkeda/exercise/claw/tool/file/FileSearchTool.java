@@ -4,12 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.file.FileService;
 import com.youkeda.exercise.claw.domain.file.FileMetadata;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -27,26 +26,17 @@ import java.util.List;
  * <p>返回文件列表含文件名、类型、大小、创建时间和摘要信息。
  */
 @Component
-public class FileSearchTool implements Tool {
+public class FileSearchTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(FileSearchTool.class);
 
     private final FileService fileService;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     public FileSearchTool(FileService fileService,
                               ToolRegistry functionRegistry,
                               ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.fileService = fileService;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("FileSearchTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -63,31 +53,11 @@ public class FileSearchTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode keyword = properties.putObject("keyword");
-        keyword.put("type", "string");
-        keyword.put("description", "搜索关键词，支持文件名模糊匹配，如「数据库」「Java」「笔记」");
-
-        ObjectNode fileType = properties.putObject("file_type");
-        fileType.put("type", "string");
-        fileType.put("description", "按文件类型过滤（可选），如 md / txt / pdf / docx");
-
-        ObjectNode limit = properties.putObject("limit");
-        limit.put("type", "integer");
-        limit.put("description", "返回数量限制（默认 10，最大 50）");
-
-        params.putArray("required").add("keyword");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文\"}";
+        return schema()
+                .string("keyword", "搜索关键词，支持文件名模糊匹配，如「数据库」「Java」「笔记」", true)
+                .string("file_type", "按文件类型过滤（可选），如 md / txt / pdf / docx", false)
+                .integer("limit", "返回数量限制（默认 10，最大 50）", false)
+                .build();
     }
 
     @Override

@@ -7,9 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -35,26 +34,17 @@ import org.springframework.stereotype.Component;
  * </pre>
  */
 @Component
-public class DidiRideTool implements Tool {
+public class DidiRideTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(DidiRideTool.class);
 
     private final DidiRideService rideService;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
 
     public DidiRideTool(DidiRideService rideService,
                             ObjectMapper objectMapper,
                             ToolRegistry functionRegistry) {
+        super(functionRegistry, objectMapper);
         this.rideService = rideService;
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("DidiRideTool 已注册到 ToolRegistry（didi_ride）");
     }
 
     @Override
@@ -72,76 +62,55 @@ public class DidiRideTool implements Tool {
                 + "3. query_order — 查询订单状态和司机信息。\n"
                 + "4. cancel_order — 取消已有订单。\n"
                 + "5. generate_link — 生成跳转滴滴 App/小程序的链接。\n"
-                + "坐标由系统自动处理，传入地址名称即可，用户无需提供经纬度。";
+                + "坐标由系统自动处理，传入地址名称即可，用户无需提供经纬度。\n"
+                + "重要：每次新打车必须使用用户当次明确提到的出发地和目的地，"
+                + "不得沿用对话中历史行程的地址；用户未说明时主动询问，而不是复用上次的地址。";
     }
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        // action 枚举
-        ObjectNode action = properties.putObject("action");
+        ObjectNode action = objectMapper.createObjectNode();
         action.put("type", "string");
         action.put("description", "操作类型：estimate（估价）、create_order（创建订单）、"
                 + "query_order（查询订单）、cancel_order（取消订单）、generate_link（生成跳转链接）");
-        ArrayNode actionEnum = action.putArray("enum");
-        actionEnum.add("estimate");
-        actionEnum.add("create_order");
-        actionEnum.add("query_order");
-        actionEnum.add("cancel_order");
-        actionEnum.add("generate_link");
+        action.putArray("enum")
+                .add("estimate").add("create_order")
+                .add("query_order").add("cancel_order")
+                .add("generate_link");
 
-        // 通用参数
-        ObjectNode originName = properties.putObject("origin_name");
-        originName.put("type", "string");
-        originName.put("description", "出发地名称，如：北京南站、天安门广场、我的当前位置。estimate 和 generate_link 时使用");
-
-        ObjectNode destinationName = properties.putObject("destination_name");
-        destinationName.put("type", "string");
-        destinationName.put("description", "目的地名称，如：首都国际机场、西湖。estimate 和 generate_link 时使用");
-
-        // 创建订单参数
-        ObjectNode productCategory = properties.putObject("product_category");
-        productCategory.put("type", "string");
-        productCategory.put("description", "车型标识，来自 estimate 返回的 product_category。"
-                + "如：快车、优享、专车、豪华车。create_order 时使用（如不传则默认第一项）");
-
-        // 查询/取消订单参数
-        ObjectNode orderId = properties.putObject("order_id");
-        orderId.put("type", "string");
-        orderId.put("description", "订单 ID。query_order 和 cancel_order 时使用，不传则自动使用最近订单");
-
-        // 叫车人手机号
-        ObjectNode callerCarPhone = properties.putObject("caller_car_phone");
-        callerCarPhone.put("type", "string");
-        callerCarPhone.put("description", "叫车人手机号（可选），create_order 时使用");
-
-        params.putArray("required").add("action");
-
-        return params;
+        return schema()
+                .raw("action", action, true)
+                .string("origin_name", "出发地名称，如：北京南站、天安门广场、我的当前位置。estimate 和 generate_link 时使用", false)
+                .string("destination_name", "目的地名称，如：首都国际机场、西湖。estimate 和 generate_link 时使用", false)
+                .string("product_category", "车型标识，来自 estimate 返回的 product_category。"
+                        + "如：快车、优享、专车、豪华车。create_order 时使用（如不传则默认第一项）", false)
+                .string("order_id", "订单 ID。query_order 和 cancel_order 时使用，不传则自动使用最近订单", false)
+                .string("caller_car_phone", "叫车人手机号（可选），create_order 时使用", false)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String action = args.path("action").asText("");
+            String userId = context.userId();
 
             if (action.isBlank()) {
                 return "{\"status\":\"error\",\"error\":\"缺少必填参数: action（操作类型）\"}";
             }
+            if (userId == null || userId.isBlank()) {
+                return "{\"status\":\"error\",\"error\":\"缺少用户ID\"}";
+            }
 
-            log.info("DidiRideTool 执行 | action={} | args={}", action, args);
+            log.info("DidiRideTool 执行 | action={} | userId={} | args={}", action, userId, args);
 
             return switch (action) {
-                case "estimate" -> rideService.estimate(args);
-                case "create_order" -> rideService.createOrder(args);
-                case "query_order" -> rideService.queryOrder(args);
-                case "cancel_order" -> rideService.cancelOrder(args);
-                case "generate_link" -> rideService.generateLink(args);
+                case "estimate" -> rideService.estimate(args, userId);
+                case "create_order" -> rideService.createOrder(args, userId);
+                case "query_order" -> rideService.queryOrder(args, userId);
+                case "cancel_order" -> rideService.cancelOrder(args, userId);
+                case "generate_link" -> rideService.generateLink(args, userId);
                 default ->
                     "{\"status\":\"error\",\"error\":\"不支持的 action: " + action
                             + "，支持的 action: estimate, create_order, query_order, cancel_order, generate_link\"}";
@@ -151,11 +120,5 @@ public class DidiRideTool implements Tool {
             log.error("DidiRideTool 执行失败 | args={} | error={}", argumentsJson, e.getMessage());
             return "{\"status\":\"error\",\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}";
         }
-    }
-
-    @Override
-    public String execute(String argumentsJson, ToolExecutionContext context) {
-        // Delegate to the simpler execute method since userId is no longer used
-        return execute(argumentsJson);
     }
 }

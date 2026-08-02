@@ -31,7 +31,6 @@ websearch.api.timeout=15
 # ============================================
 wechat.ilink.enabled=true
 wechat.ilink.poll-interval-ms=3000
-wechat.ilink.login-poll-interval-ms=3000
 # 机器人登录状态 + 用户数据持久化路径（默认 ./data/claw-bot.db）
 # bot.db-path=./data/claw-bot.db
 
@@ -211,3 +210,9 @@ scout.rss.feeds[11]=https://hnrss.org/frontpage
 # ============================================
 anime.enabled=true
 anime.seasonRecommendation.enabled=true
+
+# ============================================
+# Agent Runtime（Agent 执行）
+# ============================================
+# 工具调用循环最大轮次（默认 15）
+agent.max-rounds=15

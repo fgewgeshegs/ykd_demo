@@ -44,7 +44,7 @@ public class TransportService {
     private final ObjectMapper objectMapper;
 
     /** 解析 MapService.routePlanning 返回文本中的距离（米）和耗时（秒） */
-    private static final Pattern DISTANCE_PATTERN = Pattern.compile("约?(\\d+(?:\\.\\d+)?)公里");
+    private static final Pattern DISTANCE_PATTERN = Pattern.compile("约?(\\d+(?:\\.\\d+)?)(?:公里|千米|km)");
     private static final Pattern DURATION_HOUR_MIN_PATTERN = Pattern.compile("(\\d+)小时(\\d+)分钟");
     private static final Pattern DURATION_HOUR_PATTERN = Pattern.compile("(\\d+)小时");
     private static final Pattern DURATION_MIN_PATTERN = Pattern.compile("(\\d+)分钟");

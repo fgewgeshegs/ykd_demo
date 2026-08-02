@@ -53,7 +53,7 @@ public class CourseParser {
             log.warn("课表解析为空，跳过保存 | userId={}", userId);
             return List.of();
         }
-        return repository.replaceAll(userId, courses);
+        return repository.replaceAllNullSemester(userId, courses);
     }
 
     /**
@@ -70,7 +70,7 @@ public class CourseParser {
             log.warn("Excel 课表解析为空，跳过保存 | userId={}", userId);
             return List.of();
         }
-        return repository.replaceAll(userId, courses);
+        return repository.replaceAllNullSemester(userId, courses);
     }
 
     // ==================== 纯解析（不持久化，用于导入预览） ====================

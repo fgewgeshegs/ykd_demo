@@ -1,0 +1,43 @@
+package com.youkeda.exercise.claw.agent;
+
+import com.youkeda.exercise.claw.ai.llm.LLMClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * 快速对话分类器。
+ *
+ * <p>从 {@code ReActAgentExecutor} 拆出：用 LLM 判断用户消息是否需要调用工具。
+ * 非 Spring bean，由 {@code ReActAgentExecutor} 构造时用已有依赖创建。
+ */
+public class SimpleChatClassifier {
+
+    private static final Logger log = LoggerFactory.getLogger(SimpleChatClassifier.class);
+
+    private final LLMClient llmClient;
+
+    public SimpleChatClassifier(LLMClient llmClient) {
+        this.llmClient = llmClient;
+    }
+
+    /**
+     * 快速判断用户消息是否需要调用工具。
+     */
+    public boolean isSimpleChat(String userMessage) {
+        if (userMessage == null || userMessage.trim().length() <= 3) return false;
+
+        String prompt = "你是一个分类器。判断用户消息是否需要调用工具才能完整回答。\n"
+                + "需要工具：查天气、查地图/地点/路线、查时间/日期/节假日、搜索网页、"
+                + "生成图片、生成文件/文档、语音合成、交通推荐、预算计算、"
+                + "查课表/今天课表/导入课表/课程信息/考试安排、"
+                + "设置提醒/定时提醒/自定义提醒/创建提醒。\n"
+                + "不需要工具：纯粹的聊天、问答、解释、翻译、写作、闲聊、感谢。\n"
+                + "如果用户消息很短（如\"好\"\"可以\"\"继续\"），可能是在回应之前提出的方案，"
+                + "需要让工具系统处理，返回 NEED_TOOLS。\n"
+                + "不确定时返回 NEED_TOOLS。\n"
+                + "只返回一个词：NEED_TOOLS 或 CHAT_ONLY。";
+
+        String result = llmClient.chatWithSystemPrompt(prompt, userMessage);
+        return "CHAT_ONLY".equals(result != null ? result.trim() : "");
+    }
+}

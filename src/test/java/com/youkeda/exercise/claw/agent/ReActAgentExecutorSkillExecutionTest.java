@@ -65,7 +65,8 @@ class ReActAgentExecutorSkillExecutionTest {
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
-                llmClient, toolExecutor, planStore, mock(PlanValidator.class), objectMapper);
+                llmClient, toolExecutor, planStore, mock(PlanValidator.class), objectMapper,
+                java.util.List.of(), java.util.List.of());
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient,

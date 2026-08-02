@@ -4,11 +4,11 @@ import com.youkeda.exercise.claw.feature.scout.collector.JobCollector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.scout.planner.SearchTask;
 import com.youkeda.exercise.claw.feature.scout.processor.InformationItem;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,26 +19,17 @@ import java.util.List;
  * 招聘信息采集工具（独立调用）
  */
 @Component
-public class JobCollectTool implements Tool {
+public class JobCollectTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(JobCollectTool.class);
 
     private final JobCollector collector;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry registry;
 
     public JobCollectTool(JobCollector collector,
                                 ObjectMapper objectMapper,
                                 ToolRegistry registry) {
+        super(registry, objectMapper);
         this.collector = collector;
-        this.objectMapper = objectMapper;
-        this.registry = registry;
-    }
-
-    @PostConstruct
-    public void init() {
-        registry.register(this);
-        log.info("JobCollectTool 已注册");
     }
 
     @Override
@@ -54,17 +45,13 @@ public class JobCollectTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        return objectMapper.createObjectNode()
-                .put("type", "object")
-                .<ObjectNode>set("properties", objectMapper.createObjectNode()
-                        .<ObjectNode>set("query", objectMapper.createObjectNode()
-                                .put("type", "string")
-                                .put("description", "搜索关键词，如 AI工程师、Java后端、产品经理")))
-                .set("required", objectMapper.createArrayNode().add("query"));
+        return schema()
+                .string("query", "搜索关键词，如 AI工程师、Java后端、产品经理", true)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String query = args.path("query").asText("AI engineer");

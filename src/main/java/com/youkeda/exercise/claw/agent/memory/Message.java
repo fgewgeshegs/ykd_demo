@@ -14,7 +14,7 @@ package com.youkeda.exercise.claw.agent.memory;
  *   <li>{@code "tool"} — 工具调用结果</li>
  * </ul>
  *
- * @param role              角色：user / assistant / tool
+ * @param role              角色（枚举：user / assistant / tool / system）
  * @param content           消息文本（展示给 LLM 的内容）；tool_call 消息时存 arguments JSON
  * @param mediaEncryptParam 媒体 CDN 加密参数（语音/图片消息时有值）
  * @param mediaAesKey       媒体 CDN 解密密钥（语音/图片消息时有值）
@@ -22,7 +22,7 @@ package com.youkeda.exercise.claw.agent.memory;
  * @param toolCallId        工具调用 ID（assistant 带 tool_calls 时 / tool 角色时使用）
  * @param toolName          函数名（assistant 带 tool_calls 时使用）
  */
-public record Message(String role, String content,
+public record Message(MessageRole role, String content,
                        String mediaEncryptParam, String mediaAesKey,
                        String mediaUrl,
                        String toolCallId, String toolName,
@@ -33,20 +33,20 @@ public record Message(String role, String content,
                    String mediaEncryptParam, String mediaAesKey,
                    String mediaUrl,
                    String toolCallId, String toolName) {
-        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl,
+        this(MessageRole.fromString(role), content, mediaEncryptParam, mediaAesKey, mediaUrl,
                 toolCallId, toolName, null);
     }
 
     /** 纯文本消息 */
     public Message(String role, String content) {
-        this(role, content, null, null, null, null, null, null);
+        this(MessageRole.fromString(role), content, null, null, null, null, null, null);
     }
 
     /** 带媒体附件的消息 */
     public Message(String role, String content,
                    String mediaEncryptParam, String mediaAesKey,
                    String mediaUrl) {
-        this(role, content, mediaEncryptParam, mediaAesKey, mediaUrl, null, null, null);
+        this(MessageRole.fromString(role), content, mediaEncryptParam, mediaAesKey, mediaUrl, null, null, null);
     }
 
     /** 是否有媒体 CDN 参数 */
@@ -56,6 +56,6 @@ public record Message(String role, String content,
 
     /** 是否为带 tool_calls 的 assistant 消息 */
     public boolean isToolCall() {
-        return "assistant".equals(role) && toolCallId != null;
+        return role == MessageRole.ASSISTANT && toolCallId != null;
     }
 }

@@ -18,6 +18,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -62,6 +65,22 @@ class TaskSchedulerDispatchTest {
         scheduler = new TaskSchedulerService(taskRepository, wechatClient, repeatCalculator, agentTaskExecutor, scheduleReminderService);
         // 设置 running=true 让调度器的 checkAndExecute 可以执行
         setField(scheduler, "running", new java.util.concurrent.atomic.AtomicBoolean(true));
+        // P0-2：调度器改为异步执行池（taskExecutor.execute(...)）。测试直接反射调用
+        // checkAndExecute 而不会调 start()，故注入同步执行器保持测试的确定性
+        // （command.run() 内联执行，断言立即成立，无需等待线程池）。
+        setField(scheduler, "taskExecutor", syncExecutor());
+    }
+
+    /** 同步执行器：execute 立即在当前线程内联执行，用于单元测试替代真实线程池 */
+    private static ExecutorService syncExecutor() {
+        return new AbstractExecutorService() {
+            @Override public void execute(Runnable command) { command.run(); }
+            @Override public void shutdown() {}
+            @Override public List<Runnable> shutdownNow() { return List.of(); }
+            @Override public boolean isShutdown() { return true; }
+            @Override public boolean isTerminated() { return true; }
+            @Override public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
+        };
     }
 
     private void setField(Object target, String fieldName, Object value) {

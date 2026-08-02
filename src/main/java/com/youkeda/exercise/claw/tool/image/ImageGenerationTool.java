@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.tool.image;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -7,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.image.ImageGenerationService;
 import com.youkeda.exercise.claw.ai.image.ImageClient;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,18 +18,17 @@ import org.springframework.stereotype.Component;
  * <p>封装 ImageGenerationService，结合 LLM 上下文理解。作为 Tool 暴露，
  * 启动时自动注册到 ToolRegistry。
  *
- * <p>注意：{@link Tool#execute(String)} 只能返回文本，但图片数据通过
- * {@link #consumePendingImage()} 传递回调用方（{@code ChatHandler}），确保图片能被正确发送。</p>
+ * <p>注意：{@link com.youkeda.exercise.claw.agent.runtime.Tool#execute(String)} 只能返回文本，
+ * 但图片数据通过 {@link #consumePendingImage()} 传递回调用方（{@code ChatHandler}），
+ * 确保图片能被正确发送。</p>
  */
 @Component
-public class ImageGenerationTool implements Tool {
+public class ImageGenerationTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationTool.class);
 
     private final ImageGenerationService imageGenerationService;
     private final ImageClient imageClient;
-    private final ToolRegistry llmFunctionRegistry;
-    private final ObjectMapper objectMapper;
 
     /** 待发送的图片数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
     private volatile PendingImage pendingImage;
@@ -38,15 +37,9 @@ public class ImageGenerationTool implements Tool {
                                 ImageClient imageClient,
                                 ToolRegistry llmFunctionRegistry,
                                 ObjectMapper objectMapper) {
+        super(llmFunctionRegistry, objectMapper);
         this.imageGenerationService = imageGenerationService;
         this.imageClient = imageClient;
-        this.llmFunctionRegistry = llmFunctionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        llmFunctionRegistry.register(this);
     }
 
     /**
@@ -78,27 +71,20 @@ public class ImageGenerationTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-        ObjectNode prompt = properties.putObject("prompt");
-        prompt.put("type", "string");
-        prompt.put("description", "图片内容描述，越详细越好，包含主体、场景、风格、色彩等");
-
-        ObjectNode style = properties.putObject("style");
+        ObjectNode style = objectMapper.createObjectNode();
         style.put("type", "string");
         style.put("description", "图片风格，可选：写实、卡通、水墨、油画、素描等");
         style.put("enum", objectMapper.createArrayNode()
                 .add("写实").add("卡通").add("水墨").add("油画").add("素描"));
 
-        params.putArray("required").add("prompt");
-
-        return params;
+        return schema()
+                .string("prompt", "图片内容描述，越详细越好，包含主体、场景、风格、色彩等", true)
+                .raw("style", style, false)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             JsonNode promptNode = args.get("prompt");

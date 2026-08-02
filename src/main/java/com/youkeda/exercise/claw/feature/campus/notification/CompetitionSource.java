@@ -9,9 +9,7 @@ import com.youkeda.exercise.claw.feature.campus.policy.NotificationPolicy;
 import com.youkeda.exercise.claw.feature.campus.policy.rule.CompetitionRules;
 import com.youkeda.exercise.claw.feature.campus.store.CampusNotificationStore;
 import com.youkeda.exercise.claw.feature.campus.store.PendingAskStore;
-import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.feature.scout.notifier.NotificationService;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.notification.NotificationEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -31,23 +29,20 @@ public class CompetitionSource implements NotificationSource {
     private final CompetitionClassifier classifier;
     private final DefaultPolicy policy;
     private final PendingAskStore pendingAskStore;
-    private final NotificationService notificationService;
-    private final WechatUserManager userManager;
+    private final NotificationEventPublisher publisher;
 
     public CompetitionSource(CompetitionCollector collector,
                              CampusNotificationStore store,
                              CompetitionClassifier classifier,
                              DefaultPolicy policy,
                              PendingAskStore pendingAskStore,
-                             NotificationService notificationService,
-                             WechatUserManager userManager) {
+                             NotificationEventPublisher publisher) {
         this.collector = collector;
         this.store = store;
         this.classifier = classifier;
         this.policy = policy;
         this.pendingAskStore = pendingAskStore;
-        this.notificationService = notificationService;
-        this.userManager = userManager;
+        this.publisher = publisher;
     }
 
     @Override
@@ -97,7 +92,6 @@ public class CompetitionSource implements NotificationSource {
     }
 
     private void notifyUser(NotificationItem item) {
-        String userId = userManager.getOwnerUserId();
         String typeDisplayName = typeDisplayName(item.getType());
 
         String message = "🏆 比赛提醒\n"
@@ -107,36 +101,17 @@ public class CompetitionSource implements NotificationSource {
                 ? "发布日期: " + item.getPublishAt() + "\n" : "")
             + "详情: " + item.getUrl();
 
-        notificationService.notify(List.of(new Recommendation(
-            "comp_" + item.getType(),
-            item.getTitle(),
-            typeDisplayName + "比赛通知",
-            item.getClassifierReason(),
-            message,
-            item.getUrl(),
-            1.0f,
-            System.currentTimeMillis()
-        )));
+        publisher.publish("COMPETITION", "🏆 比赛提醒", message, 4);
         log.info("比赛通知已推送 | title={}", item.getTitle());
     }
 
     private void askUser(NotificationItem item) {
-        String userId = userManager.getOwnerUserId();
         String typeDisplayName = typeDisplayName(item.getType());
 
         String question = "检测到新的「" + typeDisplayName + "」比赛通知："
             + item.getTitle() + "，\n需要关注这类比赛吗？（回复 需要/不需要）";
 
-        notificationService.notify(List.of(new Recommendation(
-            "ask_comp_" + item.getType(),
-            item.getTitle() + " - 是否需要关注",
-            "需要用户确认",
-            item.getClassifierReason(),
-            question,
-            null,
-            0.8f,
-            System.currentTimeMillis()
-        )));
+        publisher.publish("COMPETITION", "需要用户确认", question, 3);
 
         pendingAskStore.save("COMPETITION", item.getType(), question, "PENDING");
         log.info("已询问用户是否关注比赛 | type={} | title={}", item.getType(), item.getTitle());

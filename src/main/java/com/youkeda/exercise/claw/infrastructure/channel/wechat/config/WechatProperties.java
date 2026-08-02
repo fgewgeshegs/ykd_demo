@@ -22,11 +22,6 @@ public class WechatProperties {
      */
     private int pollIntervalMs = 3000;
 
-    /**
-     * 登录状态轮询间隔（毫秒）
-     */
-    private int loginPollIntervalMs = 3000;
-
     public boolean isEnabled() {
         return enabled;
     }
@@ -41,13 +36,5 @@ public class WechatProperties {
 
     public void setPollIntervalMs(int pollIntervalMs) {
         this.pollIntervalMs = pollIntervalMs;
-    }
-
-    public int getLoginPollIntervalMs() {
-        return loginPollIntervalMs;
-    }
-
-    public void setLoginPollIntervalMs(int loginPollIntervalMs) {
-        this.loginPollIntervalMs = loginPollIntervalMs;
     }
 }

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.activity.ActivityEventType;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityEvent;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityStore;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotSessionManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotStatusManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,16 +41,15 @@ class LoginPageServerTest {
         activityStore = new AgentActivityStore(new JdbcTemplate(dataSource));
         activityStore.init();
 
-        BotSessionManager botSessionManager = new BotSessionManager(
-                tempDir.resolve("bot-session.db").toString());
-        botSessionManager.init();
+        BotStatusManager botStatusManager = new BotStatusManager(new JdbcTemplate(dataSource));
+        botStatusManager.init();
 
         stateManager = new LoginStateManager();
         stateManager.updateQrUrl("https://example.test/qr");
         stateManager.updateStatus(LoginStatus.WAITING_SCAN);
 
         server = new LoginPageServer(
-                stateManager, botSessionManager, activityStore, objectMapper);
+                stateManager, botStatusManager, activityStore, objectMapper);
         int port = server.start();
         baseUrl = "http://127.0.0.1:" + port;
         httpClient = HttpClient.newBuilder()

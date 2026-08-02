@@ -2,14 +2,12 @@ package com.youkeda.exercise.claw.tool.task;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.task.model.TaskPlan;
 import com.youkeda.exercise.claw.feature.task.repository.TaskPlanRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,28 +31,19 @@ import java.time.format.DateTimeFormatter;
  * </pre>
  */
 @Component
-public class PlanTasksTool implements Tool {
+public class PlanTasksTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(PlanTasksTool.class);
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final TaskPlanRepository planRepository;
 
     public PlanTasksTool(ObjectMapper objectMapper,
                              ToolRegistry functionRegistry,
                              TaskPlanRepository planRepository) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.planRepository = planRepository;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("PlanTasksTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -80,59 +69,21 @@ public class PlanTasksTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        // goal — 目标描述
-        ObjectNode goal = properties.putObject("goal");
-        goal.put("type", "string");
-        goal.put("description", "用户的高层目标描述，如「准备软件杯比赛」「今晚的学习计划」。");
-
-        // tasks — 任务数组
-        ObjectNode tasks = properties.putObject("tasks");
-        tasks.put("type", "array");
-        tasks.put("description", "拆解后的任务列表（按顺序），至少 1 个，最多 10 个。");
-
-        ObjectNode taskItems = tasks.putObject("items");
-        taskItems.put("type", "object");
-        ObjectNode itemProps = taskItems.putObject("properties");
-
-        ObjectNode order = itemProps.putObject("order");
-        order.put("type", "integer");
-        order.put("description", "任务序号，从 1 开始递增。");
-
-        ObjectNode content = itemProps.putObject("content");
-        content.put("type", "string");
-        content.put("description", "任务内容，简洁明确。");
-
-        ObjectNode delay = itemProps.putObject("delay_minutes");
-        delay.put("type", "integer");
-        delay.put("description", "【相对时间】从当前起多少分钟后执行此任务，与 execute_time 二选一。");
-
-        ObjectNode execTime = itemProps.putObject("execute_time");
-        execTime.put("type", "string");
-        execTime.put("description", "【绝对时间】执行时间，格式 yyyy-MM-dd HH:mm:ss，与 delay_minutes 二选一。");
-
-        ObjectNode repeatType = itemProps.putObject("repeat_type");
+        ObjectNode repeatType = objectMapper.createObjectNode();
         repeatType.put("type", "string");
         repeatType.put("description", "【可选，默认ONCE】周期类型。ONCE=一次性, DAILY=每天, WEEKLY=每周。");
         repeatType.putArray("enum").add("NONE").add("ONCE").add("DAILY").add("WEEKLY").add("MONTHLY");
 
-        ArrayNode taskRequired = taskItems.putArray("required");
-        taskRequired.add("order");
-        taskRequired.add("content");
-
-        // required
-        params.putArray("required").add("goal").add("tasks");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文，无法创建任务计划\"}";
+        return schema()
+                .string("goal", "用户的高层目标描述，如「准备软件杯比赛」「今晚的学习计划」。", true)
+                .array("tasks", "拆解后的任务列表（按顺序），至少 1 个，最多 10 个。", true)
+                    .integer("order", "任务序号，从 1 开始递增。", true)
+                    .string("content", "任务内容，简洁明确。", true)
+                    .integer("delay_minutes", "【相对时间】从当前起多少分钟后执行此任务，与 execute_time 二选一。", false)
+                    .string("execute_time", "【绝对时间】执行时间，格式 yyyy-MM-dd HH:mm:ss，与 delay_minutes 二选一。", false)
+                    .raw("repeat_type", repeatType, false)
+                    .end()
+                .build();
     }
 
     @Override

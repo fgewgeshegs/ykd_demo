@@ -42,17 +42,8 @@ public class MapService {
     public String searchPlace(PlaceSearchRequest request) {
         log.info("地点搜索 | keyword={} | location={}", request.keyword(), request.location());
 
-        // 如果提供了位置，先地理编码获取坐标（用于排序和距离显示）
-        GeoPoint center = null;
-        if (request.location() != null && !request.location().isBlank()) {
-            try {
-                center = mapClient.geocode(request.location());
-            } catch (Exception e) {
-                log.warn("位置地理编码失败，使用文本限定搜索 | location={}", request.location());
-            }
-        }
-
-        // 执行地点搜索
+        // 地点搜索：searchPoi 内部以 region(城市) 文本限定边界，无需先 geocode 坐标
+        // （此前此处 geocode 结果 center 从未被使用，属多余 API 调用，已移除）
         List<PoiResult> poiResults = mapClient.searchPoi(request.keyword(), request.location());
 
         if (poiResults.isEmpty()) {

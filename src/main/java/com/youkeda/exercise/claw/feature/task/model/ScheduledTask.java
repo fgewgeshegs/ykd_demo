@@ -65,6 +65,8 @@ public class ScheduledTask {
 
     /** 待执行 */
     public static final String STATUS_ACTIVE = "ACTIVE";
+    /** 执行中（防重复提交，P0-2） */
+    public static final String STATUS_RUNNING = "RUNNING";
     /** 已完成（一次性任务） */
     public static final String STATUS_DONE = "DONE";
     /** 已取消 */
@@ -87,6 +89,8 @@ public class ScheduledTask {
     private String status;
     private String taskType;
     private LocalDateTime createdTime;
+    /** 连续失败次数（周期任务重试语义用，成功后清零） */
+    private Integer failureCount = 0;
 
     public ScheduledTask() {
     }
@@ -200,6 +204,25 @@ public class ScheduledTask {
         this.createdTime = createdTime;
     }
 
+    public Integer getFailureCount() {
+        return failureCount != null ? failureCount : 0;
+    }
+
+    public void setFailureCount(Integer failureCount) {
+        this.failureCount = failureCount;
+    }
+
+    /** 连续失败次数 +1 */
+    public int incrementFailureCount() {
+        this.failureCount = getFailureCount() + 1;
+        return this.failureCount;
+    }
+
+    /** 清零连续失败次数 */
+    public void resetFailureCount() {
+        this.failureCount = 0;
+    }
+
     // ==================== 便捷判断 ====================
 
     public boolean isActive() {
@@ -285,6 +308,7 @@ public class ScheduledTask {
     public String getStatusDisplay() {
         return switch (status) {
             case STATUS_ACTIVE -> "待执行";
+            case STATUS_RUNNING -> "执行中";
             case STATUS_DONE -> "已完成";
             case STATUS_CANCELLED -> "已取消";
             case STATUS_FAILED -> "执行失败";

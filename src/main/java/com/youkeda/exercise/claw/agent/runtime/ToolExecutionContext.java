@@ -11,6 +11,11 @@ import com.youkeda.exercise.claw.agent.skill.SkillSession;
  */
 public record ToolExecutionContext(String currentMessage, SkillSession skillSession, String userId) {
 
+    /**
+     * 空上下文。无 {@link ToolExecutor} 场景（如直接单参数调用工具）时的占位，永不为 null。
+     */
+    public static final ToolExecutionContext EMPTY = new ToolExecutionContext("");
+
     public ToolExecutionContext(String currentMessage) {
         this(currentMessage, null, "");
     }

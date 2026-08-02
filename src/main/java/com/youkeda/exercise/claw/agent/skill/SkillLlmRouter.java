@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillRegistry;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,12 +23,22 @@ public class SkillLlmRouter {
 
     private final LLMClient llmClient;
     private final ObjectMapper objectMapper;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "skill-llm-router");
-        t.setDaemon(true);
-        return t;
-    });
+    /** 有界线程池：队列满 + 线程达上限时由调用线程兜底执行（CallerRunsPolicy），避免无界队列 OOM */
+    private final ExecutorService executor = new ThreadPoolExecutor(
+            1, 2, 60, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(10),
+            r -> {
+                Thread t = new Thread(r, "skill-llm-router");
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.CallerRunsPolicy());
     private final Duration timeout = Duration.ofSeconds(5);
+
+    @PreDestroy
+    public void shutdown() {
+        executor.shutdown();
+    }
 
     public SkillLlmRouter(LLMClient llmClient, ObjectMapper objectMapper) {
         this.llmClient = llmClient;
@@ -68,6 +79,9 @@ public class SkillLlmRouter {
 
         } catch (TimeoutException e) {
             log.warn("LLM Router timeout after {}ms for message: {}", timeout.toMillis(), message);
+            return SkillRoutingResult.fallback();
+        } catch (RejectedExecutionException e) {
+            log.warn("LLM Router executor rejected task, fallback | message={}", message);
             return SkillRoutingResult.fallback();
         } catch (Exception e) {
             log.error("LLM Router failed for message: {}", message, e);

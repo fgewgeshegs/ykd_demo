@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 
 import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.agent.memory.MessageRole;
 import com.youkeda.exercise.claw.agent.model.EvaluationState;
 import com.youkeda.exercise.claw.agent.model.ExecutionStatus;
 import com.youkeda.exercise.claw.agent.model.PlanState;
@@ -20,6 +21,7 @@ import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -46,25 +48,34 @@ public class ExecutionLoop {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionLoop.class);
 
-    /** 工具调用循环最大轮次 */
-    private static final int MAX_ROUNDS = 15;
+    /** 工具调用循环最大轮次（可配置，默认 15；手动构造（测试）时用字段初始值） */
+    @Value("${agent.max-rounds:15}")
+    private int maxRounds = 15;
 
     private final LLMClient llmClient;
     private final ToolExecutor toolExecutor;
     private final PlanStore planStore;
     private final PlanValidator planValidator;
     private final ObjectMapper objectMapper;
+    /** 工具批次执行后的静默策略（业务方注入，如信息猎手后台受理） */
+    private final List<LoopSuspensionPolicy> suspensionPolicies;
+    /** 文本回复防幻觉 guard（业务方注入，如定时提醒创建） */
+    private final List<TextReplyGuard> replyGuards;
 
     public ExecutionLoop(LLMClient llmClient,
                          ToolExecutor toolExecutor,
                          PlanStore planStore,
                          PlanValidator planValidator,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         List<LoopSuspensionPolicy> suspensionPolicies,
+                         List<TextReplyGuard> replyGuards) {
         this.llmClient = llmClient;
         this.toolExecutor = toolExecutor;
         this.planStore = planStore;
         this.planValidator = planValidator;
         this.objectMapper = objectMapper;
+        this.suspensionPolicies = suspensionPolicies != null ? suspensionPolicies : List.of();
+        this.replyGuards = replyGuards != null ? replyGuards : List.of();
     }
 
     /**
@@ -96,7 +107,7 @@ public class ExecutionLoop {
         boolean forceTextResponse = false;
         PlanState planState = initialPlanState;
 
-        for (int round = 0; round < MAX_ROUNDS; round++) {
+        for (int round = 0; round < maxRounds; round++) {
             log.info("工具调用循环第 {} 轮 | messages={}", round + 1, messages.size());
 
             List<ToolDefinition> roundTools = forceTextResponse ? List.of() : tools;
@@ -156,31 +167,20 @@ public class ExecutionLoop {
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
                 String reply = response.getContent();
-                boolean createIntent =
-                        ScheduleIntentResolver.resolve(userMessage) == ScheduleIntent.CREATE;
-                boolean toolCalled = wasScheduleTaskCalled(executedCalls);
 
-                // 防幻觉（仅用户确为创建意图时）：
-                // 层1 模型声称已创建/设置提醒，但未实际调用 create_schedule_task → 幻觉，强制重试；
-                // 层2 模型既未声称完成、也未向用户澄清（卡壳/敷衍）→ 提示补做。
-                // 反问「几点提醒你呢？」属于澄清，放行，避免「帮我设置提醒」场景死循环。
-                if (createIntent && !toolCalled) {
-                    boolean claimsDone = ScheduleReplyInspector.claimsCreation(reply);
-                    boolean asksClarification = ScheduleReplyInspector.asksForClarification(reply);
-                    if (claimsDone || !asksClarification) {
-                        String hint = claimsDone
-                                ? "注意：你刚才的回复声称已创建/设置定时提醒，但并未实际调用"
-                                  + " create_schedule_task 工具。请先调用 create_schedule_task 完成创建，"
-                                  + "创建成功后再回复用户。不要重复调用已经执行过的工具。"
-                                : "注意：用户要求创建定时提醒，但你尚未调用 create_schedule_task 工具。"
-                                  + "请调用 create_schedule_task 完成创建；若必要信息不足，"
-                                  + "请先向用户提问澄清，不要直接结束。";
-                        log.warn("LLM 幻觉检测：{}，注入提示重试",
-                                claimsDone ? "声称已创建但未调用 create_schedule_task"
-                                           : "创建意图未执行且未向用户澄清");
+                // 防幻觉 guard（批次 2 外移，业务方注入）：命中则注入提示重试
+                // 注意：guard 内循环命中需 break 后再 continue 外层 round 循环
+                boolean guarded = false;
+                for (TextReplyGuard guard : replyGuards) {
+                    String hint = guard.inspectBeforeReply(userMessage, reply, executedCalls);
+                    if (hint != null) {
                         messages.add(new Message("system", hint));
-                        continue;
+                        guarded = true;
+                        break;
                     }
+                }
+                if (guarded) {
+                    continue;
                 }
 
                 log.info("LLM 直接回复 | reply={}", reply);
@@ -195,9 +195,14 @@ public class ExecutionLoop {
             session = batch.session();
             planState = batch.planState();
 
-            if (toolExecutor.isStartedInformationScout(toolCalls, batch.results())) {
-                log.info("信息猎手后台任务已受理，本轮保持静默");
-                return Result.silent(messages, planState, session);
+            // 静默策略（批次 2 外移，业务方注入）：命中表示已受理后台任务，
+            // 必须在追加 assistant/tool 消息之前返回，否则本轮工具消息会进入上下文
+            for (LoopSuspensionPolicy policy : suspensionPolicies) {
+                if (policy.shouldSuspend(toolCalls, batch.results())) {
+                    log.info("静默策略命中 | policy={}，本轮保持静默",
+                            policy.getClass().getSimpleName());
+                    return Result.silent(messages, batch.planState(), batch.session());
+                }
             }
 
             // 添加 assistant 消息（合并本轮所有 tool_calls）
@@ -216,7 +221,7 @@ public class ExecutionLoop {
         }
 
         // 达到局部上限
-        log.warn("工具调用循环达到上限 {} 轮", MAX_ROUNDS);
+        log.warn("工具调用循环达到上限 {} 轮", maxRounds);
         return Result.maxRounds(messages, planState, session);
     }
 
@@ -309,24 +314,6 @@ public class ExecutionLoop {
         messages.add(new Message("system", planSummary.toString().strip()));
     }
 
-    // ==================== 防幻觉：定时任务创建检测 ====================
-
-    /**
-     * 检查 executedCalls 中是否已包含 create_schedule_task 的调用记录。
-     */
-    private static boolean wasScheduleTaskCalled(Set<String> executedCalls) {
-        for (String sig : executedCalls) {
-            if (sig.startsWith("create_schedule_task|")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // 注：防幻觉判定已拆到两个可单测的类：
-    // - ScheduleIntentResolver —— 用户消息 → 创建/查询/修改/取消 意图（动词驱动）；
-    // - ScheduleReplyInspector —— 模型回复是否「声称已完成」/「在向用户澄清」。
-
     // ==================== 消息辅助方法 ====================
 
     private void addAssistantMessage(
@@ -335,7 +322,7 @@ public class ExecutionLoop {
             String reasoningContent) {
         if (toolCalls.size() == 1) {
             LLMResponse.ToolCall tc = toolCalls.get(0);
-            messages.add(new Message("assistant", tc.arguments(),
+            messages.add(new Message(MessageRole.ASSISTANT, tc.arguments(),
                     null, null, null, tc.id(), tc.name(), reasoningContent));
         } else {
             StringBuilder ids = new StringBuilder();
@@ -359,7 +346,7 @@ public class ExecutionLoop {
                 combinedArgs = "[]";
                 log.warn("多 tool_call 参数序列化失败", e);
             }
-            messages.add(new Message("assistant", combinedArgs,
+            messages.add(new Message(MessageRole.ASSISTANT, combinedArgs,
                     null, null, null, ids.toString(), names.toString(), reasoningContent));
             log.info("合并 {} 个并行工具调用 | ids={} | names={}",
                     toolCalls.size(), ids, names);

@@ -45,7 +45,6 @@ public class VoiceClient {
     private final VoiceProperties properties;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private volatile String lastTtsUrl;
 
     public VoiceClient(VoiceProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
@@ -53,10 +52,6 @@ public class VoiceClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(ASR_TIMEOUT_SECONDS))
                 .build();
-    }
-
-    public String getLastTtsUrl() {
-        return lastTtsUrl;
     }
 
     /**
@@ -112,10 +107,10 @@ public class VoiceClient {
      * 语音合成（TTS）：将文字转为语音音频字节
      *
      * @param text 待合成的文字
-     * @return 音频字节数据（WAV 格式），失败时返回 null
+     * @return TTS 结果（音频字节 + 音频 URL），失败时返回 null
      * @throws VoiceClientException API 返回业务错误码时抛出
      */
-    public byte[] tts(String text) throws VoiceClientException {
+    public TtsResult tts(String text) throws VoiceClientException {
         try {
             if (text == null || text.trim().isEmpty()) {
                 log.warn("TTS 输入文本为空");
@@ -155,11 +150,10 @@ public class VoiceClient {
             }
 
             String audioUrl = audioUrlNode.asText();
-            this.lastTtsUrl = audioUrl;
             log.info("TTS 合成成功，获取音频 URL | url={}", audioUrl);
 
-            // 下载音频字节
-            return downloadAudio(audioUrl);
+            // 下载音频字节，URL 与字节绑定在同一个返回值里（消除跨调用 lastTtsUrl 竞态）
+            return new TtsResult(downloadAudio(audioUrl), audioUrl);
 
         } catch (VoiceClientException e) {
             throw e;
@@ -466,7 +460,9 @@ public class VoiceClient {
             }
         }
 
-        log.warn("ASR 响应格式异常: {}", responseBody);
+        log.warn("ASR 响应格式异常: {}",
+                responseBody != null && responseBody.length() > 500
+                        ? responseBody.substring(0, 500) + "..." : responseBody);
         return null;
     }
 
@@ -528,5 +524,12 @@ public class VoiceClient {
             case 7 -> "audio.silk";
             default -> "audio.wav";
         };
+    }
+
+    /**
+     * TTS 合成结果：音频字节 + 音频 URL 绑定返回，
+     * 替代此前 {@code volatile lastTtsUrl} 的跨调用旁路（消除 last-writer-wins 竞态）。
+     */
+    public record TtsResult(byte[] audioBytes, String audioUrl) {
     }
 }

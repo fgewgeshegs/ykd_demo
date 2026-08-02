@@ -3,12 +3,11 @@ package com.youkeda.exercise.claw.tool.file;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.file.FileService;
 import com.youkeda.exercise.claw.domain.file.FileMetadata;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,26 +23,17 @@ import org.springframework.stereotype.Component;
  * <p>纯文本入、JSON 字符串出，不走 pending-consumer 模式。
  */
 @Component
-public class FileSaveTool implements Tool {
+public class FileSaveTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(FileSaveTool.class);
 
     private final FileService fileService;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     public FileSaveTool(FileService fileService,
                             ToolRegistry functionRegistry,
                             ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.fileService = fileService;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("FileSaveTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -59,32 +49,12 @@ public class FileSaveTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode filename = properties.putObject("filename");
-        filename.put("type", "string");
-        filename.put("description", "文件名，需包含扩展名，如「操作系统学习笔记.md」。"
-                + "支持 md, txt, pdf, docx 格式。");
-
-        ObjectNode content = properties.putObject("content");
-        content.put("type", "string");
-        content.put("description", "要保存的文件内容（纯文本 / markdown 格式）");
-
-        ObjectNode category = properties.putObject("category");
-        category.put("type", "string");
-        category.put("description", "分类标签（可选），如「学习笔记」「代码片段」「面试题」");
-
-        params.putArray("required").add("filename").add("content");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文\"}";
+        return schema()
+                .string("filename", "文件名，需包含扩展名，如「操作系统学习笔记.md」。"
+                        + "支持 md, txt, pdf, docx 格式。", true)
+                .string("content", "要保存的文件内容（纯文本 / markdown 格式）", true)
+                .string("category", "分类标签（可选），如「学习笔记」「代码片段」「面试题」", false)
+                .build();
     }
 
     @Override

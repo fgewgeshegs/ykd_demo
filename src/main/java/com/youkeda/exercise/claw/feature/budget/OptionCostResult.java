@@ -10,7 +10,7 @@ public class OptionCostResult {
     private String planId;
     private String planName;
     private int planVersion;
-    private String costStatus;
+    private OptionCostStatus costStatus;
     private BigDecimal knownSubtotalMin;
     private BigDecimal knownSubtotalMax;
     private BigDecimal estimatedTotalMin;
@@ -20,7 +20,7 @@ public class OptionCostResult {
     private BigDecimal contingencyMin;
     private BigDecimal contingencyMax;
     private BigDecimal targetBudget;
-    private String budgetStatus = "NO_LIMIT";
+    private BudgetStatus budgetStatus = BudgetStatus.NO_LIMIT;
     private BigDecimal overrunMin;
     private BigDecimal overrunMax;
     private BigDecimal overrunRateMax;
@@ -35,8 +35,8 @@ public class OptionCostResult {
     public void setPlanName(String planName) { this.planName = planName; }
     public int getPlanVersion() { return planVersion; }
     public void setPlanVersion(int planVersion) { this.planVersion = planVersion; }
-    public String getCostStatus() { return costStatus; }
-    public void setCostStatus(String costStatus) { this.costStatus = costStatus; }
+    public OptionCostStatus getCostStatus() { return costStatus; }
+    public void setCostStatus(OptionCostStatus costStatus) { this.costStatus = costStatus; }
     public BigDecimal getKnownSubtotalMin() { return knownSubtotalMin; }
     public void setKnownSubtotalMin(BigDecimal knownSubtotalMin) { this.knownSubtotalMin = knownSubtotalMin; }
     public BigDecimal getKnownSubtotalMax() { return knownSubtotalMax; }
@@ -55,8 +55,8 @@ public class OptionCostResult {
     public void setContingencyMax(BigDecimal contingencyMax) { this.contingencyMax = contingencyMax; }
     public BigDecimal getTargetBudget() { return targetBudget; }
     public void setTargetBudget(BigDecimal targetBudget) { this.targetBudget = targetBudget; }
-    public String getBudgetStatus() { return budgetStatus; }
-    public void setBudgetStatus(String budgetStatus) { this.budgetStatus = budgetStatus; }
+    public BudgetStatus getBudgetStatus() { return budgetStatus; }
+    public void setBudgetStatus(BudgetStatus budgetStatus) { this.budgetStatus = budgetStatus; }
     public BigDecimal getOverrunMin() { return overrunMin; }
     public void setOverrunMin(BigDecimal overrunMin) { this.overrunMin = overrunMin; }
     public BigDecimal getOverrunMax() { return overrunMax; }

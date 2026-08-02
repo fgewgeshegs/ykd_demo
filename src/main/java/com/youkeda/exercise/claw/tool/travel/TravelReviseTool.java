@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.travel;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 
@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.feature.travel.TravelPlanService;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,25 +18,17 @@ import org.springframework.stereotype.Component;
  * 支持通用修订（反馈原话）、指定方案修订、多方案组合三种模式。
  */
 @Component
-public class TravelReviseTool implements Tool {
+public class TravelReviseTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(TravelReviseTool.class);
 
     private final TravelPlanService planService;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry registry;
 
     public TravelReviseTool(TravelPlanService planService,
                                   ObjectMapper objectMapper,
                                   ToolRegistry registry) {
+        super(registry, objectMapper);
         this.planService = planService;
-        this.objectMapper = objectMapper;
-        this.registry = registry;
-    }
-
-    @PostConstruct
-    public void init() {
-        registry.register(this);
     }
 
     @Override
@@ -57,29 +48,15 @@ public class TravelReviseTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode root = objectMapper.createObjectNode();
-        root.put("type", "object");
-        ObjectNode p = root.putObject("properties");
-
-        property(p, "feedback", "string", "用户对旧方案的不满意或修改意见原文；通用修订时使用");
-
-        property(p, "option_id", "string", "需要修改的候选方案标识；指定方案修订时使用");
-        property(p, "display_name", "string", "修订后的方案名称");
-        property(p, "positioning", "string", "修订后的方案定位");
-        property(p, "highlights", "string", "修订后的方案亮点");
-        property(p, "itinerary_summary", "string", "修订后的行程概要");
-
-        ObjectNode sourceOptions = p.putObject("source_option_ids");
-        sourceOptions.put("type", "array");
-        sourceOptions.put("description", "组合模式——被组合的源方案标识列表，至少2个");
-        sourceOptions.putObject("items").put("type", "string");
-
-        return root;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, new ToolExecutionContext(""));
+        return schema()
+                .string("feedback", "用户对旧方案的不满意或修改意见原文；通用修订时使用", false)
+                .string("option_id", "需要修改的候选方案标识；指定方案修订时使用", false)
+                .string("display_name", "修订后的方案名称", false)
+                .string("positioning", "修订后的方案定位", false)
+                .string("highlights", "修订后的方案亮点", false)
+                .string("itinerary_summary", "修订后的行程概要", false)
+                .arrayOfScalar("source_option_ids", "组合模式——被组合的源方案标识列表，至少2个", "string", false)
+                .build();
     }
 
     @Override
@@ -111,12 +88,6 @@ public class TravelReviseTool implements Tool {
             if (v != null && !v.isNull() && !v.asText().isBlank()) return true;
         }
         return false;
-    }
-
-    private void property(ObjectNode properties, String name, String type, String description) {
-        ObjectNode node = properties.putObject(name);
-        node.put("type", type);
-        node.put("description", description);
     }
 
     private String error(String message) {

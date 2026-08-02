@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.tool.file;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -7,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.feature.file.FileGenerationService;
 import com.youkeda.exercise.claw.feature.file.FileGenerationService.FileGenerationResult;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,12 +19,10 @@ import org.springframework.stereotype.Component;
  * 作为 Tool 暴露，启动时自动注册到 ToolRegistry。
  */
 @Component
-public class FileGenerationTool implements Tool {
+public class FileGenerationTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(FileGenerationTool.class);
     private final FileGenerationService fileGenerationService;
-    private final ToolRegistry llmFunctionRegistry;
-    private final ObjectMapper objectMapper;
 
     /** 待发送的文件数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
     private volatile PendingFile pendingFile;
@@ -32,9 +30,8 @@ public class FileGenerationTool implements Tool {
     public FileGenerationTool(FileGenerationService fileGenerationService,
                               ToolRegistry llmFunctionRegistry,
                               ObjectMapper objectMapper) {
+        super(llmFunctionRegistry, objectMapper);
         this.fileGenerationService = fileGenerationService;
-        this.llmFunctionRegistry = llmFunctionRegistry;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -52,11 +49,6 @@ public class FileGenerationTool implements Tool {
     /** 文件生成结果暂存：文件字节 + 文件名 + 描述 */
     public record PendingFile(byte[] fileBytes, String fileName, String description) {}
 
-    @PostConstruct
-    public void init() {
-        llmFunctionRegistry.register(this);
-    }
-
     // ==================== Tool ====================
 
     @Override
@@ -71,26 +63,19 @@ public class FileGenerationTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-        ObjectNode topic = properties.putObject("topic");
-        topic.put("type", "string");
-        topic.put("description", "文件主题或内容描述，如：今天的对话总结、项目报告等");
-
-        ObjectNode format = properties.putObject("format");
+        ObjectNode format = objectMapper.createObjectNode();
         format.put("type", "string");
         format.put("description", "文件格式，pdf、docx 或 md");
         format.put("enum", objectMapper.createArrayNode().add("pdf").add("docx").add("md"));
 
-        params.putArray("required").add("topic").add("format");
-
-        return params;
+        return schema()
+                .string("topic", "文件主题或内容描述，如：今天的对话总结、项目报告等", true)
+                .raw("format", format, true)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             JsonNode topicNode = args.get("topic");

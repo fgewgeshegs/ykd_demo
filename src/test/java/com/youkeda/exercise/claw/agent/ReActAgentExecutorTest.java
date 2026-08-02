@@ -162,7 +162,7 @@ class ReActAgentExecutorTest {
             }
 
             @Override
-            public String execute(String argumentsJson) {
+            public String execute(String argumentsJson, com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext context) {
                 return "{\"status\":\"SUCCESS\"}";
             }
         });
@@ -196,7 +196,8 @@ class ReActAgentExecutorTest {
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
-                llmClient, toolExecutor, planStore, planValidator, objectMapper);
+                llmClient, toolExecutor, planStore, planValidator, objectMapper,
+                java.util.List.of(), java.util.List.of());
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,

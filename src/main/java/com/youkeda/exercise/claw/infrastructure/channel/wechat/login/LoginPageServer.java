@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityStore;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotSessionManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotStatusManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +34,7 @@ public class LoginPageServer {
     private static final Logger log = LoggerFactory.getLogger(LoginPageServer.class);
 
     private final LoginStateManager stateManager;
-    private final BotSessionManager botSessionManager;
+    private final BotStatusManager botStatusManager;
     private final AgentActivityStore activityStore;
     private final ObjectMapper objectMapper;
 
@@ -42,11 +42,11 @@ public class LoginPageServer {
     private volatile int port = -1;
 
     public LoginPageServer(LoginStateManager stateManager,
-                           BotSessionManager botSessionManager,
+                           BotStatusManager botStatusManager,
                            AgentActivityStore activityStore,
                            ObjectMapper objectMapper) {
         this.stateManager = stateManager;
-        this.botSessionManager = botSessionManager;
+        this.botStatusManager = botStatusManager;
         this.activityStore = activityStore;
         this.objectMapper = objectMapper.copy().findAndRegisterModules();
     }
@@ -190,10 +190,10 @@ public class LoginPageServer {
 
     /** GET /api/bot/status — 机器人连接状态 */
     private void handleBotStatus(HttpExchange exchange) throws IOException {
-        String status = botSessionManager.getLastStatus();
+        String status = botStatusManager.getLastStatus();
         if (status == null) status = "NOT_STARTED";
-        String loginTime = botSessionManager.getLastLoginTime();
-        String error = botSessionManager.getLastError();
+        String loginTime = botStatusManager.getLastLoginTime();
+        String error = botStatusManager.getLastError();
 
         StringBuilder json = new StringBuilder();
         json.append("{\"status\":\"").append(jsonEscape(status)).append("\"");
@@ -212,91 +212,6 @@ public class LoginPageServer {
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
         }
-    }
-
-    // ==================== HTML ====================
-
-    private String buildDashboardHtml(String qrUrl) {
-        String rawQrUrl = qrUrl != null ? qrUrl : "";
-        return "<!DOCTYPE html>\n" +
-            "<html lang=\"zh-CN\">\n" +
-            "<head>\n" +
-            "<meta charset=\"UTF-8\">\n" +
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-            "<title>ClawBot 控制台</title>\n" +
-            "<style>\n" +
-            CSS +
-            "</style>\n" +
-            "</head>\n" +
-            "<body>\n" +
-            "<div class=\"app\">\n" +
-            "  <!-- 顶部导航 -->\n" +
-            "  <header class=\"topbar\">\n" +
-            "    <div class=\"topbar-left\">\n" +
-            "      <span class=\"logo\">" + LOGO_SVG + "</span>\n" +
-            "      <span class=\"title\">ClawBot 控制台</span>\n" +
-            "      <span class=\"badge\" id=\"botBadge\">等待连接</span>\n" +
-            "    </div>\n" +
-            "    <div class=\"topbar-right\">\n" +
-            "      <span class=\"update-time\" id=\"updateTime\">—</span>\n" +
-            "    </div>\n" +
-            "  </header>\n" +
-            "\n" +
-            "  <main class=\"main\">\n" +
-            "    <!-- 左侧面板：扫码/连接 -->\n" +
-            "    <section class=\"panel panel-left\" id=\"scanPanel\">\n" +
-            "      <div class=\"panel-title\">\n" +
-            "        <span class=\"panel-icon\">" + ICON_WECHAT + "</span>\n" +
-            "        微信连接\n" +
-            "      </div>\n" +
-            "      <div class=\"scan-area\" id=\"scanArea\">\n" +
-            "        <div class=\"qrcode-box\" id=\"qrcode\"></div>\n" +
-            "        <div class=\"spinner\" id=\"spinner\"></div>\n" +
-            "        <p class=\"state-hint\" id=\"stateHint\">等待扫码中...</p>\n" +
-            "        <p class=\"state-sub\" id=\"stateSub\">请使用微信扫描二维码连接机器人</p>\n" +
-            "      </div>\n" +
-            "      <!-- 登录结果 -->\n" +
-            "      <div class=\"result-area\" id=\"resultArea\" style=\"display:none;\">\n" +
-            "        <div class=\"result-icon\" id=\"resultIcon\"></div>\n" +
-            "        <p class=\"result-text\" id=\"resultText\"></p>\n" +
-            "      </div>\n" +
-            "    </section>\n" +
-            "\n" +
-            "    <!-- 右侧面板：控制台数据 -->\n" +
-            "    <section class=\"panel panel-right\">\n" +
-            "      <!-- 机器人状态卡片 -->\n" +
-            "      <div class=\"card card-status\">\n" +
-            "        <div class=\"card-header\">\n" +
-            "          <span class=\"card-icon\">" + ICON_BOT + "</span>\n" +
-            "          机器人状态\n" +
-            "        </div>\n" +
-            "        <div class=\"card-body\">\n" +
-            "          <div class=\"status-row\">\n" +
-            "            <span class=\"label\">状态</span>\n" +
-            "            <span class=\"status-indicator\" id=\"botStatusIndicator\">\n" +
-            "              <span class=\"dot dot-gray\"></span> 未启动\n" +
-            "            </span>\n" +
-            "          </div>\n" +
-            "          <div class=\"status-row\">\n" +
-            "            <span class=\"label\">最近登录</span>\n" +
-            "            <span class=\"value\" id=\"botLoginTime\">—</span>\n" +
-            "          </div>\n" +
-            "          <div class=\"status-row\" id=\"botErrorRow\" style=\"display:none;\">\n" +
-            "            <span class=\"label\">错误信息</span>\n" +
-            "            <span class=\"value error-text\" id=\"botError\"></span>\n" +
-            "          </div>\n" +
-            "        </div>\n" +
-            "      </div>\n" +
-            "    </section>\n" +
-            "  </main>\n" +
-            "</div>\n" +
-            "\n" +
-            "<script>\n" +
-            "const QR_URL = " + jsonString(qrUrl) + ";\n" +
-            JS +
-            "</script>\n" +
-            "</body>\n" +
-            "</html>";
     }
 
     // ==================== SVG 图标 ====================

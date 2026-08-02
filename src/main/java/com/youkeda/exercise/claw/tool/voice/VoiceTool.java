@@ -1,17 +1,16 @@
 package com.youkeda.exercise.claw.tool.voice;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.ai.voice.VoiceService;
 import com.youkeda.exercise.claw.ai.voice.VoiceService.VoiceSynthesisResult;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatMessage;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.WechatReply;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,11 +25,12 @@ import org.springframework.stereotype.Component;
  *   <li>作为 {@link Tool} 提供 {@code text_to_speech} 工具供 LLM 调用</li>
  * </ul>
  *
- * <p>注意：{@link Tool#execute(String)} 只能返回文本，但 TTS 产生的音频数据通过
- * {@link #consumePendingAudio()} 传递回调用方（{@code ChatHandler}），确保语音文件能被正确发送。</p>
+ * <p>注意：{@link com.youkeda.exercise.claw.agent.runtime.Tool#execute(String)} 只能返回文本，
+ * 但 TTS 产生的音频数据通过 {@link #consumePendingAudio()} 传递回调用方
+ * （{@code ChatHandler}），确保语音文件能被正确发送。</p>
  */
 @Component
-public class VoiceTool implements Tool {
+public class VoiceTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(VoiceTool.class);
 
@@ -38,8 +38,6 @@ public class VoiceTool implements Tool {
 
     private final VoiceService voiceService;
     private final WechatILinkClient wechatClient;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     /** 待发送的音频数据（单线程 WeChat 轮询，一次只处理一条消息，用实例字段足够） */
     private volatile PendingAudio pendingAudio;
@@ -48,10 +46,9 @@ public class VoiceTool implements Tool {
                       WechatILinkClient wechatClient,
                       ToolRegistry functionRegistry,
                       ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.voiceService = voiceService;
         this.wechatClient = wechatClient;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -69,12 +66,6 @@ public class VoiceTool implements Tool {
     /** TTS 结果暂存：音频文件 + 原始文本 */
     public record PendingAudio(byte[] audioBytes, String text) {}
 
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("VoiceTool 已注册到 ToolRegistry（text_to_speech）");
-    }
-
     // ==================== Tool（text_to_speech） ====================
 
     @Override
@@ -89,21 +80,13 @@ public class VoiceTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-        ObjectNode text = properties.putObject("text");
-        text.put("type", "string");
-        text.put("description", "需要合成语音的文本内容");
-
-        params.putArray("required").add("text");
-
-        return params;
+        return schema()
+                .string("text", "需要合成语音的文本内容", true)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             JsonNode textNode = args.get("text");

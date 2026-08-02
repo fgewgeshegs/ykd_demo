@@ -11,8 +11,8 @@ public class TravelPlanOption {
     private String positioning;
     private String highlights;
     private String itinerarySummary;
-    private String planStatus = "CANDIDATE";
-    private String costStatus = "NOT_CALCULATED";
+    private PlanStatus planStatus = PlanStatus.CANDIDATE;
+    private CostStatus costStatus = CostStatus.NOT_CALCULATED;
     private JsonNode costResult;
 
     public String getOptionId() { return optionId; }
@@ -27,10 +27,10 @@ public class TravelPlanOption {
     public void setHighlights(String highlights) { this.highlights = highlights; }
     public String getItinerarySummary() { return itinerarySummary; }
     public void setItinerarySummary(String itinerarySummary) { this.itinerarySummary = itinerarySummary; }
-    public String getPlanStatus() { return planStatus; }
-    public void setPlanStatus(String planStatus) { this.planStatus = planStatus; }
-    public String getCostStatus() { return costStatus; }
-    public void setCostStatus(String costStatus) { this.costStatus = costStatus; }
+    public PlanStatus getPlanStatus() { return planStatus; }
+    public void setPlanStatus(PlanStatus planStatus) { this.planStatus = planStatus; }
+    public CostStatus getCostStatus() { return costStatus; }
+    public void setCostStatus(CostStatus costStatus) { this.costStatus = costStatus; }
     public JsonNode getCostResult() { return costResult; }
     public void setCostResult(JsonNode costResult) { this.costResult = costResult; }
 }

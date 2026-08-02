@@ -51,7 +51,6 @@ public class ScoutProperties {
 
     private Qdrant qdrant = new Qdrant();
     private Rss rss = new Rss();
-    private Kaggle kaggle = new Kaggle();
     private Proxy proxy = new Proxy();
 
     // Getters & Setters
@@ -83,8 +82,6 @@ public class ScoutProperties {
     public void setQdrant(Qdrant qdrant) { this.qdrant = qdrant; }
     public Rss getRss() { return rss; }
     public void setRss(Rss rss) { this.rss = rss; }
-    public Kaggle getKaggle() { return kaggle; }
-    public void setKaggle(Kaggle kaggle) { this.kaggle = kaggle; }
     public Proxy getProxy() { return proxy; }
     public void setProxy(Proxy proxy) { this.proxy = proxy; }
 
@@ -109,16 +106,6 @@ public class ScoutProperties {
         public void setFreshnessDays(int freshnessDays) { this.freshnessDays = freshnessDays; }
         public List<String> getFeeds() { return feeds; }
         public void setFeeds(List<String> feeds) { this.feeds = feeds; }
-    }
-
-    public static class Kaggle {
-        private String username = "";
-        private String apiKey = "";
-
-        public String getUsername() { return username; }
-        public void setUsername(String username) { this.username = username; }
-        public String getApiKey() { return apiKey; }
-        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
     }
 
     public static class Proxy {

@@ -185,6 +185,56 @@ class CourseRepositoryTest {
     }
 
     @Nested
+    @DisplayName("replaceAllNullSemester 无学期覆盖导入")
+    class ReplaceAllNullSemesterTest {
+
+        @Test
+        @DisplayName("只删除无学期课程，不影响学期绑定课程")
+        void replaceOnlyNullSemester() {
+            // 先建一门学期绑定课程（semesterId=50）
+            CourseEntity semCourse = new CourseEntity("user010", "学期课", null,
+                    1, 1, 2, null, 1, 16, CourseEntity.WEEK_ALL);
+            semCourse.setSemesterId(50L);
+            repository.replaceAllBySemester("user010", 50L, List.of(semCourse));
+
+            // 再建一门无学期旧课程（用 replaceAllNullSemester，避免 replaceAll 误删学期课）
+            CourseEntity oldNull = new CourseEntity("user010", "旧无学期课", null,
+                    2, 3, 4, null, 1, 16, CourseEntity.WEEK_ALL);
+            repository.replaceAllNullSemester("user010", List.of(oldNull));
+
+            // 无学期覆盖导入（即使传入带 semesterId 的课程，也应强制置 null）
+            CourseEntity newNull = new CourseEntity("user010", "新无学期课", null,
+                    3, 5, 6, null, 1, 16, CourseEntity.WEEK_ALL);
+            newNull.setSemesterId(999L);
+            List<CourseEntity> replaced = repository.replaceAllNullSemester("user010", List.of(newNull));
+
+            assertEquals(1, replaced.size());
+            assertEquals("新无学期课", replaced.get(0).getCourseName());
+            assertNull(replaced.get(0).getSemesterId());
+
+            // 学期绑定课程不受影响
+            List<CourseEntity> semCourses = repository.findByUserIdAndSemester("user010", 50L);
+            assertEquals(1, semCourses.size());
+            assertEquals("学期课", semCourses.get(0).getCourseName());
+
+            // 用户总课程数为 2（学期课 + 新无学期课）
+            assertEquals(2, repository.countByUserId("user010"));
+        }
+
+        @Test
+        @DisplayName("空列表时清空该用户无学期课程")
+        void emptyListClearsNullSemester() {
+            CourseEntity course = new CourseEntity("user011", "要清空的课", null,
+                    1, 1, 2, null, 1, 16, CourseEntity.WEEK_ALL);
+            repository.replaceAllNullSemester("user011", List.of(course));
+
+            repository.replaceAllNullSemester("user011", List.of());
+
+            assertEquals(0, repository.countByUserId("user011"));
+        }
+    }
+
+    @Nested
     @DisplayName("旧数据兼容（semester_id = NULL）")
     class LegacyDataCompatibilityTest {
 

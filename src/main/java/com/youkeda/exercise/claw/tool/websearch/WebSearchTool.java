@@ -4,9 +4,9 @@ import com.youkeda.exercise.claw.feature.websearch.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,26 +26,17 @@ import org.springframework.stereotype.Component;
  * <p>定位：当 LLM 发现已有专业工具无法满足的信息需求时调用。
  */
 @Component
-public class WebSearchTool implements Tool {
+public class WebSearchTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(WebSearchTool.class);
 
     private final SearchService searchService;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
 
     public WebSearchTool(SearchService searchService,
                              ObjectMapper objectMapper,
                              ToolRegistry functionRegistry) {
+        super(functionRegistry, objectMapper);
         this.searchService = searchService;
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("WebSearchTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -63,25 +54,14 @@ public class WebSearchTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-        ObjectNode query = properties.putObject("query");
-        query.put("type", "string");
-        query.put("description", "搜索关键词，简洁明确的中文关键词组合。如：云南旅游最新政策、丽江景区开放情况");
-
-        ObjectNode count = properties.putObject("count");
-        count.put("type", "integer");
-        count.put("description", "返回结果条数，默认5条，最多10条");
-
-        params.putArray("required").add("query");
-
-        return params;
+        return schema()
+                .string("query", "搜索关键词，简洁明确的中文关键词组合。如：云南旅游最新政策、丽江景区开放情况", true)
+                .integer("count", "返回结果条数，默认5条，最多10条")
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             JsonNode queryNode = args.get("query");

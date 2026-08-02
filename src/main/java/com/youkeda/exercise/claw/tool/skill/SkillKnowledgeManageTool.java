@@ -7,41 +7,32 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import java.util.*;
 
 @Component
-public class SkillKnowledgeManageTool implements Tool {
+public class SkillKnowledgeManageTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(SkillKnowledgeManageTool.class);
 
-    private final ToolRegistry registry;
     private final SkillKnowledgeStore knowledgeStore;
     private final EmbeddingClient embeddingClient;
     private final DocumentChunker chunker;
-    private final ObjectMapper objectMapper;
 
     public SkillKnowledgeManageTool(ToolRegistry registry,
                                         SkillKnowledgeStore knowledgeStore,
                                         EmbeddingClient embeddingClient,
                                         DocumentChunker chunker,
                                         ObjectMapper objectMapper) {
-        this.registry = registry;
+        super(registry, objectMapper);
         this.knowledgeStore = knowledgeStore;
         this.embeddingClient = embeddingClient;
         this.chunker = chunker;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        registry.register(this);
     }
 
     @Override
@@ -56,27 +47,18 @@ public class SkillKnowledgeManageTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-        ObjectNode properties = params.putObject("properties");
-        ObjectNode action = properties.putObject("action");
+        ObjectNode action = objectMapper.createObjectNode();
         action.put("type", "string");
         action.put("description", "操作类型: import, list_documents, delete_document, reindex, status");
         action.putArray("enum").add("import").add("list_documents").add("delete_document").add("reindex").add("status");
-        ObjectNode skillName = properties.putObject("skillName");
-        skillName.put("type", "string");
-        skillName.put("description", "目标技能名称");
-        ObjectNode content = properties.putObject("content");
-        content.put("type", "string");
-        content.put("description", "要导入的文本内容（import时必填）");
-        ObjectNode documentId = properties.putObject("documentId");
-        documentId.put("type", "string");
-        documentId.put("description", "文档ID（delete_document时必填）");
-        ObjectNode source = properties.putObject("source");
-        source.put("type", "string");
-        source.put("description", "文档来源（import时可选）");
-        params.putArray("required").add("action").add("skillName");
-        return params;
+
+        return schema()
+                .raw("action", action, true)
+                .string("skillName", "目标技能名称", true)
+                .string("content", "要导入的文本内容（import时必填）")
+                .string("documentId", "文档ID（delete_document时必填）")
+                .string("source", "文档来源（import时可选）")
+                .build();
     }
 
     @Override
@@ -128,10 +110,5 @@ public class SkillKnowledgeManageTool implements Tool {
         if (!args.has("documentId")) return "{\"error\":\"documentId is required\"}";
         knowledgeStore.deleteByDocument(args.get("documentId").asText());
         return "{\"status\":\"deleted\",\"documentId\":\"" + args.get("documentId").asText() + "\"}";
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, null);
     }
 }

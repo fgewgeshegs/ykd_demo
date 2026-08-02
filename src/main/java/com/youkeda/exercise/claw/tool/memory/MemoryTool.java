@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.memory;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 
@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.memory.longterm.MemoryCategory;
 import com.youkeda.exercise.claw.agent.memory.longterm.MemoryItem;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,26 +25,17 @@ import java.util.List;
  * - "我之前让你记住的偏好有哪些" → recall（按分类查询）
  */
 @Component
-public class MemoryTool implements Tool {
+public class MemoryTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryTool.class);
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final LongTermMemoryService memoryService;
 
     public MemoryTool(ObjectMapper objectMapper,
                           ToolRegistry functionRegistry,
                           LongTermMemoryService memoryService) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.memoryService = memoryService;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("MemoryTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -64,34 +54,22 @@ public class MemoryTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode action = properties.putObject("action");
+        ObjectNode action = objectMapper.createObjectNode();
         action.put("type", "string");
         action.put("description", "操作类型：save=保存记忆, list=列出全部, recall=按分类查询, delete=删除");
         action.putArray("enum").add("save").add("list").add("recall").add("delete");
 
-        ObjectNode content = properties.putObject("content");
-        content.put("type", "string");
-        content.put("description", "记忆内容（save 时必填，delete 时填写要删除的记忆描述）");
-
-        ObjectNode category = properties.putObject("category");
+        ObjectNode category = objectMapper.createObjectNode();
         category.put("type", "string");
         category.put("description", "记忆分类（save/recall 时可选）：PREFERENCE=偏好, RULE=规则, FACT=事实, GOAL=目标, EXPERIENCE=经验");
         category.putArray("enum")
                 .add("PREFERENCE").add("RULE").add("FACT").add("GOAL").add("EXPERIENCE");
 
-        params.putArray("required").add("action");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, new ToolExecutionContext(""));
+        return schema()
+                .raw("action", action, true)
+                .string("content", "记忆内容（save 时必填，delete 时填写要删除的记忆描述）", false)
+                .raw("category", category, false)
+                .build();
     }
 
     @Override

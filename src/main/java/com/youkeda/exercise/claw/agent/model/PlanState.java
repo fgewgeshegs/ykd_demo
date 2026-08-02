@@ -47,7 +47,12 @@ public class PlanState {
                 .findFirst().orElse(null);
     }
 
-    /** 获取所有 PENDING 状态且依赖已满足的任务（ready 任务） */
+    /**
+     * 获取所有 PENDING 状态且依赖已满足的任务（ready 任务）。
+     *
+     * <p>依赖满足 = 依赖任务执行完成（DONE）或被语义替换（SUPERSEDED）——
+     * 与全计划完成判定（{@code ExecutionLoop}）对 SUPERSEDED 的终态处理保持一致。
+     */
     public List<PlanTask> getReadyTasks() {
         if (tasks == null) return List.of();
         return tasks.stream()
@@ -56,8 +61,13 @@ public class PlanState {
                             || t.getDependencies().stream()
                                 .allMatch(depId -> {
                                     PlanTask dep = findTask(depId);
-                                    return dep != null && dep.getExecutionStatus() == ExecutionStatus.DONE;
+                                    return dep != null && isDependencySatisfied(dep);
                                 })))
                 .toList();
+    }
+
+    private static boolean isDependencySatisfied(PlanTask dep) {
+        return dep.getExecutionStatus() == ExecutionStatus.DONE
+                || dep.getEvaluationState() == EvaluationState.SUPERSEDED;
     }
 }

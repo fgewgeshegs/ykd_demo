@@ -1,12 +1,11 @@
 package com.youkeda.exercise.claw.tool.plan;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,23 +28,13 @@ import org.springframework.stereotype.Component;
  * 将计划以自然语言展示给用户，等待用户回复确认或修改。</p>
  */
 @Component
-public class PlanProposalTool implements Tool {
+public class PlanProposalTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(PlanProposalTool.class);
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
-
     public PlanProposalTool(ObjectMapper objectMapper,
                                 ToolRegistry functionRegistry) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("PlanProposalTool 已注册到 ToolRegistry");
+        super(functionRegistry, objectMapper);
     }
 
     @Override
@@ -65,43 +54,17 @@ public class PlanProposalTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode root = objectMapper.createObjectNode();
-        root.put("type", "object");
-
-        ObjectNode properties = root.putObject("properties");
-
-        ObjectNode goal = properties.putObject("goal");
-        goal.put("type", "string");
-        goal.put("description", "本次任务的总体目标，如：为周末团建做攻略");
-
-        ObjectNode steps = properties.putObject("steps");
-        steps.put("type", "array");
-        steps.put("description", "执行步骤列表（按顺序），至少 2 步");
-
-        ObjectNode stepItems = steps.putObject("items");
-        stepItems.put("type", "object");
-        ObjectNode stepProps = stepItems.putObject("properties");
-
-        ObjectNode stepName = stepProps.putObject("step");
-        stepName.put("type", "string");
-        stepName.put("description", "步骤名称，如：查询天气");
-
-        ObjectNode stepDesc = stepProps.putObject("description");
-        stepDesc.put("type", "string");
-        stepDesc.put("description", "步骤说明，如：查看目的地周末天气情况");
-
-        ArrayNode stepRequired = stepItems.putArray("required");
-        stepRequired.add("step");
-
-        ArrayNode required = root.putArray("required");
-        required.add("goal");
-        required.add("steps");
-
-        return root;
+        return schema()
+                .string("goal", "本次任务的总体目标，如：为周末团建做攻略", true)
+                .array("steps", "执行步骤列表（按顺序），至少 2 步", true)
+                    .string("step", "步骤名称，如：查询天气", true)
+                    .string("description", "步骤说明，如：查看目的地周末天气情况")
+                    .end()
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String goal = args.has("goal") ? args.get("goal").asText() : "(未说明)";

@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class SqliteSkillSessionStore implements SkillSessionStore {
@@ -19,11 +20,17 @@ public class SqliteSkillSessionStore implements SkillSessionStore {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    /** 按 userId 分片锁：保证同一用户 find→modify→save 序列原子性，不同用户互不阻塞 */
+    private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
 
     public SqliteSkillSessionStore(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         ensureTable();
+    }
+
+    private Object lockFor(String userId) {
+        return locks.computeIfAbsent(userId, k -> new Object());
     }
 
     private void ensureTable() {
@@ -42,41 +49,47 @@ public class SqliteSkillSessionStore implements SkillSessionStore {
 
     @Override
     public Optional<SkillSession> find(String userId) {
-        List<SkillSession> results = jdbcTemplate.query(
-            "SELECT user_id, active_skill, previous_skill, context_json, " +
-            "activated_at, last_activity_at, inactivity_count " +
-            "FROM skill_sessions WHERE user_id = ?",
-            this::mapRow,
-            userId
-        );
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+        synchronized (lockFor(userId)) {
+            List<SkillSession> results = jdbcTemplate.query(
+                "SELECT user_id, active_skill, previous_skill, context_json, " +
+                "activated_at, last_activity_at, inactivity_count " +
+                "FROM skill_sessions WHERE user_id = ?",
+                this::mapRow,
+                userId
+            );
+            return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+        }
     }
 
     @Override
     public void save(String userId, SkillSession session) {
-        try {
-            String contextJson = objectMapper.writeValueAsString(session.context());
-            jdbcTemplate.update(
-                "INSERT OR REPLACE INTO skill_sessions " +
-                "(user_id, active_skill, previous_skill, context_json, " +
-                "activated_at, last_activity_at, inactivity_count) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                userId,
-                session.activeSkill(),
-                session.previousSkill(),
-                contextJson,
-                session.activatedAt().getEpochSecond(),
-                session.lastActivityAt().getEpochSecond(),
-                session.inactivityCount()
-            );
-        } catch (JsonProcessingException e) {
-            log.error("Failed to serialize session context for user: {}", userId, e);
+        synchronized (lockFor(userId)) {
+            try {
+                String contextJson = objectMapper.writeValueAsString(session.context());
+                jdbcTemplate.update(
+                    "INSERT OR REPLACE INTO skill_sessions " +
+                    "(user_id, active_skill, previous_skill, context_json, " +
+                    "activated_at, last_activity_at, inactivity_count) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    userId,
+                    session.activeSkill(),
+                    session.previousSkill(),
+                    contextJson,
+                    session.activatedAt().getEpochSecond(),
+                    session.lastActivityAt().getEpochSecond(),
+                    session.inactivityCount()
+                );
+            } catch (JsonProcessingException e) {
+                log.error("Failed to serialize session context for user: {}", userId, e);
+            }
         }
     }
 
     @Override
     public void delete(String userId) {
-        jdbcTemplate.update("DELETE FROM skill_sessions WHERE user_id = ?", userId);
+        synchronized (lockFor(userId)) {
+            jdbcTemplate.update("DELETE FROM skill_sessions WHERE user_id = ?", userId);
+        }
     }
 
     private SkillSession mapRow(ResultSet rs, int rowNum) throws SQLException {

@@ -3,12 +3,11 @@ package com.youkeda.exercise.claw.tool.file;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.file.FileService;
 import com.youkeda.exercise.claw.domain.file.FileMetadata;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,26 +24,17 @@ import org.springframework.stereotype.Component;
  * 内容超过 5000 字符时自动截断并标记 truncated。
  */
 @Component
-public class FileReadTool implements Tool {
+public class FileReadTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(FileReadTool.class);
 
     private final FileService fileService;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     public FileReadTool(FileService fileService,
                             ToolRegistry functionRegistry,
                             ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.fileService = fileService;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("FileReadTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -61,26 +51,11 @@ public class FileReadTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode fileId = properties.putObject("file_id");
-        fileId.put("type", "integer");
-        fileId.put("description", "文件 ID（优先使用）。当用户明确说某个文件时，从文件名搜索后传入此 ID。");
-
-        ObjectNode filename = properties.putObject("filename");
-        filename.put("type", "string");
-        filename.put("description", "文件名搜索关键词。当用户说「我的Java笔记」「数据库笔记」等模糊名称时使用，"
-                + "系统会模糊匹配文件名，返回第一个匹配结果。");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文\"}";
+        return schema()
+                .integer("file_id", "文件 ID（优先使用）。当用户明确说某个文件时，从文件名搜索后传入此 ID。", false)
+                .string("filename", "文件名搜索关键词。当用户说「我的Java笔记」「数据库笔记」等模糊名称时使用，"
+                        + "系统会模糊匹配文件名，返回第一个匹配结果。", false)
+                .build();
     }
 
     @Override

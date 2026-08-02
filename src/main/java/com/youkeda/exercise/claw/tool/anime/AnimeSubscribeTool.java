@@ -2,14 +2,14 @@ package com.youkeda.exercise.claw.tool.anime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.anime.client.AniListClient;
 import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.domain.anime.AnimeEpisode;
 import com.youkeda.exercise.claw.feature.anime.store.AnimeSubscriptionStore;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,29 +24,20 @@ import java.util.Map;
 
 @Component
 @ConditionalOnProperty(name = "anime.enabled", havingValue = "true")
-public class AnimeSubscribeTool implements Tool {
+public class AnimeSubscribeTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(AnimeSubscribeTool.class);
 
     private final AniListClient aniListClient;
     private final AnimeSubscriptionStore subscriptionStore;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     public AnimeSubscribeTool(AniListClient aniListClient,
                                   AnimeSubscriptionStore subscriptionStore,
                                   ToolRegistry functionRegistry,
                                   ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.aniListClient = aniListClient;
         this.subscriptionStore = subscriptionStore;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("AnimeSubscribeTool 已注册");
     }
 
     @Override
@@ -62,32 +53,17 @@ public class AnimeSubscribeTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        var root = objectMapper.createObjectNode();
-        root.put("type", "object");
-
-        var properties = root.putObject("properties");
-
-        var actionProp = properties.putObject("action");
-        actionProp.put("type", "string");
-        actionProp.put("description", "操作类型：search=搜索番剧, subscribe=订阅, unsubscribe=取消订阅, list=查看列表, schedule=查询播出/更新时间");
-        actionProp.set("enum", objectMapper.createArrayNode()
+        ObjectNode action = objectMapper.createObjectNode();
+        action.put("type", "string");
+        action.put("description", "操作类型：search=搜索番剧, subscribe=订阅, unsubscribe=取消订阅, list=查看列表, schedule=查询播出/更新时间");
+        action.set("enum", objectMapper.createArrayNode()
             .add("search").add("subscribe").add("unsubscribe").add("list").add("schedule"));
 
-        var nameProp = properties.putObject("animeName");
-        nameProp.put("type", "string");
-        nameProp.put("description", "番剧名称（search/schedule 时需要；subscribe/unsubscribe 时若提供 animeId 则非必填。注意：AniList 不支持中文搜索，请使用英文或罗马音标题搜索）");
-
-        var idProp = properties.putObject("animeId");
-        idProp.put("type", "number");
-        idProp.put("description", "AniList 番剧 ID（subscribe 时推荐使用，比按名称搜索更准确，来自推荐列表中的 id 字段）");
-
-        root.set("required", objectMapper.createArrayNode().add("action"));
-        return root;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, null);
+        return schema()
+                .raw("action", action, true)
+                .string("animeName", "番剧名称（search/schedule 时需要；subscribe/unsubscribe 时若提供 animeId 则非必填。注意：AniList 不支持中文搜索，请使用英文或罗马音标题搜索）")
+                .number("animeId", "AniList 番剧 ID（subscribe 时推荐使用，比按名称搜索更准确，来自推荐列表中的 id 字段）")
+                .build();
     }
 
     @Override

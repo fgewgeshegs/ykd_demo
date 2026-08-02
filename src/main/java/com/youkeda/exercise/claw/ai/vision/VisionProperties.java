@@ -19,14 +19,14 @@ public class VisionProperties {
     private String apiKey;
 
     /**
-     * API 基础地址，默认硅基流动
+     * API 基础地址（默认阿里云 DashScope，与 voice/image 同厂商）
      */
-    private String baseUrl = "https://api.siliconflow.com/v1";
+    private String baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 
     /**
      * 视觉模型名称
      */
-    private String model = "Qwen/Qwen3-VL-32B-Instruct";
+    private String model = "qwen-vl-max";
 
     public String getApiKey() {
         return apiKey;

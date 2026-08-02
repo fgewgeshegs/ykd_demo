@@ -6,8 +6,7 @@ import com.youkeda.exercise.claw.feature.anime.client.AniListClient;
 import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.feature.anime.store.AnimeSubscriptionStore;
 
-import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.feature.scout.notifier.NotificationService;
+import com.youkeda.exercise.claw.notification.NotificationEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +26,7 @@ public class AnimeSeasonSource implements NotificationSource {
 
     private final AniListClient aniListClient;
     private final AnimeSubscriptionStore subscriptionStore;
-    private final NotificationService notificationService;
+    private final NotificationEventPublisher publisher;
     private final LLMClient llmClient;
 
     @Value("${anime.seasonRecommendation.enabled:true}")
@@ -35,11 +34,11 @@ public class AnimeSeasonSource implements NotificationSource {
 
     public AnimeSeasonSource(AniListClient aniListClient,
                              AnimeSubscriptionStore subscriptionStore,
-                             NotificationService notificationService,
+                             NotificationEventPublisher publisher,
                              LLMClient llmClient) {
         this.aniListClient = aniListClient;
         this.subscriptionStore = subscriptionStore;
-        this.notificationService = notificationService;
+        this.publisher = publisher;
         this.llmClient = llmClient;
     }
 
@@ -89,17 +88,8 @@ public class AnimeSeasonSource implements NotificationSource {
             // 构建推送内容
             String title = "📺 " + year + "年" + season + "季新番推荐";
 
-            // 通过 NotificationService 推送 (使用现有的 Recommendation 适配)
-            notificationService.notify(List.of(new Recommendation(
-                "anime_season_" + season,
-                title,
-                content,
-                "",
-                "以上是为你推荐的本季新番",
-                "",
-                1.0f,
-                System.currentTimeMillis()
-            )));
+            // 通过统一事件总线推送（批次 3 落地）
+            publisher.publish("ANIME_SEASON", title, content, 4);
 
             log.info("季度推荐完成 | candidates={} | recommended={}",
                 candidates.size(), top5.size());

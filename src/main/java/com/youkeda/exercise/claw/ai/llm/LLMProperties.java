@@ -13,7 +13,10 @@ import org.springframework.stereotype.Component;
 public class LLMProperties {
 
     /**
-     * API 密钥
+     * API 密钥。
+     *
+     * <p>P0-5 标记：当前明文写在 application.properties 且已提交 git 历史。
+     * 应从环境变量注入（如 {@code ${LLM_API_KEY:}}），git 历史清理留待后续（见 design-p0-rework-2026-08-01.md §5）。
      */
     private String apiKey;
 

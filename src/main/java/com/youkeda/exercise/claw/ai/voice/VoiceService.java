@@ -84,11 +84,13 @@ public class VoiceService {
         int attempt = 0;
         while (attempt < MAX_RETRIES) {
             try {
-                byte[] audioBytes = voiceClient.tts(text);
-                if (audioBytes != null && audioBytes.length > 0) {
+                VoiceClient.TtsResult ttsResult = voiceClient.tts(text);
+                if (ttsResult != null && ttsResult.audioBytes() != null
+                        && ttsResult.audioBytes().length > 0) {
+                    byte[] audioBytes = ttsResult.audioBytes();
                     int playtimeMs = voiceClient.parsePlaytime(audioBytes, text);
                     int sampleRate = voiceClient.parseSampleRate(audioBytes);
-                    String audioUrl = voiceClient.getLastTtsUrl();
+                    String audioUrl = ttsResult.audioUrl();
                     log.info("TTS 成功 | text={} | size={} | playtime={}ms | sampleRate={}Hz | url={}",
                             text, audioBytes.length, playtimeMs, sampleRate, audioUrl);
                     return new VoiceSynthesisResult(audioBytes, playtimeMs, 4, sampleRate, audioUrl);

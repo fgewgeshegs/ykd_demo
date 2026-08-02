@@ -2,19 +2,18 @@ package com.youkeda.exercise.claw.feature.transport.didi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.feature.transport.didi.DidiRideStateStore.RideState;
 import com.youkeda.exercise.claw.feature.transport.didi.DidiRideStateStore.RideStatus;
 import com.youkeda.exercise.claw.feature.transport.didi.model.TaxiEstimateRequest;
 import com.youkeda.exercise.claw.feature.transport.didi.model.TaxiEstimateResponse;
-import com.youkeda.exercise.claw.feature.transport.didi.model.TaxiOrderRequest;
 import com.youkeda.exercise.claw.feature.transport.didi.model.TaxiOrderResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 滴滴打车业务编排层
@@ -22,9 +21,9 @@ import java.util.*;
  * <p>职责：
  * <ul>
  *   <li>参数校验与转换</li>
- *   <li>调用 {@link DidiMcpClient#callTool} 执行 MCP 工具（maps_textsearch、taxi_estimate 等）</li>
- *   <li>响应格式化为 LLM 可读的结构化 JSON</li>
+ *   <li>调用 {@link DidiMcpClient#callTool} 执行 MCP 工具（taxi_estimate、taxi_create_order 等）</li>
  *   <li>通过 {@link DidiRideStateStore} 管理多轮状态</li>
+ *   <li>地址→坐标委托 {@link DidiMapCoordinateService}，结果格式化委托 {@link DidiRideResultFormatter}</li>
  * </ul>
  *
  * <p>调用 {@code maps_textsearch} 获取坐标是 service 的内部职责，
@@ -38,13 +37,19 @@ public class DidiRideService {
     private final DidiMcpClient mcpClient;
     private final DidiRideStateStore stateStore;
     private final ObjectMapper objectMapper;
+    private final DidiMapCoordinateService coordinateService;
+    private final DidiRideResultFormatter formatter;
 
     public DidiRideService(DidiMcpClient mcpClient,
                            DidiRideStateStore stateStore,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           DidiMapCoordinateService coordinateService,
+                           DidiRideResultFormatter formatter) {
         this.mcpClient = mcpClient;
         this.stateStore = stateStore;
         this.objectMapper = objectMapper;
+        this.coordinateService = coordinateService;
+        this.formatter = formatter;
     }
 
     // ==================== 估价 ====================
@@ -62,18 +67,19 @@ public class DidiRideService {
      * </ol>
      *
      * @param args   LLM 传入的参数（origin_name, destination_name 等）
+     * @param userId 用户标识（状态隔离键）
      * @return 格式化估价结果
      */
-    public String estimate(JsonNode args) {
+    public String estimate(JsonNode args, String userId) {
         String originName = args.path("origin_name").asText("");
         String destinationName = args.path("destination_name").asText("");
 
         // 1. 参数校验
         if (originName.isBlank()) {
-            return errorJson("缺少必填参数: origin_name（出发地名称）");
+            return formatter.errorJson("缺少必填参数: origin_name（出发地名称）");
         }
         if (destinationName.isBlank()) {
-            return errorJson("缺少必填参数: destination_name（目的地名称）");
+            return formatter.errorJson("缺少必填参数: destination_name（目的地名称）");
         }
 
         log.info("打车估价 | from={} | to={}", originName, destinationName);
@@ -84,9 +90,9 @@ public class DidiRideService {
             String fromLat = args.path("origin_lat").asText("");
             if (fromLng.isBlank() || fromLat.isBlank()) {
                 log.info("调用 maps_textsearch 获取起点坐标 | query={}", originName);
-                JsonNode originGeo = callMapsTextsearch(originName);
-                fromLng = extractLng(originGeo);
-                fromLat = extractLat(originGeo);
+                JsonNode originGeo = coordinateService.searchCoordinate(originName);
+                fromLng = coordinateService.extractLng(originGeo);
+                fromLat = coordinateService.extractLat(originGeo);
                 log.info("起点坐标获取成功 | name={} | lng={} | lat={}", originName, fromLng, fromLat);
             }
 
@@ -95,9 +101,9 @@ public class DidiRideService {
             String toLat = args.path("destination_lat").asText("");
             if (toLng.isBlank() || toLat.isBlank()) {
                 log.info("调用 maps_textsearch 获取终点坐标 | query={}", destinationName);
-                JsonNode destGeo = callMapsTextsearch(destinationName);
-                toLng = extractLng(destGeo);
-                toLat = extractLat(destGeo);
+                JsonNode destGeo = coordinateService.searchCoordinate(destinationName);
+                toLng = coordinateService.extractLng(destGeo);
+                toLat = coordinateService.extractLat(destGeo);
                 log.info("终点坐标获取成功 | name={} | lng={} | lat={}", destinationName, toLng, toLat);
             }
 
@@ -121,7 +127,7 @@ public class DidiRideService {
             String traceId = data.path("traceId").asText("");
             if (traceId.isBlank()) {
                 log.warn("taxi_estimate 返回空 traceId | raw={}", estimateResult);
-                return errorJson("估价失败：未获取到 traceId");
+                return formatter.errorJson("估价失败：未获取到 traceId");
             }
 
             // 6. 构建响应模型
@@ -133,20 +139,20 @@ public class DidiRideService {
             request.setDestLng(toLng);
             request.setDestLat(toLat);
 
-            TaxiEstimateResponse response = parseEstimateResponse(traceId, data);
+            TaxiEstimateResponse response = formatter.parseEstimateResponse(traceId, data);
 
             // 7. 保存状态
-            stateStore.saveEstimate(request, response);
+            stateStore.saveEstimate(userId, request, response);
 
             // 8. 返回格式化 JSON
-            return formatEstimateResult(response, traceId, originName, destinationName);
+            return formatter.formatEstimateResult(response, traceId, originName, destinationName);
 
         } catch (DidiMcpException e) {
             log.error("打车估价失败 | error={}", e.getMessage());
-            return errorJson("打车估价失败：" + e.getMessage());
+            return formatter.errorJson("打车估价失败：" + e.getMessage());
         } catch (Exception e) {
             log.error("打车估价异常 | error={}", e.getMessage(), e);
-            return errorJson("打车估价异常：" + e.getMessage());
+            return formatter.errorJson("打车估价异常：" + e.getMessage());
         }
     }
 
@@ -159,20 +165,21 @@ public class DidiRideService {
      * 状态机检查：ESTIMATED → WAITING_CONFIRM（自动确认）→ 调用 MCP → ORDER_CREATED。
      *
      * @param args   LLM 传入的参数（product_category 等）
+     * @param userId 用户标识（状态隔离键）
      * @return 订单创建结果
      */
-    public String createOrder(JsonNode args) {
+    public String createOrder(JsonNode args, String userId) {
         // 1. 检查状态：必须有 estimate 记录
         RideState state;
         try {
-            state = stateStore.getRequired();
+            state = stateStore.getRequired(userId);
         } catch (IllegalStateException e) {
-            return errorJson(e.getMessage());
+            return formatter.errorJson(e.getMessage());
         }
 
         // 2. 检查是否已创建
         if (state.status() == RideStatus.ORDER_CREATED) {
-            return errorJson("订单已创建（orderId=" + state.orderId()
+            return formatter.errorJson("订单已创建（orderId=" + state.orderId()
                     + "），请勿重复创建。如需重新叫车请先取消当前订单");
         }
 
@@ -181,17 +188,17 @@ public class DidiRideService {
             // LLM 调用 create_order 即代表用户已在对话中确认
             // 自动完成 ESTIMATED → WAITING_CONFIRM 转型
             try {
-                stateStore.confirmBooking();
-                state = stateStore.get();
+                stateStore.confirmBooking(userId);
+                state = stateStore.get(userId);
                 log.info("用户确认打车 | traceId={}", state.traceId());
             } catch (IllegalStateException e) {
-                return errorJson(e.getMessage());
+                return formatter.errorJson(e.getMessage());
             }
         }
 
         // WAITING_CONFIRM 检查：必须已经确认
         if (state.status() != RideStatus.WAITING_CONFIRM) {
-            return errorJson("当前状态不允许创建订单：" + state.status()
+            return formatter.errorJson("当前状态不允许创建订单：" + state.status()
                     + "。请先调用 estimate 并等待用户确认");
         }
 
@@ -202,7 +209,7 @@ public class DidiRideService {
             productCategory = state.estimateResponse().getFirstProductCategory();
         }
         if (productCategory.isBlank()) {
-            return errorJson("缺少必填参数: product_category（车型，如\"快车\"）");
+            return formatter.errorJson("缺少必填参数: product_category（车型，如\"快车\"）");
         }
 
         String callerCarPhone = args.path("caller_car_phone").asText("");
@@ -228,13 +235,13 @@ public class DidiRideService {
             String orderId = orderData.path("orderId").asText("");
             if (orderId.isBlank()) {
                 log.warn("taxi_create_order 返回空 orderId | raw={}", orderResult);
-                return errorJson("创建订单失败：未获取到订单号");
+                return formatter.errorJson("创建订单失败：未获取到订单号");
             }
 
             String status = orderData.path("status").asText("created");
 
             // 7. 保存订单
-            stateStore.saveOrder(orderId);
+            stateStore.saveOrder(userId, orderId);
 
             // 8. 返回格式化结果
             TaxiOrderResponse response = new TaxiOrderResponse();
@@ -245,14 +252,14 @@ public class DidiRideService {
             response.setToName(state.estimateRequest() != null
                     ? state.estimateRequest().getDestName() : "");
 
-            return formatOrderResult(response);
+            return formatter.formatOrderResult(response);
 
         } catch (DidiMcpException e) {
             log.error("创建订单失败 | error={}", e.getMessage());
-            return errorJson("创建订单失败：" + e.getMessage());
+            return formatter.errorJson("创建订单失败：" + e.getMessage());
         } catch (Exception e) {
             log.error("创建订单异常 | error={}", e.getMessage(), e);
-            return errorJson("创建订单异常：" + e.getMessage());
+            return formatter.errorJson("创建订单异常：" + e.getMessage());
         }
     }
 
@@ -261,10 +268,10 @@ public class DidiRideService {
     /**
      * 查询订单状态
      */
-    public String queryOrder(JsonNode args) {
-        String orderId = resolveOrderId(args);
+    public String queryOrder(JsonNode args, String userId) {
+        String orderId = resolveOrderId(args, userId);
         if (orderId == null) {
-            return errorJson("缺少 order_id，且未找到进行中的订单");
+            return formatter.errorJson("缺少 order_id，且未找到进行中的订单");
         }
 
         log.info("查询订单 | orderId={}", orderId);
@@ -279,12 +286,12 @@ public class DidiRideService {
             JsonNode sc = result.get("structuredContent");
             JsonNode data = sc != null ? sc : result;
 
-            return formatQueryResult(data, orderId);
+            return formatter.formatQueryResult(data, orderId);
 
         } catch (DidiMcpException e) {
             log.error("查询订单失败 | orderId={} | error={}",
                     orderId, e.getMessage());
-            return errorJson("查询订单失败：" + e.getMessage());
+            return formatter.errorJson("查询订单失败：" + e.getMessage());
         }
     }
 
@@ -293,10 +300,10 @@ public class DidiRideService {
     /**
      * 取消订单
      */
-    public String cancelOrder(JsonNode args) {
-        String orderId = resolveOrderId(args);
+    public String cancelOrder(JsonNode args, String userId) {
+        String orderId = resolveOrderId(args, userId);
         if (orderId == null) {
-            return errorJson("缺少 order_id，且未找到进行中的订单");
+            return formatter.errorJson("缺少 order_id，且未找到进行中的订单");
         }
 
         log.info("取消订单 | orderId={}", orderId);
@@ -309,7 +316,7 @@ public class DidiRideService {
             log.debug("taxi_cancel_order 响应 | result={}", result);
 
             // 清除状态
-            stateStore.clear();
+            stateStore.clear(userId);
 
             ObjectNode output = objectMapper.createObjectNode();
             output.put("status", "cancelled");
@@ -320,7 +327,7 @@ public class DidiRideService {
         } catch (Exception e) {
             log.error("取消订单失败 | orderId={} | error={}",
                     orderId, e.getMessage());
-            return errorJson("取消订单失败：" + e.getMessage());
+            return formatter.errorJson("取消订单失败：" + e.getMessage());
         }
     }
 
@@ -332,12 +339,12 @@ public class DidiRideService {
      * <p>与 estimate 一样，需要先通过 maps_textsearch 获取坐标，
      * 因为 taxi_generate_ride_app_link 要求传入经纬度坐标。
      */
-    public String generateLink(JsonNode args) {
+    public String generateLink(JsonNode args, String userId) {
         String originName = args.path("origin_name").asText("");
         String destinationName = args.path("destination_name").asText("");
 
         if (originName.isBlank() || destinationName.isBlank()) {
-            return errorJson("生成跳转链接需要 origin_name 和 destination_name");
+            return formatter.errorJson("生成跳转链接需要 origin_name 和 destination_name");
         }
 
         log.info("生成跳转链接 | from={} | to={}", originName, destinationName);
@@ -345,15 +352,15 @@ public class DidiRideService {
         try {
             // 1. 获取起点坐标
             log.info("调用 maps_textsearch 获取起点坐标 | query={}", originName);
-            JsonNode originGeo = callMapsTextsearch(originName);
-            String fromLng = extractLng(originGeo);
-            String fromLat = extractLat(originGeo);
+            JsonNode originGeo = coordinateService.searchCoordinate(originName);
+            String fromLng = coordinateService.extractLng(originGeo);
+            String fromLat = coordinateService.extractLat(originGeo);
 
             // 2. 获取终点坐标
             log.info("调用 maps_textsearch 获取终点坐标 | query={}", destinationName);
-            JsonNode destGeo = callMapsTextsearch(destinationName);
-            String toLng = extractLng(destGeo);
-            String toLat = extractLat(destGeo);
+            JsonNode destGeo = coordinateService.searchCoordinate(destinationName);
+            String toLng = coordinateService.extractLng(destGeo);
+            String toLat = coordinateService.extractLat(destGeo);
 
             // 3. 调用 taxi_generate_ride_app_link（携带坐标）
             Map<String, Object> linkArgs = new LinkedHashMap<>();
@@ -377,248 +384,15 @@ public class DidiRideService {
 
         } catch (Exception e) {
             log.warn("生成跳转链接失败 | error={}", e.getMessage());
-            return errorJson("生成跳转链接失败：" + e.getMessage()
+            return formatter.errorJson("生成跳转链接失败：" + e.getMessage()
                     + "。可提示用户自行打开滴滴 App 叫车");
-        }
-    }
-
-    // ==================== 内部工具 ====================
-
-    /**
-     * 调用 MCP maps_textsearch 获取地址坐标
-     *
-     * <p>maps_textsearch 需要 keywords（关键词）+ city（城市）两个必填参数。
-     * 代码从 originName/destinationName 中自动提取城市名。
-     */
-    private JsonNode callMapsTextsearch(String query) {
-        Map<String, Object> geoArgs = new LinkedHashMap<>();
-        geoArgs.put("keywords", query);
-        String city = extractCity(query);
-        if (!city.isBlank()) {
-            geoArgs.put("city", city);
-        }
-        return mcpClient.callToolWithTextResult("maps_textsearch", geoArgs);
-    }
-
-    /**
-     * 从地址字符串中提取城市名
-     *
-     * <p>maps_textsearch 的 city 参数为必填，此方法尝试从地址前缀中提取城市名。
-     * 例如："杭州余杭区阿里巴巴高桥云港" → "杭州"、"北京市天安门" → "北京市"。
-     * 未匹配到已知城市时返回空字符串，不阻塞调用。
-     */
-    private String extractCity(String query) {
-        if (query == null || query.isBlank()) return "";
-        // 常见城市名列表（长名优先，避免"北京"误配"北京市"前缀给完整名）
-        String[] cities = {
-                "北京市", "上海市", "广州市", "深圳市", "杭州市", "成都市",
-                "武汉市", "南京市", "重庆市", "天津市", "苏州市", "西安市",
-                "长沙市", "郑州市", "东莞市", "青岛市", "沈阳市", "宁波市", "昆明市",
-                "大连市", "厦门市", "合肥市", "佛山市", "福州市", "哈尔滨市", "济南市",
-                "温州市", "长春市", "石家庄市", "常州市", "泉州市", "南宁市", "贵阳市",
-                "南昌市", "太原市", "烟台市", "嘉兴市", "南通市", "金华市", "珠海市",
-                "惠州市", "徐州市", "海口市", "乌鲁木齐市", "绍兴市", "中山市", "台州市",
-                "兰州市", "北京", "上海", "广州", "深圳", "杭州", "成都",
-                "武汉", "南京", "重庆", "天津", "苏州", "西安"
-        };
-        for (String city : cities) {
-            if (query.startsWith(city)) {
-                return city;
-            }
-        }
-        return "";
-    }
-
-    /**
-     * 从 maps_textsearch 响应中提取经度
-     *
-     * <p>支持以下响应格式：
-     * <ul>
-     *   <li>数组：取第一个元素，递归提取（maps_textsearch 默认返回 POI 列表）</li>
-     *   <li>对象：直接匹配 lng/longitude/location.lng 等字段</li>
-     * </ul>
-     */
-    private String extractLng(JsonNode geoResult) {
-        // 处理数组：maps_textsearch 返回 [{location:{lng,lat}}, ...]
-        if (geoResult.isArray() && geoResult.size() > 0) {
-            return extractLng(geoResult.get(0));
-        }
-        // 尝试多种可能的字段路径
-        if (geoResult.has("lng")) return geoResult.get("lng").asText("");
-        if (geoResult.has("longitude")) return geoResult.get("longitude").asText("");
-        if (geoResult.has("location")) {
-            JsonNode loc = geoResult.get("location");
-            if (loc.has("lng")) return loc.get("lng").asText("");
-            if (loc.has("longitude")) return loc.get("longitude").asText("");
-        }
-        if (geoResult.has("result")) {
-            JsonNode r = geoResult.get("result");
-            if (r.has("location")) {
-                JsonNode loc = r.get("location");
-                if (loc.has("lng")) return loc.get("lng").asText("");
-            }
-        }
-        log.warn("maps_textsearch 响应中未找到经度字段 | keys={}",
-                joinFieldNames(geoResult));
-        return "";
-    }
-
-    /**
-     * 从 maps_textsearch 响应中提取纬度
-     *
-     * <p>支持以下响应格式：
-     * <ul>
-     *   <li>数组：取第一个元素，递归提取（maps_textsearch 默认返回 POI 列表）</li>
-     *   <li>对象：直接匹配 lat/latitude/location.lat 等字段</li>
-     * </ul>
-     */
-    private String extractLat(JsonNode geoResult) {
-        // 处理数组：maps_textsearch 返回 [{location:{lng,lat}}, ...]
-        if (geoResult.isArray() && geoResult.size() > 0) {
-            return extractLat(geoResult.get(0));
-        }
-        if (geoResult.has("lat")) return geoResult.get("lat").asText("");
-        if (geoResult.has("latitude")) return geoResult.get("latitude").asText("");
-        if (geoResult.has("location")) {
-            JsonNode loc = geoResult.get("location");
-            if (loc.has("lat")) return loc.get("lat").asText("");
-            if (loc.has("latitude")) return loc.get("latitude").asText("");
-        }
-        if (geoResult.has("result")) {
-            JsonNode r = geoResult.get("result");
-            if (r.has("location")) {
-                JsonNode loc = r.get("location");
-                if (loc.has("lat")) return loc.get("lat").asText("");
-            }
-        }
-        log.warn("maps_textsearch 响应中未找到纬度字段 | keys={}",
-                joinFieldNames(geoResult));
-        return "";
-    }
-
-    /**
-     * 拼接 JsonNode 的字段名为逗号分隔字符串
-     */
-    private static String joinFieldNames(JsonNode node) {
-        StringBuilder sb = new StringBuilder();
-        Iterator<String> it = node.fieldNames();
-        while (it.hasNext()) {
-            if (sb.length() > 0) sb.append(", ");
-            sb.append(it.next());
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 解析 taxi_estimate 响应中的 items 列表
-     */
-    private TaxiEstimateResponse parseEstimateResponse(String traceId, JsonNode data) {
-        TaxiEstimateResponse response = new TaxiEstimateResponse();
-        response.setTraceId(traceId);
-
-        List<TaxiEstimateResponse.EstimateItem> items = new ArrayList<>();
-        JsonNode itemsNode = data.get("items");
-        if (itemsNode != null && itemsNode.isArray()) {
-            for (JsonNode item : itemsNode) {
-                TaxiEstimateResponse.EstimateItem ei = new TaxiEstimateResponse.EstimateItem();
-                ei.setProductName(item.path("productName").asText(""));
-                ei.setProductCategory(item.path("productCategory").asText(""));
-                ei.setPriceText(item.path("priceText").asText(""));
-                ei.setDestTimeText(item.path("destTimeText").asText(""));
-                items.add(ei);
-            }
-        }
-        response.setItems(items);
-
-        return response;
-    }
-
-    /**
-     * 格式化估价结果为 LLM 可读的 JSON
-     */
-    private String formatEstimateResult(TaxiEstimateResponse response, String traceId,
-                                        String originName, String destinationName) {
-        try {
-            ObjectNode root = objectMapper.createObjectNode();
-            root.put("status", "estimate_completed");
-            root.put("origin_name", originName);
-            root.put("destination_name", destinationName);
-
-            ArrayNode products = root.putArray("available_products");
-            for (TaxiEstimateResponse.EstimateItem item : response.getItems()) {
-                ObjectNode p = products.addObject();
-                p.put("product_name", item.getProductName());
-                p.put("price", item.getPriceText() + "元");
-                if (item.getDestTimeText() != null && !item.getDestTimeText().isBlank()) {
-                    p.put("estimated_time", item.getDestTimeText());
-                }
-                p.put("product_category", item.getProductCategory());
-            }
-
-            root.put("message", "已获取打车估价，请将以上价格展示给用户并获得确认后，再调用 create_order");
-            return objectMapper.writeValueAsString(root);
-
-        } catch (Exception e) {
-            log.error("格式化估价结果失败", e);
-            return "{\"status\":\"estimate_completed\",\"traceId\":\"" + traceId + "\"}";
-        }
-    }
-
-    /**
-     * 格式化订单创建结果为 LLM 可读的 JSON
-     */
-    private String formatOrderResult(TaxiOrderResponse response) {
-        try {
-            ObjectNode root = objectMapper.createObjectNode();
-            root.put("status", "order_created");
-            root.put("order_id", response.getOrderId());
-            root.put("order_status", response.getStatus());
-            root.put("from", response.getFromName());
-            root.put("to", response.getToName());
-            root.put("message", "订单已创建，请告知用户订单号和预计等待时间");
-            return objectMapper.writeValueAsString(root);
-
-        } catch (Exception e) {
-            log.error("格式化订单结果失败", e);
-            return "{\"status\":\"order_created\",\"orderId\":\"" + response.getOrderId() + "\"}";
-        }
-    }
-
-    /**
-     * 格式化查询订单结果
-     */
-    private String formatQueryResult(JsonNode data, String orderId) {
-        try {
-            ObjectNode root = objectMapper.createObjectNode();
-            root.put("order_id", orderId);
-            root.put("status", data.path("status").asText("unknown"));
-            root.put("driver_name", data.path("driverName").asText(""));
-            root.put("driver_phone", data.path("driverPhone").asText(""));
-            root.put("car_number", data.path("carNumber").asText(""));
-
-            // 司机位置（如 MCP 提供）
-            JsonNode driverLoc = data.get("driverLocation");
-            if (driverLoc != null) {
-                root.set("driver_location", driverLoc);
-            }
-
-            // 行程进度
-            if (data.has("progress")) {
-                root.put("progress", data.path("progress").asText(""));
-            }
-
-            return objectMapper.writeValueAsString(root);
-
-        } catch (Exception e) {
-            log.error("格式化查询结果失败", e);
-            return "{\"order_id\":\"" + orderId + "\",\"status\":\"queried\"}";
         }
     }
 
     /**
      * 解析 order_id 参数：优先从 args 中取，其次从 StateStore 中恢复
      */
-    private String resolveOrderId(JsonNode args) {
+    private String resolveOrderId(JsonNode args, String userId) {
         // 优先 LLM 传入
         String orderId = args.path("order_id").asText("");
         if (!orderId.isBlank()) {
@@ -626,25 +400,11 @@ public class DidiRideService {
         }
 
         // 从状态存储中恢复
-        RideState state = stateStore.get();
+        RideState state = stateStore.get(userId);
         if (state != null && state.orderId() != null) {
             return state.orderId();
         }
 
         return null;
-    }
-
-    /**
-     * 构建错误 JSON
-     */
-    private String errorJson(String message) {
-        try {
-            ObjectNode root = objectMapper.createObjectNode();
-            root.put("status", "error");
-            root.put("error", message);
-            return objectMapper.writeValueAsString(root);
-        } catch (Exception e) {
-            return "{\"status\":\"error\",\"error\":\"" + message.replace("\"", "'") + "\"}";
-        }
     }
 }

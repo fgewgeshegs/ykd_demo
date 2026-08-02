@@ -4,13 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.task.model.TaskPlan;
 import com.youkeda.exercise.claw.feature.task.repository.TaskPlanRepository;
 import com.youkeda.exercise.claw.feature.task.service.TaskCreator;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,12 +28,10 @@ import java.util.List;
  * <p>只允许执行属于自己的 PREVIEW 状态的计划。
  */
 @Component
-public class ExecutePlanTasksTool implements Tool {
+public class ExecutePlanTasksTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutePlanTasksTool.class);
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final TaskPlanRepository planRepository;
     private final TaskCreator taskCreator;
 
@@ -42,16 +39,9 @@ public class ExecutePlanTasksTool implements Tool {
                                     ToolRegistry functionRegistry,
                                     TaskPlanRepository planRepository,
                                     TaskCreator taskCreator) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.planRepository = planRepository;
         this.taskCreator = taskCreator;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("ExecutePlanTasksTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -70,23 +60,9 @@ public class ExecutePlanTasksTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode planId = properties.putObject("plan_id");
-        planId.put("type", "integer");
-        planId.put("description", "任务计划 ID，由 plan_tasks 返回的 plan_id。");
-
-        params.putArray("required").add("plan_id");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文，无法执行计划\"}";
+        return schema()
+                .integer("plan_id", "任务计划 ID，由 plan_tasks 返回的 plan_id。", true)
+                .build();
     }
 
     @Override

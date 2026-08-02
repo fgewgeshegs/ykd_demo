@@ -4,11 +4,10 @@ import com.youkeda.exercise.claw.feature.task.service.TaskCreator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,26 +21,17 @@ import org.springframework.stereotype.Component;
  * 支持相对时间（delay_minutes）和绝对时间（execute_time），以及周期任务（repeat_type）。
  */
 @Component
-public class CreateScheduleTaskTool implements Tool {
+public class CreateScheduleTaskTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(CreateScheduleTaskTool.class);
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final TaskCreator taskCreator;
 
     public CreateScheduleTaskTool(ObjectMapper objectMapper,
                                       ToolRegistry functionRegistry,
                                       TaskCreator taskCreator) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.taskCreator = taskCreator;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("CreateScheduleTaskTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -66,43 +56,29 @@ public class CreateScheduleTaskTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
+        ObjectNode delayMinutes = objectMapper.createObjectNode();
+        delayMinutes.put("type", "integer");
+        delayMinutes.put("description", "【相对时间】从现在起多少分钟后执行，与 execute_time 二选一。范围 1~43200（30天）。");
+        delayMinutes.put("minimum", 1);
+        delayMinutes.put("maximum", 43200);
 
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode content = properties.putObject("content");
-        content.put("type", "string");
-        content.put("description", "提醒内容，如「提交代码」「开会」「喝水」。简洁明确，不宜过长。");
-
-        ObjectNode delay = properties.putObject("delay_minutes");
-        delay.put("type", "integer");
-        delay.put("description", "【相对时间】从现在起多少分钟后执行，与 execute_time 二选一。范围 1~43200（30天）。");
-        delay.put("minimum", 1);
-        delay.put("maximum", 43200);
-
-        ObjectNode execTime = properties.putObject("execute_time");
-        execTime.put("type", "string");
-        execTime.put("description", "【绝对时间】首次执行时间，格式 yyyy-MM-dd HH:mm:ss，如 2026-07-29 09:00:00。与 delay_minutes 二选一。");
-
-        ObjectNode repeatType = properties.putObject("repeat_type");
+        ObjectNode repeatType = objectMapper.createObjectNode();
         repeatType.put("type", "string");
         repeatType.put("description", "【可选】重复类型。ONCE=一次性(默认), DAILY=每天, WEEKLY=每周。");
         repeatType.putArray("enum").add("NONE").add("ONCE").add("DAILY").add("WEEKLY").add("MONTHLY");
 
-        ObjectNode taskType = properties.putObject("task_type");
+        ObjectNode taskType = objectMapper.createObjectNode();
         taskType.put("type", "string");
         taskType.put("description", "【可选】任务类型。REMINDER=普通提醒(默认), AGENT=Agent 自动执行任务（到时间后 AI 自动执行并返回结果）。");
         taskType.putArray("enum").add("REMINDER").add("AGENT");
 
-        params.putArray("required").add("content");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文，无法创建定时任务\"}";
+        return schema()
+                .string("content", "提醒内容，如「提交代码」「开会」「喝水」。简洁明确，不宜过长。", true)
+                .raw("delay_minutes", delayMinutes, false)
+                .string("execute_time", "【绝对时间】首次执行时间，格式 yyyy-MM-dd HH:mm:ss，如 2026-07-29 09:00:00。与 delay_minutes 二选一。", false)
+                .raw("repeat_type", repeatType, false)
+                .raw("task_type", taskType, false)
+                .build();
     }
 
     @Override

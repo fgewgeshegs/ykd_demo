@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.tool.travel;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 
@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.feature.travel.TravelPlanService;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,25 +18,17 @@ import org.springframework.stereotype.Component;
  * 方案必须有明确标识、名称、定位和行程概要。
  */
 @Component
-public class TravelSaveOptionsTool implements Tool {
+public class TravelSaveOptionsTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(TravelSaveOptionsTool.class);
 
     private final TravelPlanService planService;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry registry;
 
     public TravelSaveOptionsTool(TravelPlanService planService,
                                        ObjectMapper objectMapper,
                                        ToolRegistry registry) {
+        super(registry, objectMapper);
         this.planService = planService;
-        this.objectMapper = objectMapper;
-        this.registry = registry;
-    }
-
-    @PostConstruct
-    public void init() {
-        registry.register(this);
     }
 
     @Override
@@ -55,33 +46,16 @@ public class TravelSaveOptionsTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode root = objectMapper.createObjectNode();
-        root.put("type", "object");
-        ObjectNode p = root.putObject("properties");
-
-        property(p, "option_count", "integer", "候选方案数量，必须与当前方案数量一致；用户未指定时默认3，明确指定时最多5");
-
-        ObjectNode options = p.putObject("options");
-        options.put("type", "array");
-        options.put("description", "待保存的候选方案列表，至少1个，最多5个");
-        ObjectNode option = options.putObject("items");
-        option.put("type", "object");
-        ObjectNode op = option.putObject("properties");
-        property(op, "option_id", "string", "稳定的内部方案标识，如 plan_a、plan_b");
-        property(op, "display_name", "string", "面向用户的方案名称，如方案A、方案B");
-        property(op, "positioning", "string", "方案定位：经济型、均衡型、体验型等");
-        property(op, "highlights", "string", "方案主要亮点，区别于其他方案的核心特色");
-        property(op, "itinerary_summary", "string", "方案行程概要，概述每天的主要活动和安排");
-        option.putArray("required").add("option_id").add("display_name")
-                .add("positioning").add("itinerary_summary");
-
-        root.putArray("required").add("options");
-        return root;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, new ToolExecutionContext(""));
+        return schema()
+                .integer("option_count", "候选方案数量，必须与当前方案数量一致；用户未指定时默认3，明确指定时最多5", false)
+                .array("options", "待保存的候选方案列表，至少1个，最多5个", true)
+                    .string("option_id", "稳定的内部方案标识，如 plan_a、plan_b", true)
+                    .string("display_name", "面向用户的方案名称，如方案A、方案B", true)
+                    .string("positioning", "方案定位：经济型、均衡型、体验型等", true)
+                    .string("highlights", "方案主要亮点，区别于其他方案的核心特色", false)
+                    .string("itinerary_summary", "方案行程概要，概述每天的主要活动和安排", true)
+                    .end()
+                .build();
     }
 
     @Override
@@ -93,12 +67,6 @@ public class TravelSaveOptionsTool implements Tool {
             log.error("travel_save_options 执行失败 | error={}", e.getMessage());
             return error("保存候选方案失败: " + e.getMessage());
         }
-    }
-
-    private void property(ObjectNode properties, String name, String type, String description) {
-        ObjectNode node = properties.putObject(name);
-        node.put("type", type);
-        node.put("description", description);
     }
 
     private String error(String message) {

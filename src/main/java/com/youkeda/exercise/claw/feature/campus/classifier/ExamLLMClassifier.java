@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.feature.campus.fetcher.NoticeContentFetcher;
 import com.youkeda.exercise.claw.domain.campus.ExamClassification;
-import com.youkeda.exercise.claw.domain.campus.NoticeItem;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import com.youkeda.exercise.claw.domain.campus.NoticeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +43,7 @@ public class ExamLLMClassifier {
         this.objectMapper = objectMapper;
     }
 
-    public ExamClassification classify(NoticeItem notice) {
+    public ExamClassification classify(NotificationItem notice) {
         try {
             // 按需下载正文
             if (notice.needsContent()) {

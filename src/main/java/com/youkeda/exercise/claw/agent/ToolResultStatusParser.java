@@ -27,7 +27,8 @@ public class ToolResultStatusParser {
                 default -> ResultStatus.FAILED;
             };
         } catch (Exception e) {
-            return ResultStatus.SUCCESS;
+            // P0-4 fail-closed：解析失败 ≠ 工具失败（可能工具成功但格式变化），标记 UNKNOWN 而非 SUCCESS
+            return ResultStatus.UNKNOWN;
         }
     }
 }

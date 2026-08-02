@@ -4,12 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.feature.task.repository.ScheduledTaskRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,28 +24,19 @@ import java.util.List;
  * 返回当前用户的定时任务列表，支持按状态筛选。
  */
 @Component
-public class ListScheduleTasksTool implements Tool {
+public class ListScheduleTasksTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(ListScheduleTasksTool.class);
 
     private static final int MAX_TASKS = 50;
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final ScheduledTaskRepository taskRepository;
 
     public ListScheduleTasksTool(ObjectMapper objectMapper,
                                      ToolRegistry functionRegistry,
                                      ScheduledTaskRepository taskRepository) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.taskRepository = taskRepository;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("ListScheduleTasksTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -58,7 +48,7 @@ public class ListScheduleTasksTool implements Tool {
     public String getDescription() {
         return "查询当前用户的定时提醒任务列表。\n"
                 + "当用户问「我的提醒有哪些」「待办提醒」「已完成的提醒」「我的任务」等时调用。\n"
-                + "可通过 status 参数筛选：ACTIVE=待执行, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消。\n"
+                + "可通过 status 参数筛选：ACTIVE=待执行, RUNNING=执行中, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消。\n"
                 + "不带 status 参数时返回用户全部任务。\n"
                 + "每个任务返回两个时间字段：execute_time 是配置的基准时间（周期任务可能已过期），"
                 + "next_execute_time 才是真正的下次触发时间。回答「下次提醒」「什么时候提醒」时必须用 next_execute_time。";
@@ -66,23 +56,14 @@ public class ListScheduleTasksTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        // status — 可选状态筛选
-        ObjectNode status = properties.putObject("status");
+        ObjectNode status = objectMapper.createObjectNode();
         status.put("type", "string");
-        status.put("description", "筛选条件（可选）：ACTIVE=待执行, DONE=已完成, CANCELLED=已取消。不传则返回全部。");
-        status.putArray("enum").add("ACTIVE").add("PAUSED").add("DONE").add("CANCELLED").add("FAILED");
+        status.put("description", "筛选条件（可选）：ACTIVE=待执行, RUNNING=执行中, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消, FAILED=执行失败。不传则返回全部。");
+        status.putArray("enum").add("ACTIVE").add("RUNNING").add("PAUSED").add("DONE").add("CANCELLED").add("FAILED");
 
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文，无法查询任务\"}";
+        return schema()
+                .raw("status", status, false)
+                .build();
     }
 
     @Override
@@ -166,6 +147,7 @@ public class ListScheduleTasksTool implements Tool {
         if (status == null) return "";
         return switch (status) {
             case ScheduledTask.STATUS_ACTIVE -> "待执行";
+            case ScheduledTask.STATUS_RUNNING -> "执行中";
             case ScheduledTask.STATUS_PAUSED -> "已暂停";
             case ScheduledTask.STATUS_DONE -> "已完成";
             case ScheduledTask.STATUS_CANCELLED -> "已取消";

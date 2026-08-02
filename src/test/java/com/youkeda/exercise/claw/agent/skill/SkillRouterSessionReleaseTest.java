@@ -16,8 +16,9 @@ import static org.mockito.Mockito.when;
 /**
  * Skill 会话卡死修复测试：验证 handleContinuation 的低置信度释放机制。
  *
- * <p>场景：用户进入某个 Skill（如 transport）后，后续无关消息不再被旧 skill 的
- * 工具白名单错误限制——低置信度续接返回 DEACTIVATE 释放旧 skill。
+ * <p>场景：用户进入某个 Skill（如 transport）后，后续消息与旧 skill 弱关联时
+ * 先 CONTINUE 计数（inactivityCount+1），连续低置信度达到阈值后才 DEACTIVATE，
+ * 避免「估价后追问校区/车型」这类多轮澄清被误判为无关而中断，同时防止 skill 长期占用。
  */
 class SkillRouterSessionReleaseTest {
 
@@ -97,10 +98,10 @@ class SkillRouterSessionReleaseTest {
         return session;
     }
 
-    // ============ Case 1：进入 transport 后，无关新闻总结请求应释放 transport ============
+    // ============ Case 1：进入 transport 后，第一条无关消息不应立刻释放 transport ============
 
     @Test
-    void unrelatedNewsSummaryReleasesStuckTransportSkill() {
+    void firstUnrelatedMessageKeepsTransportWithCounting() {
         SkillRegistry registry = mock(SkillRegistry.class);
         SkillDefinition transport = transportSkill();
         when(registry.getAll()).thenReturn(List.of(transport));
@@ -117,11 +118,12 @@ class SkillRouterSessionReleaseTest {
         SkillRouter router = routerWith(registry, store, policyFactory);
         SkillRoutingResult result = router.route("帮我写一个AI新闻总结", "owner");
 
-        // transport 不得被维持 → 释放（DEACTIVATE），消息回到正常路由流程（common 兜底）
-        assertEquals(SkillRoutingResult.SkillRoutingAction.DEACTIVATE, result.action(),
-                "无关消息不应延续卡死的 transport");
-        assertEquals("common", result.primarySkill(),
-                "释放后应回到 neutral 的 common");
+        // 第一条低置信度消息：CONTINUE 保留 transport（计数 inactivityCount+1），
+        // 避免「估价后追问校区/车型」这类多轮澄清被误判为无关而中断。
+        assertEquals(SkillRoutingResult.SkillRoutingAction.CONTINUE, result.action(),
+                "第一条低置信度消息不应立刻释放 transport");
+        assertEquals("transport", result.primarySkill(),
+                "低置信度计数期间应继续保留 transport");
     }
 
     @Test
@@ -156,10 +158,10 @@ class SkillRouterSessionReleaseTest {
         assertEquals(Map.of(), switched.context(), "技能切换后应清理旧技能上下文");
     }
 
-    // ============ Case 2：进入 transport 后，闲聊「你好」不应延续 transport ============
+    // ============ Case 2：进入 transport 后，闲聊「你好」不应立刻延续 transport，但需计数达阈值才释放 ============
 
     @Test
-    void casualGreetingDoesNotContinueStuckSkill() {
+    void casualGreetingDoesNotImmediatelyContinueStuckSkill() {
         SkillRegistry registry = mock(SkillRegistry.class);
         SkillDefinition transport = transportSkill();
         when(registry.getAll()).thenReturn(List.of(transport));
@@ -176,9 +178,14 @@ class SkillRouterSessionReleaseTest {
         SkillRouter router = routerWith(registry, store, policyFactory);
         SkillRoutingResult result = router.route("你好", "owner");
 
-        assertEquals(SkillRoutingResult.SkillRoutingAction.DEACTIVATE, result.action(),
-                "「你好」不应被判定为 transport 的延续");
+        // 第一条低置信度消息：CONTINUE 保留 transport（计数），
+        // 连续达到 LOW_CONFIDENCE_RELEASE_LIMIT 后才 DEACTIVATE 释放。
+        assertEquals(SkillRoutingResult.SkillRoutingAction.CONTINUE, result.action(),
+                "「你好」第一条应 CONTINUE 计数，而非立刻释放 transport");
+        assertEquals("transport", result.primarySkill(),
+                "计数期间应继续保留 transport");
     }
+
 
     // ============ Case 3：连续无关请求，activeSkill 最终应回到 neutral ============
 

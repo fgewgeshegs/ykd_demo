@@ -3,12 +3,11 @@ package com.youkeda.exercise.claw.tool.task;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.feature.task.repository.ScheduledTaskRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,28 +25,19 @@ import java.time.format.DateTimeParseException;
  * 只允许修改 ACTIVE 状态的任务。DONE 或 CANCELLED 的任务拒绝修改。
  */
 @Component
-public class UpdateScheduleTaskTool implements Tool {
+public class UpdateScheduleTaskTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(UpdateScheduleTaskTool.class);
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final ScheduledTaskRepository taskRepository;
 
     public UpdateScheduleTaskTool(ObjectMapper objectMapper,
                                       ToolRegistry functionRegistry,
                                       ScheduledTaskRepository taskRepository) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.taskRepository = taskRepository;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("UpdateScheduleTaskTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -71,36 +61,17 @@ public class UpdateScheduleTaskTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode taskId = properties.putObject("task_id");
-        taskId.put("type", "integer");
-        taskId.put("description", "要修改的定时任务 ID。从 list_schedule_tasks 的结果中获取。");
-
-        ObjectNode content = properties.putObject("content");
-        content.put("type", "string");
-        content.put("description", "【可选】新的提醒内容。不修改则省略。");
-
-        ObjectNode executeTime = properties.putObject("execute_time");
-        executeTime.put("type", "string");
-        executeTime.put("description", "【可选】新的执行时间，格式 yyyy-MM-dd HH:mm:ss。不修改则省略。");
-
-        ObjectNode repeatType = properties.putObject("repeat_type");
+        ObjectNode repeatType = objectMapper.createObjectNode();
         repeatType.put("type", "string");
         repeatType.put("description", "【可选】新的周期类型。ONCE=一次性, DAILY=每天, WEEKLY=每周。不修改则省略。");
         repeatType.putArray("enum").add("NONE").add("ONCE").add("DAILY").add("WEEKLY").add("MONTHLY");
 
-        params.putArray("required").add("task_id");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文\"}";
+        return schema()
+                .integer("task_id", "要修改的定时任务 ID。从 list_schedule_tasks 的结果中获取。", true)
+                .string("content", "【可选】新的提醒内容。不修改则省略。", false)
+                .string("execute_time", "【可选】新的执行时间，格式 yyyy-MM-dd HH:mm:ss。不修改则省略。", false)
+                .raw("repeat_type", repeatType, false)
+                .build();
     }
 
     @Override

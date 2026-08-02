@@ -58,10 +58,4 @@ public class PlanTask {
 
     public TaskResult getResult() { return result; }
     public void setResult(TaskResult result) { this.result = result; }
-
-    /** 所有依赖是否都已完成 */
-    public boolean isReady() {
-        return executionStatus == ExecutionStatus.PENDING
-                && (dependencies == null || dependencies.isEmpty());
-    }
 }

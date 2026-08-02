@@ -1,7 +1,7 @@
 package com.youkeda.exercise.claw.feature.campus.classifier;
 
 import com.youkeda.exercise.claw.domain.campus.ExamClassification;
-import com.youkeda.exercise.claw.domain.campus.NoticeItem;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import com.youkeda.exercise.claw.domain.campus.NoticeType;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +25,7 @@ public class ExamRuleClassifier {
         new Rule("考试.*安排|考试.*通知|考务",      NoticeType.OTHER_EXAM,        10, 0.85)
     );
 
-    public ExamClassification classify(NoticeItem notice) {
+    public ExamClassification classify(NotificationItem notice) {
         String title = notice.getTitle();
         for (Rule rule : RULES) {
             if (rule.pattern().matcher(title).matches()) {

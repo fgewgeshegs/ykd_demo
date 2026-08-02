@@ -28,7 +28,7 @@ import java.util.List;
  * 处理用户上传的课表图片、Excel 或 PDF 文件。
  *
  * <p>处理后设置 {@link CourseImportStateManager.Phase#WAITING_CONFIRM} 状态，
- * 后续用户确认后由 {@link CourseImportFunction#handleConfirm} 保存入库。
+ * 后续用户确认后由 {@link CourseImportTool#handleConfirm} 保存入库。
  * 数据最终写入 SQLite {@code course_schedule} 表。
  */
 @Component
@@ -252,34 +252,8 @@ public class CourseImportHandler {
             return WechatReply.text("图片下载失败，请重新发送。");
         }
 
-        String visionResult = visionService.analyze(imageDataUrl, COURSE_IMAGE_PROMPT);
-        if (visionResult == null || visionResult.isBlank()) {
-            log.warn("课表导入：图片分析失败 | userId={}", userId);
-            return WechatReply.text("无法识别课表图片，请确认图片清晰包含课程信息，或尝试发送 Excel 文件。");
-        }
-
-        log.info("课表导入：视觉分析完成 | userId={} | resultLen={} | raw={}",
-                userId, visionResult.length(), visionResult);
-
-        List<CourseEntity> courses = courseParser.parseFromJson(visionResult);
-        if (courses.isEmpty()) {
-            log.warn("课表导入：视觉结果无法解析为课程 | userId={}", userId);
-            return WechatReply.text("从图片中未能识别出有效的课程信息，请确认图片为课表截图，或尝试发送 Excel 文件。");
-        }
-
-        // 方案5 第二轮校验：第一轮结果整理成清单，连同原图让模型逐条「挑错」
-        courses = verifyCoursesWithImage(imageDataUrl, courses, userId);
-
-        importStateManager.setPendingCourses(userId, courses);
-
-        // 学期检测（从文件名）
-        detectAndStoreSemester(userId, null, null);
-        importStateManager.setWaitingConfirm(userId, visionResult);
-
-        contextStore.append("user", "[课表导入图片解析完成] 共 " + courses.size() + " 门课程");
-        contextStore.append("assistant", buildPreviewText(userId, courses));
-
-        return WechatReply.text(buildPreview(userId, courses));
+        // 图片内容处理与 handleImageFile 共用（批次 3 去重）
+        return processImageContent(userId, imageDataUrl, null);
     }
 
     // ==================== FILE 处理 ====================
@@ -331,16 +305,8 @@ public class CourseImportHandler {
                     + "支持标准表头格式（课程名称/星期/节次）或课表矩阵格式。");
         }
 
-        importStateManager.setPendingCourses(userId, courses);
-
-        // 学期检测（从文件名）
-        detectAndStoreSemester(userId, fileName, null);
-        importStateManager.setWaitingConfirm(userId, "[Excel 解析] " + fileName);
-
-        contextStore.append("user", "[课表导入 Excel 解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
-        contextStore.append("assistant", buildPreviewText(userId, courses));
-
-        return WechatReply.text(buildPreview(userId, courses));
+        return finalizePendingImport(userId, courses, "[Excel 解析] " + fileName, fileName, null,
+                "[课表导入 Excel 解析完成] " + fileName);
     }
 
     private WechatReply handleImageFile(String userId, byte[] fileBytes, String mimeType, String fileName) {
@@ -349,32 +315,42 @@ public class CourseImportHandler {
         String base64 = Base64.getEncoder().encodeToString(fileBytes);
         String dataUrl = "data:" + mimeType + ";base64," + base64;
 
+        // 图片内容处理与 handleImage 共用（批次 3 去重）
+        return processImageContent(userId, dataUrl, fileName);
+    }
+
+    /**
+     * 图片课表内容处理（视觉分析 → JSON 解析 → 两轮校验 → 暂存 → 预览）。
+     *
+     * <p>批次 3：抽取自 handleImage / handleImageFile 的重复流水线。二者仅图片来源不同
+     * （CDN 下载 vs 文件字节 base64），解析/暂存/预览完全一致。fileName 为空表示纯 IMAGE
+     * 消息（无文件名），日志与学期检测据此省略文件名。
+     */
+    private WechatReply processImageContent(String userId, String dataUrl, String fileName) {
+        boolean hasFileName = fileName != null && !fileName.isBlank();
+
         String visionResult = visionService.analyze(dataUrl, COURSE_IMAGE_PROMPT);
         if (visionResult == null || visionResult.isBlank()) {
-            return WechatReply.text("无法识别课表图片，请确认图片清晰包含课程信息。");
+            log.warn("课表导入：图片分析失败 | userId={}", userId);
+            return WechatReply.text("无法识别课表图片，请确认图片清晰包含课程信息，或尝试发送 Excel 文件。");
         }
 
-        log.info("课表导入：图片文件视觉分析完成 | userId={} | resultLen={} | raw={}",
+        log.info("课表导入：视觉分析完成 | userId={} | resultLen={} | raw={}",
                 userId, visionResult.length(), visionResult);
 
         List<CourseEntity> courses = courseParser.parseFromJson(visionResult);
         if (courses.isEmpty()) {
-            return WechatReply.text("从图片中未能识别出有效的课程信息。");
+            log.warn("课表导入：视觉结果无法解析为课程 | userId={}", userId);
+            return WechatReply.text("从图片中未能识别出有效的课程信息，请确认图片为课表截图，或尝试发送 Excel 文件。");
         }
 
         // 方案5 第二轮校验：第一轮结果整理成清单，连同原图让模型逐条「挑错」
         courses = verifyCoursesWithImage(dataUrl, courses, userId);
 
-        importStateManager.setPendingCourses(userId, courses);
-
-        // 学期检测（从文件名）
-        detectAndStoreSemester(userId, fileName, null);
-        importStateManager.setWaitingConfirm(userId, visionResult);
-
-        contextStore.append("user", "[课表导入图片解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
-        contextStore.append("assistant", buildPreviewText(userId, courses));
-
-        return WechatReply.text(buildPreview(userId, courses));
+        String logText = hasFileName
+                ? "[课表导入图片解析完成] " + fileName
+                : "[课表导入图片解析完成]";
+        return finalizePendingImport(userId, courses, visionResult, hasFileName ? fileName : null, null, logText);
     }
 
     // ==================== 方案5：两轮校验（提取 → 对账） ====================
@@ -468,17 +444,10 @@ public class CourseImportHandler {
             return WechatReply.text("未能从文档中识别出有效的课程信息。");
         }
 
-        importStateManager.setPendingCourses(userId, courses);
-
-        // 学期检测（从文件名和内容）
+        // 学期检测从文件名和内容
         String contentPreview = result != null ? result.text() : null;
-        detectAndStoreSemester(userId, fileName, contentPreview);
-        importStateManager.setWaitingConfirm(userId, llmResult);
-
-        contextStore.append("user", "[课表导入文档解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
-        contextStore.append("assistant", buildPreviewText(userId, courses));
-
-        return WechatReply.text(buildPreview(userId, courses));
+        return finalizePendingImport(userId, courses, llmResult, fileName, contentPreview,
+                "[课表导入文档解析完成] " + fileName);
     }
 
     // ==================== PDF 处理（PdfTableExtractor + LLM） ====================
@@ -521,16 +490,8 @@ public class CourseImportHandler {
             return WechatReply.text("未能从PDF中识别出有效的课程信息。");
         }
 
-        importStateManager.setPendingCourses(userId, courses);
-
-        // 学期检测（从文件名）
-        detectAndStoreSemester(userId, fileName, null);
-        importStateManager.setWaitingConfirm(userId, "[PDF 解析] " + fileName);
-
-        contextStore.append("user", "[课表导入 PDF 解析完成] " + fileName + "，共 " + courses.size() + " 门课程");
-        contextStore.append("assistant", buildPreviewText(userId, courses));
-
-        return WechatReply.text(buildPreview(userId, courses));
+        return finalizePendingImport(userId, courses, "[PDF 解析] " + fileName, fileName, null,
+                "[课表导入 PDF 解析完成] " + fileName);
     }
 
     /**
@@ -698,6 +659,32 @@ public class CourseImportHandler {
     }
 
     /**
+     * 合并导入收尾流水线（Excel/图片/PDF/文档四路共用，批次 4 去重）：
+     * 暂存课程 → 学期检测 → 置等待确认 → 写上下文 → 返回预览。
+     *
+     * @param userId           用户标识
+     * @param courses          解析出的课程列表
+     * @param confirmPayload   等待确认时暂存的内容（原路透传，作为确认校验的凭据）
+     * @param fileName         文件名（可为 null，图片 IMAGE 消息无文件名）
+     * @param contentPreview   文件内容预览（仅文档/PDF 路径有，可为 null）
+     * @param userLog          写入上下文的 user 侧日志前缀（不含课程数，方法内拼接）
+     */
+    private WechatReply finalizePendingImport(String userId, List<CourseEntity> courses,
+                                              String confirmPayload, String fileName,
+                                              String contentPreview, String userLog) {
+        importStateManager.setPendingCourses(userId, courses);
+
+        // 学期检测
+        detectAndStoreSemester(userId, fileName, contentPreview);
+        importStateManager.setWaitingConfirm(userId, confirmPayload);
+
+        contextStore.append("user", userLog + "，共 " + courses.size() + " 门课程");
+        contextStore.append("assistant", buildPreviewText(userId, courses));
+
+        return WechatReply.text(buildPreview(userId, courses));
+    }
+
+    /**
      * 从文件名和内容检测学期并存储到状态管理器
      *
      * @param userId         用户标识
@@ -764,7 +751,8 @@ public class CourseImportHandler {
     }
 
     private boolean isPdfFile(String fileName, String mimeType) {
-        if (mimeType != null && (mimeType.contains("pdf") || mimeType.contains("application"))) {
+        // 精确匹配 application/pdf；不能 contains("application")——会把 Excel/octet-stream/JSON 等全判成 PDF
+        if (mimeType != null && mimeType.equals("application/pdf")) {
             return true;
         }
         if (fileName != null) {

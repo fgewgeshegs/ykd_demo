@@ -1,6 +1,5 @@
 package com.youkeda.exercise.claw.agent.runtime;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.youkeda.exercise.claw.agent.SafetyPolicy;
@@ -143,8 +142,9 @@ public class ToolExecutor {
                         activityRequestId, activeSkillName, toolName);
                 try {
                     result = fn.execute(tc.arguments(), execContext);
-                    session = skillPendingCoordinator.afterToolExecution(session, toolName);
+                    session = skillPendingCoordinator.afterToolExecution(session, toolName, result);
                     ResultStatus resultStatus = parseResultStatus(result);
+                    // P0-4 fail-closed：UNKNOWN（解析失败）≠ SUCCESS/PARTIAL，活动统计记为失败
                     boolean succeeded = resultStatus == ResultStatus.SUCCESS
                             || resultStatus == ResultStatus.PARTIAL;
                     activityRecorder.toolFinished(
@@ -177,24 +177,6 @@ public class ToolExecutor {
         return new ToolExecutionBatch(results, session, planState, executedInBatch, toolCallCount);
     }
 
-    /**
-     * 检查某批工具调用是否启动了信息猎手。
-     */
-    boolean isStartedInformationScout(List<LLMResponse.ToolCall> toolCalls, List<String> toolResults) {
-        for (int i = 0; i < toolCalls.size(); i++) {
-            if (!"information_scout".equals(toolCalls.get(i).name())) continue;
-            try {
-                JsonNode result = objectMapper.readTree(toolResults.get(i));
-                if ("started".equalsIgnoreCase(result.path("status").asText())) {
-                    return true;
-                }
-            } catch (Exception ignored) {
-                // 非 JSON 结果不能视为已受理后台任务。
-            }
-        }
-        return false;
-    }
-
     // ==================== 工具方法 ====================
 
     public record ToolExecutionBatch(
@@ -217,26 +199,25 @@ public class ToolExecutor {
     }
 
     /**
-     * 根据工具名模糊匹配 PlanState 中的 PENDING 任务。
-     * 优先匹配 description 包含工具名的任务；无匹配时返回第一个 PENDING 任务。
+     * 根据工具名匹配 PlanState 中「就绪（DAG 依赖已满足）」的任务。
+     *
+     * <p>批次 2：不再把任意 PENDING 任务标 DONE——只有依赖已满足（{@link PlanState#getReadyTasks()}）
+     * 的任务才可执行并推进。优先匹配 description 包含工具名的就绪任务，其次首个就绪任务；
+     * 无就绪任务返回 null（不动计划，等待依赖先行）。
      */
     private PlanTask findTaskByToolName(PlanState planState, String toolName) {
         if (planState == null || planState.getTasks() == null) return null;
-        // 优先匹配 description 包含工具名的 PENDING 任务
-        for (PlanTask task : planState.getTasks()) {
-            if (task.getExecutionStatus() == ExecutionStatus.PENDING
-                    && task.getDescription() != null
+        List<PlanTask> readyTasks = planState.getReadyTasks();
+        if (readyTasks.isEmpty()) return null;
+        // 优先匹配 description 包含工具名的就绪任务
+        for (PlanTask task : readyTasks) {
+            if (task.getDescription() != null
                     && task.getDescription().toLowerCase().contains(toolName.toLowerCase())) {
                 return task;
             }
         }
-        // 回退：任意 PENDING 任务
-        for (PlanTask task : planState.getTasks()) {
-            if (task.getExecutionStatus() == ExecutionStatus.PENDING) {
-                return task;
-            }
-        }
-        return null;
+        // 回退：首个就绪任务
+        return readyTasks.get(0);
     }
 
     private ResultStatus parseResultStatus(String resultJson) {

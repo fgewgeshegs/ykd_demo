@@ -5,10 +5,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,19 +18,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-public class ExamImportTool implements Tool {
+public class ExamImportTool extends AbstractTool {
     private static final Logger log = LoggerFactory.getLogger(ExamImportTool.class);
-    private final ObjectMapper om;
-    private final ToolRegistry registry;
     private final ExamService examService;
     private final ExamRepository examRepository;
 
     public ExamImportTool(ObjectMapper om, ToolRegistry registry, ExamService examService, ExamRepository examRepository) {
-        this.om = om; this.registry = registry; this.examService = examService; this.examRepository = examRepository;
+        super(registry, om);
+        this.examService = examService; this.examRepository = examRepository;
     }
-
-    @PostConstruct
-    public void init() { registry.register(this); log.info("ExamImportTool 已注册到 ToolRegistry"); }
 
     @Override
     public String getName() { return "exam_schedule"; }
@@ -49,28 +44,23 @@ public class ExamImportTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode s = om.createObjectNode(); s.put("type", "object");
-        ObjectNode p = s.putObject("properties");
-        ObjectNode action = p.putObject("action");
+        ObjectNode action = objectMapper.createObjectNode();
         action.put("type", "string");
         action.put("description", "操作类型");
         action.putArray("enum").add("query_all").add("query_upcoming").add("query_date").add("import").add("delete").add("update").add("clear");
-        p.putObject("exam_id").put("type", "integer").put("description", "考试ID，用于 delete/update");
-        p.putObject("exam_date").put("type", "string").put("description", "考试日期 yyyy-MM-dd，用于 query_date");
-        p.putObject("courses").put("type", "array").put("description", "考试安排数组，用于 import");
-        p.putObject("course_name").put("type", "string").put("description", "考试科目（用于 update）");
-        p.putObject("new_exam_date").put("type", "string").put("description", "新的考试日期（用于 update）");
-        p.putObject("start_time").put("type", "string").put("description", "开始时间 HH:mm（用于 update）");
-        p.putObject("end_time").put("type", "string").put("description", "结束时间 HH:mm（用于 update）");
-        p.putObject("location").put("type", "string").put("description", "考试地点（用于 update）");
-        p.putObject("exam_type").put("type", "string").put("description", "考试类型：MIDTERM/FINAL/MAKEUP（用于 update）");
-        s.putArray("required").add("action");
-        return s;
-    }
 
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文\"}";
+        return schema()
+                .raw("action", action, true)
+                .integer("exam_id", "考试ID，用于 delete/update", false)
+                .string("exam_date", "考试日期 yyyy-MM-dd，用于 query_date", false)
+                .arrayOfScalar("courses", "考试安排数组，用于 import", "string", false)
+                .string("course_name", "考试科目（用于 update）", false)
+                .string("new_exam_date", "新的考试日期（用于 update）", false)
+                .string("start_time", "开始时间 HH:mm（用于 update）", false)
+                .string("end_time", "结束时间 HH:mm（用于 update）", false)
+                .string("location", "考试地点（用于 update）", false)
+                .string("exam_type", "考试类型：MIDTERM/FINAL/MAKEUP（用于 update）", false)
+                .build();
     }
 
     @Override
@@ -79,7 +69,7 @@ public class ExamImportTool implements Tool {
         if (userId == null || userId.isBlank()) return "{\"error\":\"缺少用户ID\"}";
         JsonNode args;
         try {
-            args = om.readTree(argumentsJson);
+            args = objectMapper.readTree(argumentsJson);
         } catch (Exception e) {
             return "{\"error\":\"参数解析失败\"}";
         }
@@ -102,7 +92,7 @@ public class ExamImportTool implements Tool {
     }
 
     private String buildResult(String action, List<ExamEntity> exams, String title) {
-        ObjectNode r = om.createObjectNode();
+        ObjectNode r = objectMapper.createObjectNode();
         r.put("action", action); r.put("title", title); r.put("count", exams.size());
         ArrayNode arr = r.putArray("exams");
         for (ExamEntity e : exams) {

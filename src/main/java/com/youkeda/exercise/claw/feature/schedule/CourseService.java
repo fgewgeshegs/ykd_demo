@@ -54,8 +54,8 @@ public class CourseService {
         // 冲突检测（在持久化之前）
         List<ConflictInfo> conflicts = detectConflicts(userId, courses);
 
-        // replaceAll 覆盖写入
-        courseRepository.replaceAll(userId, courses);
+        // 无学期覆盖写入（只清无学期课程，保留学期绑定课程）
+        courseRepository.replaceAllNullSemester(userId, courses);
 
         log.info("课表导入完成 | userId={} | count={} | conflicts={}",
                 userId, courses.size(), conflicts.size());
@@ -75,10 +75,10 @@ public class CourseService {
     }
 
     /**
-     * 直接保存课程列表（覆盖旧数据）
+     * 直接保存课程列表（覆盖旧数据，只覆盖无学期课程，保留学期绑定课程）
      */
     public List<CourseEntity> saveCourses(String userId, List<CourseEntity> courses) {
-        return courseRepository.replaceAll(userId, courses);
+        return courseRepository.replaceAllNullSemester(userId, courses);
     }
 
     /**

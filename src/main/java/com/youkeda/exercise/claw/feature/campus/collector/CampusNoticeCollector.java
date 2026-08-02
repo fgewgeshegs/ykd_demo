@@ -1,6 +1,6 @@
 package com.youkeda.exercise.claw.feature.campus.collector;
 
-import com.youkeda.exercise.claw.domain.campus.NoticeItem;
+import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -27,10 +27,10 @@ public class CampusNoticeCollector {
      * 爬取通知列表，只抓 title + url + date
      *
      * @param schoolUrl 教务处通知列表页 URL
-     * @return 通知列表（不含正文）
+     * @return 通知列表（不含正文），source 固定为 EXAM
      */
-    public List<NoticeItem> collect(String schoolUrl) {
-        List<NoticeItem> items = new ArrayList<>();
+    public List<NotificationItem> collect(String schoolUrl) {
+        List<NotificationItem> items = new ArrayList<>();
         try {
             Document doc = Jsoup.connect(schoolUrl)
                     .timeout((int) Duration.ofSeconds(TIMEOUT_SECONDS).toMillis())
@@ -69,7 +69,7 @@ public class CampusNoticeCollector {
                         String date = findDate(link);
 
                         if (!title.isEmpty()) {
-                            items.add(new NoticeItem(title, url, date));
+                            items.add(new NotificationItem("EXAM", title, url, date));
                         }
                     }
                 }
@@ -87,7 +87,7 @@ public class CampusNoticeCollector {
                     String date = findDate(entry);
 
                     if (!title.isEmpty()) {
-                        items.add(new NoticeItem(title, url, date));
+                        items.add(new NotificationItem("EXAM", title, url, date));
                     }
                 }
             }

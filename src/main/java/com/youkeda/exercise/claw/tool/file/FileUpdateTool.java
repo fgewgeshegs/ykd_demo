@@ -3,12 +3,11 @@ package com.youkeda.exercise.claw.tool.file;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.file.FileService;
 import com.youkeda.exercise.claw.domain.file.FileMetadata;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,26 +23,17 @@ import org.springframework.stereotype.Component;
  * <p>纯文本入、JSON 字符串出，不走 pending-consumer 模式。
  */
 @Component
-public class FileUpdateTool implements Tool {
+public class FileUpdateTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(FileUpdateTool.class);
 
     private final FileService fileService;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     public FileUpdateTool(FileService fileService,
                               ToolRegistry functionRegistry,
                               ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.fileService = fileService;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("FileUpdateTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -59,27 +49,10 @@ public class FileUpdateTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode fileId = properties.putObject("file_id");
-        fileId.put("type", "integer");
-        fileId.put("description", "要修改的文件 ID。如果不知道 ID，可先用 file_search 搜索获取。");
-
-        ObjectNode filename = properties.putObject("filename");
-        filename.put("type", "string");
-        filename.put("description", "新的文件名，需包含扩展名，如「Java面试题整理 v2.md」");
-
-        params.putArray("required").add("file_id").add("filename");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文\"}";
+        return schema()
+                .integer("file_id", "要修改的文件 ID。如果不知道 ID，可先用 file_search 搜索获取。", true)
+                .string("filename", "新的文件名，需包含扩展名，如「Java面试题整理 v2.md」", true)
+                .build();
     }
 
     @Override

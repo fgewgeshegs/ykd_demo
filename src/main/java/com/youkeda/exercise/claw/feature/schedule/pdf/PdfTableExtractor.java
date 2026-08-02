@@ -370,25 +370,6 @@ public class PdfTableExtractor {
     }
 
     /**
-     * 从该行的上下文中查找最近的 period 标记
-     */
-    private String findPeriodNeighbor(List<List<TextBlock>> rows, int index) {
-        // 向上找
-        for (int i = index - 1; i >= 0; i--) {
-            String text = joinBlocks(rows.get(i));
-            String p = extractPeriod(text);
-            if (p != null) return p;
-        }
-        // 向下找
-        for (int i = index + 1; i < rows.size(); i++) {
-            String text = joinBlocks(rows.get(i));
-            String p = extractPeriod(text);
-            if (p != null) return p;
-        }
-        return null;
-    }
-
-    /**
      * 从文本中提取节次，如 "(3-4节)" → "3-4"
      */
     private String extractPeriod(String text) {

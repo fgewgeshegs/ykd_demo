@@ -187,7 +187,7 @@ public class TravelPlanService {
         combined.setPositioning(defaultText(text(args, "positioning"), "用户组合方案"));
         combined.setHighlights(text(args, "highlights"));
         combined.setItinerarySummary(text(args, "itinerary_summary"));
-        combined.setPlanStatus("CANDIDATE");
+        combined.setPlanStatus(PlanStatus.CANDIDATE);
         draft.getOptions().add(combined);
         draft.setSelectedOptionId(id);
 
@@ -207,11 +207,11 @@ public class TravelPlanService {
         if (hasText(args, "positioning")) option.setPositioning(text(args, "positioning"));
         if (hasText(args, "highlights")) option.setHighlights(text(args, "highlights"));
         if (hasText(args, "itinerary_summary")) option.setItinerarySummary(text(args, "itinerary_summary"));
-        option.setCostStatus("STALE");
+        option.setCostStatus(CostStatus.STALE);
         option.setCostResult(null);
-        option.setPlanStatus("NEEDS_REVIEW");
+        option.setPlanStatus(PlanStatus.NEEDS_REVIEW);
         draft.setSelectedOptionId(option.getOptionId());
-        draft.setCostStatus("STALE");
+        draft.setCostStatus(CostStatus.STALE);
 
         ObjectNode result = objectMapper.createObjectNode();
         result.put("status", "OPTION_REVISED");
@@ -369,22 +369,23 @@ public class TravelPlanService {
             changed |= !draft.getPriorities().equals(values);
             draft.setPriorities(values);
         }
-        draft.setPlanMode(draft.getPriorities().isEmpty() ? "BALANCED_DEFAULT" : "PRIORITY");
+        draft.setPlanMode(draft.getPriorities().isEmpty()
+                ? PlanMode.BALANCED_DEFAULT : PlanMode.PRIORITY);
         return changed;
     }
 
     private void invalidateAllOptions(TravelPlanDraft draft) {
         draft.getOptions().forEach(option -> {
-            option.setCostStatus("STALE");
+            option.setCostStatus(CostStatus.STALE);
             option.setCostResult(null);
-            option.setPlanStatus("NEEDS_REVIEW");
+            option.setPlanStatus(PlanStatus.NEEDS_REVIEW);
         });
     }
 
     // ==================== Formatting ====================
 
     private void refreshState(ObjectNode result, TravelPlanDraft draft) {
-        result.put("plan_mode", draft.getPlanMode());
+        result.put("plan_mode", draft.getPlanMode().value());
         result.put("version", draft.getVersion());
         result.set("collected_information", objectMapper.valueToTree(draft));
     }

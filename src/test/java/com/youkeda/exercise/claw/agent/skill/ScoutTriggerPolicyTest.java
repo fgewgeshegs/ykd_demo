@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.feature.scout;
+package com.youkeda.exercise.claw.agent.skill;
 
 import org.junit.jupiter.api.Test;
 

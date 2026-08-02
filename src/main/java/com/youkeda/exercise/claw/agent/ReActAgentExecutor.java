@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
-import com.youkeda.exercise.claw.agent.memory.longterm.MemoryItem;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder;
 import com.youkeda.exercise.claw.agent.model.*;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
@@ -18,12 +17,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillExecutionResult;
@@ -82,6 +78,12 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final SkillExecutionDispatcher skillExecutionDispatcher;
     private final ExecutionLoop executionLoop;
 
+    // ==== 批次 2 拆分出的内部 helper（非 Spring bean，构造内用已有依赖创建）====
+    private final SystemPromptBuilder systemPromptBuilder;
+    private final SkillSessionUpdater skillSessionUpdater;
+    private final MessageHistoryBuilder messageHistoryBuilder;
+    private final SimpleChatClassifier simpleChatClassifier;
+
     public ReActAgentExecutor(LLMClient llmClient,
                                ToolRegistry functionRegistry,
                                ContextStore contextStore,
@@ -112,6 +114,13 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.activityRecorder = activityRecorder;
         this.skillExecutionDispatcher = skillExecutionDispatcher;
         this.executionLoop = executionLoop;
+
+        // 内部 helper 用主类已有的依赖创建，保持 15 参构造签名不变（测试零改动）
+        this.systemPromptBuilder = new SystemPromptBuilder(llmClient, skillKnowledgeService);
+        this.skillSessionUpdater = new SkillSessionUpdater(skillRouter, skillSessionStore);
+        this.messageHistoryBuilder =
+                new MessageHistoryBuilder(contextStore, longTermMemoryService, MAX_HISTORY);
+        this.simpleChatClassifier = new SimpleChatClassifier(llmClient);
     }
 
     @Override
@@ -131,7 +140,7 @@ public class ReActAgentExecutor implements AgentExecutor {
 
         // Route through SkillRouter
         SkillRoutingResult routingResult = skillRouter.route(userMessage, userId);
-        SkillSession session = updateSession(userId, routingResult);
+        SkillSession session = skillSessionUpdater.update(userId, routingResult);
         context.setSkillSession(session);
 
         // Get active SkillDefinition
@@ -176,7 +185,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         }
 
         // Build dynamic system prompt
-        String systemPrompt = buildSystemPrompt(context, activeSkill);
+        String systemPrompt = systemPromptBuilder.build(context, activeSkill);
 
         // Load PlanState
         PlanState planState = context.getPlanState() != null
@@ -184,29 +193,13 @@ public class ReActAgentExecutor implements AgentExecutor {
                 : planStore.get();
         context.setPlanState(planState);
 
-        // History + current message
-        List<Message> history = contextStore.getHistory(MAX_HISTORY);
-        boolean continuationRequest = isContinuationRequest(userMessage);
-        List<Message> messages = new ArrayList<>();
-        for (Message message : history) {
-            if (continuationRequest && isLegacyLimitReply(message)) continue;
-            messages.add(message);
-        }
-        if (!historyContainsCurrentMessage(history, userMessage)) {
-            messages.add(new Message("user", userMessage));
-        }
-
-        // Long-term memory recall
-        List<MemoryItem> recalledMemories = longTermMemoryService.recall(userMessage);
-        if (!recalledMemories.isEmpty()) {
-            String memoryPrompt = longTermMemoryService.buildMemoryPrompt(recalledMemories);
-            messages.add(0, new Message("system", memoryPrompt));
-            log.debug("长期记忆已注入 | count={}", recalledMemories.size());
-        }
+        // History + current message + long-term memory
+        List<Message> messages = messageHistoryBuilder.buildMessages(userMessage);
+        boolean continuationRequest = messageHistoryBuilder.isContinuationRequest(userMessage);
 
         // Fast path: simple chat without tools
         if (!continuationRequest && (activeSkill == null || "common".equals(activeSkill.name()))) {
-            if (isSimpleChat(userMessage)) {
+            if (simpleChatClassifier.isSimpleChat(userMessage)) {
                 log.debug("快速通道：用户消息不需工具，走纯对话");
                 LLMResponse quickResponse = llmClient.chatWithTools(systemPrompt, messages, List.of());
                 if (quickResponse != null && !quickResponse.isToolCall()
@@ -233,11 +226,16 @@ public class ReActAgentExecutor implements AgentExecutor {
                 tools.stream().map(ToolDefinition::name).toList());
 
         // Execution loop
+        int initialMessageCount = messages.size();
         ExecutionLoop.Result loopResult = executionLoop.run(
                 systemPrompt, messages, tools, planState,
                 execContext, session, activityRequestId, activeSkillName, userMessage);
         session = loopResult.session();
         planState = loopResult.planState();
+
+        // 持久化本轮工具调用与结果，使下一轮 LLM 能看到真实的工具执行记录，
+        // 避免因历史中缺失工具证据而误判上一轮结果为编造。
+        messageHistoryBuilder.persistToolMessages(messages, initialMessageCount);
 
         // Handle loop result
         return handleLoopResult(loopResult, userMessage, session, userId,
@@ -292,139 +290,5 @@ public class ReActAgentExecutor implements AgentExecutor {
     private String handleError() {
         contextStore.append("assistant", ERROR_REPLY);
         return ERROR_REPLY;
-    }
-
-    // ==================== 消息方法 ====================
-
-    private boolean historyContainsCurrentMessage(List<Message> history, String userMessage) {
-        if (history.isEmpty() || userMessage == null) return false;
-        Message last = history.get(history.size() - 1);
-        if (!"user".equals(last.role()) || last.content() == null) return false;
-        return last.content().equals(userMessage) || last.content().equals("[语音]" + userMessage);
-    }
-
-    private boolean isContinuationRequest(String userMessage) {
-        if (userMessage == null) return false;
-        String normalized = userMessage.replaceAll("[\\s，。！!？?]", "");
-        return Set.of("继续生成", "继续", "接着生成", "继续完成方案").contains(normalized);
-    }
-
-    private boolean isLegacyLimitReply(Message message) {
-        if (message == null || !"assistant".equals(message.role()) || message.content() == null) {
-            return false;
-        }
-        return message.content().contains("本轮处理步骤已达到上限")
-                || message.content().contains("请回复\"继续生成\"")
-                || message.content().contains("请回复“继续生成”");
-    }
-
-    /**
-     * 快速判断用户消息是否需要调用工具。
-     */
-    private boolean isSimpleChat(String userMessage) {
-        if (userMessage == null || userMessage.trim().length() <= 3) return false;
-
-        String prompt = "你是一个分类器。判断用户消息是否需要调用工具才能完整回答。\n"
-                + "需要工具：查天气、查地图/地点/路线、查时间/日期/节假日、搜索网页、"
-                + "生成图片、生成文件/文档、语音合成、交通推荐、预算计算、"
-                + "查课表/今天课表/导入课表/课程信息/考试安排、"
-                + "设置提醒/定时提醒/自定义提醒/创建提醒。\n"
-                + "不需要工具：纯粹的聊天、问答、解释、翻译、写作、闲聊、感谢。\n"
-                + "如果用户消息很短（如\"好\"\"可以\"\"继续\"），可能是在回应之前提出的方案，"
-                + "需要让工具系统处理，返回 NEED_TOOLS。\n"
-                + "不确定时返回 NEED_TOOLS。\n"
-                + "只返回一个词：NEED_TOOLS 或 CHAT_ONLY。";
-
-        String result = llmClient.chatWithSystemPrompt(prompt, userMessage);
-        return "CHAT_ONLY".equals(result != null ? result.trim() : "");
-    }
-
-    // ==================== Skill 支持方法 ====================
-
-    /**
-     * 根据 SkillRouter 的 routing 结果更新 SkillSession。
-     * <ul>
-     *   <li>ACTIVATE/SWITCH → 切换 activeSkill</li>
-     *   <li>CONTINUE → 高置信度重置不活跃计数，低置信度递增</li>
-     *   <li>DEACTIVATE → 创建新 session（回退 common）</li>
-     *   <li>NONE → 非 common 时递增不活跃计数</li>
-     * </ul>
-     */
-    private SkillSession updateSession(String userId, SkillRoutingResult routing) {
-        java.util.Optional<SkillSession> existing = skillSessionStore.find(userId);
-        SkillSession session = existing.orElseGet(() -> SkillSession.create(userId));
-
-        switch (routing.action()) {
-            case ACTIVATE, SWITCH -> session = session.withActiveSkill(routing.primarySkill());
-            case CONTINUE -> {
-                if (routing.confidence() >= 0.3) {
-                    session = session.withResetInactivity();
-                } else {
-                    session = session.withIncrementInactivity();
-                }
-            }
-            case DEACTIVATE -> { session = SkillSession.create(userId); }
-            case NONE -> {
-                if (!"common".equals(session.activeSkill())) {
-                    session = session.withIncrementInactivity();
-                }
-            }
-        }
-        skillSessionStore.save(userId, session);
-        return session;
-    }
-
-    /**
-     * 构建动态 system prompt：基础 prompt + Active Skill 上下文。
-     * <p>Release 2 还会在此追加知识库上下文。
-     */
-    private String buildSystemPrompt(AgentContext context, SkillDefinition activeSkill) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(llmClient.getSystemPrompt()).append("\n\n");
-
-        // 注入当前系统时间，供 LLM 判断「今晚/明天/已过去」等时间相关表述
-        sb.append("当前系统时间：")
-                .append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                .append("\n\n");
-
-        if (activeSkill != null && activeSkill.systemPromptResource() != null) {
-            String skillPrompt = loadSkillPrompt(activeSkill.systemPromptResource());
-            if (skillPrompt != null) {
-                sb.append("--- 当前上下文 ---\n\n");
-                sb.append("[SKILL_CONTEXT]\n");
-                sb.append(skillPrompt).append("\n");
-                sb.append("[/SKILL_CONTEXT]\n\n");
-            }
-        }
-        // RAG knowledge context
-        if (skillKnowledgeService != null && activeSkill != null
-                && activeSkill.knowledge() != null && activeSkill.knowledge().enabled()) {
-            try {
-                String knowledge = skillKnowledgeService.recall(context.getMessage(), activeSkill.name());
-                if (knowledge != null && !knowledge.isEmpty()) {
-                    sb.append(knowledge).append("\n\n");
-                }
-            } catch (Exception e) {
-                log.warn("Failed to recall skill knowledge for: {}", activeSkill.name(), e);
-            }
-        }
-
-        return sb.toString();
-    }
-
-    /**
-     * 从 classpath 加载 Skill 的 system prompt 资源文件。
-     */
-    private String loadSkillPrompt(String resourcePath) {
-        try {
-            return new String(
-                new org.springframework.core.io.ClassPathResource(resourcePath)
-                    .getInputStream().readAllBytes(),
-                java.nio.charset.StandardCharsets.UTF_8
-            );
-        } catch (Exception e) {
-            log.warn("Failed to load skill prompt: {}", resourcePath, e);
-            return null;
-        }
     }
 }

@@ -104,10 +104,6 @@ public class FileMetadataRepository {
             UPDATE file_metadata SET status = 'deleted' WHERE id = ? AND user_id = ?
             """;
 
-    private static final String COUNT_BY_USER = """
-            SELECT COUNT(*) FROM file_metadata WHERE user_id = ? AND status = 'active'
-            """;
-
     @Value("${file.db-path:./data/claw-files.db}")
     private String dbPath;
 
@@ -278,24 +274,6 @@ public class FileMetadataRepository {
             log.error("搜索文件失败 | userId={} | keyword={}", userId, keyword, e);
             return List.of();
         }
-    }
-
-    /**
-     * 统计用户文件数量
-     */
-    public int countByUserId(String userId) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(COUNT_BY_USER)) {
-            ps.setString(1, userId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt(1);
-                }
-            }
-        } catch (SQLException e) {
-            log.error("统计文件数量失败 | userId={}", userId, e);
-        }
-        return 0;
     }
 
     // ==================== 更新 ====================

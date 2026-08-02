@@ -4,10 +4,10 @@ import com.youkeda.exercise.claw.feature.transport.TransportService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.domain.transport.TransportRequest;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,26 +29,17 @@ import org.springframework.stereotype.Component;
  * </ol>
  */
 @Component
-public class TransportRecommendTool implements Tool {
+public class TransportRecommendTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(TransportRecommendTool.class);
 
     private final TransportService transportService;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
 
     public TransportRecommendTool(TransportService transportService,
                                        ObjectMapper objectMapper,
                                        ToolRegistry functionRegistry) {
+        super(functionRegistry, objectMapper);
         this.transportService = transportService;
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("TransportRecommendTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -66,34 +57,16 @@ public class TransportRecommendTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode from = properties.putObject("from");
-        from.put("type", "string");
-        from.put("description", "出发地，城市名称或具体地址，如：上海、杭州、北京");
-
-        ObjectNode to = properties.putObject("to");
-        to.put("type", "string");
-        to.put("description", "目的地，城市名称或具体地址，如：杭州、南京、苏州");
-
-        ObjectNode people = properties.putObject("people");
-        people.put("type", "integer");
-        people.put("description", "出行人数，如：30、5、100");
-
-        ObjectNode budget = properties.putObject("budget");
-        budget.put("type", "integer");
-        budget.put("description", "可选总预算（元），如：50000。不填则不考虑预算限制");
-
-        params.putArray("required").add("from").add("to").add("people");
-
-        return params;
+        return schema()
+                .string("from", "出发地，城市名称或具体地址，如：上海、杭州、北京", true)
+                .string("to", "目的地，城市名称或具体地址，如：杭州、南京、苏州", true)
+                .integer("people", "出行人数，如：30、5、100", true)
+                .integer("budget", "可选总预算（元），如：50000。不填则不考虑预算限制", false)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
 

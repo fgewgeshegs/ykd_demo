@@ -87,6 +87,15 @@ public class CourseRepository {
             DELETE FROM course_schedule WHERE user_id = ? AND semester_id = ?
             """;
 
+    private static final String DELETE_BY_USER_NULL_SEMESTER = """
+            DELETE FROM course_schedule WHERE user_id = ? AND semester_id IS NULL
+            """;
+
+    private static final String SELECT_BY_USER_NULL_SEMESTER = """
+            SELECT * FROM course_schedule WHERE user_id = ? AND semester_id IS NULL
+            ORDER BY day_of_week, start_period
+            """;
+
     private static final String DELETE_BY_ID = """
             DELETE FROM course_schedule WHERE id = ? AND user_id = ?
             """;
@@ -186,6 +195,46 @@ public class CourseRepository {
     }
 
     /**
+     * 无学期课表覆盖导入：只删除该用户 {@code semester_id IS NULL} 的课程，保留学期绑定课程。
+     *
+     * <p>与 {@link #replaceAll} 的区别：不误删其它学期的数据（单用户可同时维护多个学期课表）。
+     *
+     * @param userId  用户标识（隔离键）
+     * @param courses 无学期课程列表（插入时强制 {@code semester_id = null}）
+     * @return 保存后的无学期课程列表（含 ID）
+     */
+    public List<CourseEntity> replaceAllNullSemester(String userId, List<CourseEntity> courses) {
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                // 只删除该用户无学期的旧课程
+                try (PreparedStatement ps = conn.prepareStatement(DELETE_BY_USER_NULL_SEMESTER)) {
+                    ps.setString(1, userId);
+                    int deleted = ps.executeUpdate();
+                    log.debug("已删除用户无学期旧课程 | userId={} | count={}", userId, deleted);
+                }
+
+                // 批量插入（强制 semester_id = null）
+                for (CourseEntity course : courses) {
+                    course.setUserId(userId);
+                    course.setSemesterId(null);
+                    insert(conn, course);
+                }
+
+                conn.commit();
+                log.info("无学期课表导入完成 | userId={} | courses={}", userId, courses.size());
+                return findByUserIdNullSemester(userId);
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } catch (SQLException e) {
+            log.error("无学期课表导入失败 | userId={} | error={}", userId, e.getMessage(), e);
+            throw new RuntimeException("无学期课表导入失败", e);
+        }
+    }
+
+    /**
      * 插入单条课程（自动生成 ID）
      */
     private void insert(Connection conn, CourseEntity course) throws SQLException {
@@ -236,6 +285,28 @@ public class CourseRepository {
             return results;
         } catch (SQLException e) {
             log.error("查询用户课程失败 | userId={}", userId, e);
+            return List.of();
+        }
+    }
+
+    /**
+     * 查询用户无学期课程（semester_id IS NULL，用于覆盖导入后返回）
+     *
+     * @param userId 用户标识
+     */
+    private List<CourseEntity> findByUserIdNullSemester(String userId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_BY_USER_NULL_SEMESTER)) {
+            ps.setString(1, userId);
+            List<CourseEntity> results = new ArrayList<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    results.add(mapCourse(rs));
+                }
+            }
+            return results;
+        } catch (SQLException e) {
+            log.error("查询用户无学期课程失败 | userId={}", userId, e);
             return List.of();
         }
     }

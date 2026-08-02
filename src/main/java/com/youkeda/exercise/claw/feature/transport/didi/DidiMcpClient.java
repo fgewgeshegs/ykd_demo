@@ -10,9 +10,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.Map;
@@ -238,10 +240,11 @@ public class DidiMcpClient {
             requestBody.set("params", params);
 
             String requestJson = objectMapper.writeValueAsString(requestBody);
-            log.info("MCP 请求 | method={} | body={}", method, requestJson);
+            log.debug("MCP 请求 | method={} | body={}", method, truncate(requestJson, 500));
 
-            // 2. 构建 URL（API Key 通过查询参数传递）
-            String url = properties.getBaseUrl() + "?key=" + properties.getApiKey();
+            // 2. 构建 URL（API Key 通过查询参数传递，URL 编码防特殊字符破坏结构）
+            String url = properties.getBaseUrl() + "?key="
+                    + URLEncoder.encode(properties.getApiKey(), StandardCharsets.UTF_8);
 
             // 3. 发送 HTTP POST
             HttpRequest request = HttpRequest.newBuilder()
@@ -265,8 +268,8 @@ public class DidiMcpClient {
 
             // 5. 解析 JSON-RPC 2.0 响应
             JsonNode root = objectMapper.readTree(response.body());
-            log.info("MCP 响应 | method={} | status={} | body={}",
-                    method, response.statusCode(), response.body());
+            log.debug("MCP 响应 | method={} | status={} | body={}",
+                    method, response.statusCode(), truncate(response.body(), 500));
 
             // 检查 JSON-RPC 错误
             if (root.has("error") && !root.get("error").isNull()) {
@@ -337,6 +340,14 @@ public class DidiMcpClient {
             sb.append(it.next());
         }
         return sb.toString();
+    }
+
+    /**
+     * 截断字符串用于日志（防敏感信息全量落盘）
+     */
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return "null";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
     }
 
     // ==================== 内部类型 ====================

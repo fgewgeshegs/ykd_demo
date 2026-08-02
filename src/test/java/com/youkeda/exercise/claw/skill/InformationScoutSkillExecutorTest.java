@@ -3,7 +3,7 @@ import com.youkeda.exercise.claw.skill.InformationScoutSkillExecutor;
 import com.youkeda.exercise.claw.skill.SkillExecutionRequest;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
-import com.youkeda.exercise.claw.feature.scout.skill.InformationScoutIntentResolver;
+import com.youkeda.exercise.claw.skill.InformationScoutIntentResolver;
 import com.youkeda.exercise.claw.skill.SkillExecutionResult;
 
 import com.youkeda.exercise.claw.feature.scout.ScoutSubmissionResult;

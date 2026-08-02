@@ -33,6 +33,13 @@ public interface ContextStore {
                 String mediaUrl);
 
     /**
+     * 追加一条完整的 Message（保留 toolCallId / toolName / reasoningContent）。
+     * <p>用于持久化工具调用与工具结果，使下一轮对话的 LLM 能看到真实的工具执行记录，
+     * 避免因历史中缺失工具证据而误判上一轮结果为编造。
+     */
+    void append(Message message);
+
+    /**
      * 找到最近一条 content 以 prefix 开头的消息（反向扫描）
      */
     Message findLastByPrefix(String contentPrefix);

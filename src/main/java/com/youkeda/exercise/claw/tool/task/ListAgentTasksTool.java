@@ -4,12 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.feature.task.repository.ScheduledTaskRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,28 +25,19 @@ import java.util.List;
  * 支持按状态筛选：ACTIVE=待执行, PAUSED=已暂停, DONE=已完成。
  */
 @Component
-public class ListAgentTasksTool implements Tool {
+public class ListAgentTasksTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(ListAgentTasksTool.class);
 
     private static final int MAX_TASKS = 50;
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final ScheduledTaskRepository taskRepository;
 
     public ListAgentTasksTool(ObjectMapper objectMapper,
                                   ToolRegistry functionRegistry,
                                   ScheduledTaskRepository taskRepository) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.taskRepository = taskRepository;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("ListAgentTasksTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -59,29 +49,21 @@ public class ListAgentTasksTool implements Tool {
     public String getDescription() {
         return "查询当前用户的 Agent 主动任务列表（自动执行的 AI 任务）。\n"
                 + "当用户问「我的主动任务」「Auto任务」「自动任务有哪些」「Agent 任务」等时调用。\n"
-                + "可通过 status 参数筛选：ACTIVE=待执行, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消, FAILED=执行失败。\n"
+                + "可通过 status 参数筛选：ACTIVE=待执行, RUNNING=执行中, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消, FAILED=执行失败。\n"
                 + "不带 status 参数时返回用户全部 Agent 任务。\n"
                 + "注意：普通提醒任务请用 list_schedule_tasks 查询。";
     }
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode status = properties.putObject("status");
+        ObjectNode status = objectMapper.createObjectNode();
         status.put("type", "string");
-        status.put("description", "筛选条件（可选）：ACTIVE=待执行, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消, FAILED=执行失败。不传则返回全部。");
-        status.putArray("enum").add("ACTIVE").add("PAUSED").add("DONE").add("CANCELLED").add("FAILED");
+        status.put("description", "筛选条件（可选）：ACTIVE=待执行, RUNNING=执行中, PAUSED=已暂停, DONE=已完成, CANCELLED=已取消, FAILED=执行失败。不传则返回全部。");
+        status.putArray("enum").add("ACTIVE").add("RUNNING").add("PAUSED").add("DONE").add("CANCELLED").add("FAILED");
 
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文，无法查询 Agent 任务\"}";
+        return schema()
+                .raw("status", status, false)
+                .build();
     }
 
     @Override

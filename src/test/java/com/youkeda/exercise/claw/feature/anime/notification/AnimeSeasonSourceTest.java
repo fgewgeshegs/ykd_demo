@@ -4,8 +4,7 @@ import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.feature.anime.client.AniListClient;
 import com.youkeda.exercise.claw.feature.anime.store.AnimeSubscriptionStore;
-import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.feature.scout.notifier.NotificationService;
+import com.youkeda.exercise.claw.notification.NotificationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,7 +35,7 @@ class AnimeSeasonSourceTest {
     private AnimeSubscriptionStore subscriptionStore;
 
     @Mock
-    private NotificationService notificationService;
+    private NotificationEventPublisher publisher;
 
     @Mock
     private LLMClient llmClient;
@@ -45,7 +44,7 @@ class AnimeSeasonSourceTest {
 
     @BeforeEach
     void setUp() {
-        source = new AnimeSeasonSource(aniListClient, subscriptionStore, notificationService, llmClient);
+        source = new AnimeSeasonSource(aniListClient, subscriptionStore, publisher, llmClient);
     }
 
     private Anime anime(int id, String title, String titleJa, List<String> genres, int score) {
@@ -68,10 +67,9 @@ class AnimeSeasonSourceTest {
 
         source.check();
 
-        ArgumentCaptor<List<Recommendation>> captor = ArgumentCaptor.forClass(List.class);
-        verify(notificationService).notify(captor.capture());
-        Recommendation rec = captor.getValue().get(0);
-        String content = rec.summary();
+        ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(publisher).publish(eq("ANIME_SEASON"), anyString(), contentCaptor.capture(), anyInt());
+        String content = contentCaptor.getValue();
 
         assertNotNull(content);
         assertTrue(content.contains("碧蓝之海"), "推送应包含中文译名，实际=" + content);
@@ -91,9 +89,9 @@ class AnimeSeasonSourceTest {
 
         source.check();
 
-        ArgumentCaptor<List<Recommendation>> captor = ArgumentCaptor.forClass(List.class);
-        verify(notificationService).notify(captor.capture());
-        String content = captor.getValue().get(0).summary();
+        ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(publisher).publish(eq("ANIME_SEASON"), anyString(), contentCaptor.capture(), anyInt());
+        String content = contentCaptor.getValue();
 
         assertNotNull(content);
         assertTrue(content.contains("Grand Blue Season 3"));

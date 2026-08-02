@@ -32,19 +32,28 @@ public interface Tool {
     JsonNode getParameters();
 
     /**
-     * 执行工具
+     * 执行工具。
+     *
+     * <p>执行器（{@link ToolExecutor}）统一调用带上下文的双参数版本；
+     * 无上下文的调用经由本方法转发到 {@link ToolExecutionContext#EMPTY}。
      *
      * @param argumentsJson LLM 生成的参数字符串（JSON 格式）
      * @return 执行结果字符串（LLM 将拿到此内容组织回答）
      */
-    String execute(String argumentsJson);
+    default String execute(String argumentsJson) {
+        return execute(argumentsJson, ToolExecutionContext.EMPTY);
+    }
 
     /**
-     * 带用户上下文执行工具。旧工具默认沿用单参数实现，需要会话状态的新工具可覆盖此方法。
+     * 带用户上下文执行工具（唯一抽象方法，所有工具必须实现）。
+     *
+     * <p>需要会话状态/用户身份的工具从 {@code context} 获取；不需要的可忽略 context。
+     *
+     * @param argumentsJson LLM 生成的参数字符串（JSON 格式）
+     * @param context       本轮工具执行上下文（永不为 null）
+     * @return 执行结果字符串（LLM 将拿到此内容组织回答）
      */
-    default String execute(String argumentsJson, ToolExecutionContext context) {
-        return execute(argumentsJson);
-    }
+    String execute(String argumentsJson, ToolExecutionContext context);
 
     /**
      * 判断当前用户消息是否允许暴露并执行该工具。

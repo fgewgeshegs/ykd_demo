@@ -4,13 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.map.*;
 import com.youkeda.exercise.claw.domain.map.DistanceRequest;
 import com.youkeda.exercise.claw.domain.map.PlaceSearchRequest;
 import com.youkeda.exercise.claw.domain.map.RouteRequest;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -31,28 +32,63 @@ import java.util.List;
  *
  * <p>函数注册后自动被 {@link ToolRegistry} 管理，
  * ReActAgentExecutor 在 tool-calling 循环中自动发现并调用。
+ *
+ * <p>本类自身 {@code extends AbstractTool} 仅为满足架构约束（tool 包类须实现 Tool 接口），
+ * 作为「聚合注册器」并不把自身注册进 {@link ToolRegistry}，也不暴露给 LLM——
+ * {@link #getName()} 返回的 {@code tencent_map_registry} 不在任何 skill 白名单中，
+ * {@link #execute(String, ToolExecutionContext)} 永远不应被调用。
  */
 @Component
-public class TencentMapTool {
+public class TencentMapTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(TencentMapTool.class);
 
     private final MapService mapService;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
 
     public TencentMapTool(MapService mapService,
                                ObjectMapper objectMapper,
                                ToolRegistry functionRegistry) {
+        super(functionRegistry, objectMapper);
         this.mapService = mapService;
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
     }
 
-    @PostConstruct
-    public void init() {
+    @Override
+    protected boolean shouldSelfRegister() {
+        return false;
+    }
+
+    // ==== Tool 接口实现（仅为满足 tool 包类须实现 Tool 的架构约束，本类不注册自身）====
+
+    @Override
+    public String getName() {
+        return "tencent_map_registry";
+    }
+
+    @Override
+    public String getDescription() {
+        return "腾讯地图能力聚合注册器（内部组件，非 LLM 工具）。";
+    }
+
+    @Override
+    public JsonNode getParameters() {
+        return schema().build();
+    }
+
+    @Override
+    public String execute(String argumentsJson, ToolExecutionContext context) {
+        return "{\"error\":\"tencent_map_registry 是内部注册器，请使用 map_search_place / "
+                + "map_route_planning / map_distance_calculate\"}";
+    }
+
+    @Override
+    protected void onInit() {
         // ==================== 1. 地点搜索 ====================
-        functionRegistry.register(new Tool() {
+        registry.register(new AbstractTool(registry, objectMapper) {
+            @Override
+            protected boolean shouldSelfRegister() {
+                return false;
+            }
+
             @Override
             public String getName() {
                 return "map_search_place";
@@ -67,26 +103,14 @@ public class TencentMapTool {
 
             @Override
             public JsonNode getParameters() {
-                ObjectNode params = objectMapper.createObjectNode();
-                params.put("type", "object");
-
-                ObjectNode properties = params.putObject("properties");
-
-                ObjectNode keyword = properties.putObject("keyword");
-                keyword.put("type", "string");
-                keyword.put("description", "搜索关键词，如：团建基地、餐厅、景点、酒店、户外拓展等");
-
-                ObjectNode location = properties.putObject("location");
-                location.put("type", "string");
-                location.put("description", "位置，城市名称或区域名，如：无锡、上海、北京");
-
-                params.putArray("required").add("keyword");
-
-                return params;
+                return schema()
+                        .string("keyword", "搜索关键词，如：团建基地、餐厅、景点、酒店、户外拓展等", true)
+                        .string("location", "位置，城市名称或区域名，如：无锡、上海、北京", false)
+                        .build();
             }
 
             @Override
-            public String execute(String argumentsJson) {
+            public String execute(String argumentsJson, ToolExecutionContext context) {
                 try {
                     JsonNode args = objectMapper.readTree(argumentsJson);
                     String keyword = args.path("keyword").asText("");
@@ -112,7 +136,12 @@ public class TencentMapTool {
         });
 
         // ==================== 2. 路线规划 ====================
-        functionRegistry.register(new Tool() {
+        registry.register(new AbstractTool(registry, objectMapper) {
+            @Override
+            protected boolean shouldSelfRegister() {
+                return false;
+            }
+
             @Override
             public String getName() {
                 return "map_route_planning";
@@ -127,34 +156,20 @@ public class TencentMapTool {
 
             @Override
             public JsonNode getParameters() {
-                ObjectNode params = objectMapper.createObjectNode();
-                params.put("type", "object");
-
-                ObjectNode properties = params.putObject("properties");
-
-                ObjectNode origin = properties.putObject("origin");
-                origin.put("type", "string");
-                origin.put("description", "起点名称，如：无锡学院、拈花湾、灵山大佛");
-
-                ObjectNode destination = properties.putObject("destination");
-                destination.put("type", "string");
-                destination.put("description", "终点名称，如：拈花湾、灵山大佛、鼋头渚");
-
-                ObjectNode mode = properties.putObject("mode");
+                ObjectNode mode = objectMapper.createObjectNode();
                 mode.put("type", "string");
                 mode.put("description", "出行方式，默认 driving（驾车）");
-                ArrayNode enumValues = mode.putArray("enum");
-                enumValues.add("driving");
-                enumValues.add("walking");
-                enumValues.add("transit");
+                mode.putArray("enum").add("driving").add("walking").add("transit");
 
-                params.putArray("required").add("origin").add("destination");
-
-                return params;
+                return schema()
+                        .string("origin", "起点名称，如：无锡学院、拈花湾、灵山大佛", true)
+                        .string("destination", "终点名称，如：拈花湾、灵山大佛、鼋头渚", true)
+                        .raw("mode", mode, false)
+                        .build();
             }
 
             @Override
-            public String execute(String argumentsJson) {
+            public String execute(String argumentsJson, ToolExecutionContext context) {
                 try {
                     JsonNode args = objectMapper.readTree(argumentsJson);
                     String origin = args.path("origin").asText("");
@@ -184,7 +199,12 @@ public class TencentMapTool {
         });
 
         // ==================== 3. 距离计算 ====================
-        functionRegistry.register(new Tool() {
+        registry.register(new AbstractTool(registry, objectMapper) {
+            @Override
+            protected boolean shouldSelfRegister() {
+                return false;
+            }
+
             @Override
             public String getName() {
                 return "map_distance_calculate";
@@ -199,28 +219,14 @@ public class TencentMapTool {
 
             @Override
             public JsonNode getParameters() {
-                ObjectNode params = objectMapper.createObjectNode();
-                params.put("type", "object");
-
-                ObjectNode properties = params.putObject("properties");
-
-                ObjectNode origin = properties.putObject("origin");
-                origin.put("type", "string");
-                origin.put("description", "起点名称，如：无锡学院、酒店名称");
-
-                ObjectNode destinations = properties.putObject("destinations");
-                destinations.put("type", "array");
-                destinations.put("description", "多个目的地名称列表");
-                ObjectNode items = destinations.putObject("items");
-                items.put("type", "string");
-
-                params.putArray("required").add("origin").add("destinations");
-
-                return params;
+                return schema()
+                        .string("origin", "起点名称，如：无锡学院、酒店名称", true)
+                        .arrayOfScalar("destinations", "多个目的地名称列表", "string", true)
+                        .build();
             }
 
             @Override
-            public String execute(String argumentsJson) {
+            public String execute(String argumentsJson, ToolExecutionContext context) {
                 try {
                     JsonNode args = objectMapper.readTree(argumentsJson);
                     String origin = args.path("origin").asText("");

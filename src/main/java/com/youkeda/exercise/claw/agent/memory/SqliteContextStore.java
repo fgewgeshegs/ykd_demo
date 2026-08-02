@@ -61,6 +61,11 @@ public class SqliteContextStore implements ContextStore {
     }
 
     @Override
+    public void append(Message message) {
+        append(resolveUserId(), message);
+    }
+
+    @Override
     public Message findLastByPrefix(String contentPrefix) {
         return findLastByPrefix(resolveUserId(), contentPrefix);
     }
@@ -152,9 +157,12 @@ public class SqliteContextStore implements ContextStore {
     public void append(String userId, String role, String content,
                         String mediaEncryptParam, String mediaAesKey,
                         String mediaUrl) {
+        append(userId, new Message(role, content, mediaEncryptParam, mediaAesKey, mediaUrl));
+    }
+
+    public void append(String userId, Message message) {
         try {
-            Message msg = new Message(role, content, mediaEncryptParam, mediaAesKey, mediaUrl);
-            String json = mapper.writeValueAsString(msg);
+            String json = mapper.writeValueAsString(message);
 
             // 插入新消息
             jdbc.update("INSERT INTO context_messages (user_id, message_json) VALUES (?, ?)",

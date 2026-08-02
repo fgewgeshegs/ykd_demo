@@ -53,10 +53,8 @@ class ArchitectureTest {
     void agentMustNotDependOnFeature() {
         noClasses()
                 .that().resideInAPackage("..agent..")
-                .and().doNotHaveSimpleName("ScoutTriggerPolicy")
                 .should().dependOnClassesThat().resideInAPackage("..feature..")
-                .because("agent/ 是内核运行时，不应直接依赖具体的业务功能实现（"
-                        + "ScoutTriggerPolicy 例外：trigger 路由需委托 feature 层做意图检测）")
+                .because("agent/ 是内核运行时，不应直接依赖具体的业务功能实现")
                 .check(classes);
     }
 
@@ -71,7 +69,6 @@ class ArchitectureTest {
                 .and().areNotMemberClasses()
                 .and().areNotAnonymousClasses()
                 .should().implement(com.youkeda.exercise.claw.agent.runtime.Tool.class)
-                .orShould().haveSimpleName("TencentMapTool")  // 内部 API 客户端，非 LLM 工具
                 .because("tool/ 包中的主类应当实现 Tool 接口")
                 .check(classes);
     }

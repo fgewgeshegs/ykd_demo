@@ -4,11 +4,11 @@ import com.youkeda.exercise.claw.feature.scout.collector.GithubCollector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.scout.planner.SearchTask;
 import com.youkeda.exercise.claw.feature.scout.processor.InformationItem;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,26 +21,17 @@ import java.util.List;
  * 搜索 GitHub 近期热门项目
  */
 @Component
-public class GithubCollectTool implements Tool {
+public class GithubCollectTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(GithubCollectTool.class);
 
     private final GithubCollector collector;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry registry;
 
     public GithubCollectTool(GithubCollector collector,
                                   ObjectMapper objectMapper,
                                   ToolRegistry registry) {
+        super(registry, objectMapper);
         this.collector = collector;
-        this.objectMapper = objectMapper;
-        this.registry = registry;
-    }
-
-    @PostConstruct
-    public void init() {
-        registry.register(this);
-        log.info("GithubCollectTool 已注册");
     }
 
     @Override
@@ -56,17 +47,13 @@ public class GithubCollectTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        return objectMapper.createObjectNode()
-                .put("type", "object")
-                .<ObjectNode>set("properties", objectMapper.createObjectNode()
-                        .<ObjectNode>set("query", objectMapper.createObjectNode()
-                                .put("type", "string")
-                                .put("description", "搜索关键词，如 AI agent、Spring Boot、LLM")))
-                .set("required", objectMapper.createArrayNode().add("query"));
+        return schema()
+                .string("query", "搜索关键词，如 AI agent、Spring Boot、LLM", true)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String query = args.path("query").asText("AI");

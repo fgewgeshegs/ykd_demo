@@ -4,10 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.map.PlaceImageService;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,7 +24,7 @@ import java.util.List;
  *
  * <p><b>图片发送采用 stash-consume 模式：</b>
  * <ol>
- *   <li>{@link #execute(String)} 获取图片 bytes 并暂存到 {@link #pendingPlaceImages}</li>
+ *   <li>{@link #execute(String, ToolExecutionContext)} 获取图片 bytes 并暂存到 {@link #pendingPlaceImages}</li>
  *   <li>返回简化的 JSON 给 LLM（不含图片 URL）</li>
  *   <li>ChatHandler 通过 {@link #consumePendingPlaceImages()} 消费图片直接发送</li>
  * </ol>
@@ -32,13 +32,11 @@ import java.util.List;
  * <p>LLM 只收到地点名称和描述，用自己的话生成文字介绍，不接触图片数据。
  */
 @Component
-public class PlaceImageTool implements Tool {
+public class PlaceImageTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(PlaceImageTool.class);
 
     private final PlaceImageService placeImageService;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     /** 暂存待发送的地点图片（stash-consume 模式） */
     private volatile List<PendingPlaceImage> pendingPlaceImages;
@@ -46,15 +44,8 @@ public class PlaceImageTool implements Tool {
     public PlaceImageTool(PlaceImageService placeImageService,
                               ToolRegistry functionRegistry,
                               ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.placeImageService = placeImageService;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("PlaceImageTool 已注册: place_image_search (stash-consume 模式)");
     }
 
     // ==================== Stash-Consume API ====================
@@ -93,26 +84,14 @@ public class PlaceImageTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode keyword = properties.putObject("keyword");
-        keyword.put("type", "string");
-        keyword.put("description", "地点关键词，如：西湖、灵隐寺、团建基地、户外拓展");
-
-        ObjectNode city = properties.putObject("city");
-        city.put("type", "string");
-        city.put("description", "城市名称，如：杭州、上海、北京");
-
-        params.putArray("required").add("keyword");
-
-        return params;
+        return schema()
+                .string("keyword", "地点关键词，如：西湖、灵隐寺、团建基地、户外拓展", true)
+                .string("city", "城市名称，如：杭州、上海、北京", false)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             String keyword = args.path("keyword").asText("");

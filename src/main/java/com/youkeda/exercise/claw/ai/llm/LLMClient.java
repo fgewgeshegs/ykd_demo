@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.youkeda.exercise.claw.infrastructure.common.PromptLoader;
 import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.agent.memory.MessageRole;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
 import jakarta.annotation.PostConstruct;
@@ -21,6 +22,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * LLM 客户端
@@ -33,6 +35,11 @@ public class LLMClient {
     private static final int TIMEOUT_SECONDS = 60;
     private static final String SYSTEM_PROMPT_PATH = "prompts/system-prompt.txt";
     private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手，一个智能AI助手。";
+
+    /** LLM 调用最大重试次数（指数退避） */
+    private static final int MAX_RETRIES = 3;
+    /** 重试初始退避延迟（毫秒） */
+    private static final long RETRY_BASE_DELAY_MS = 300;
 
     private static final Logger log = LoggerFactory.getLogger(LLMClient.class);
 
@@ -122,34 +129,47 @@ public class LLMClient {
             String requestBody = buildRequestBody(systemPrompt, text, history, maxTokens);
             log.info("调用LLM，message={}，historySize={}", text, history.size());
 
-            // 2. 发送 HTTP 请求
-            String url = properties.getBaseUrl() + "/chat/completions";
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                    .header("Authorization", "Bearer " + properties.getApiKey())
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofString());
-
-            // 3. 解析响应
-            String reply = parseResponse(response.body());
-            if (reply == null) {
-                log.warn("LLM响应不可用 | status={}", response.statusCode());
-            } else if (reply.isBlank()) {
-                log.warn("LLM响应成功但正文为空 | status={}", response.statusCode());
-            } else {
-                log.info("LLM响应成功 | contentLength={}", reply.length());
-            }
-            return reply;
+            // 2. 发送 + 解析（含重试）
+            return retryExecute(() -> {
+                try {
+                    return doCallLLM(requestBody);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }, MAX_RETRIES);
 
         } catch (Exception e) {
             log.error("LLM调用失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 单次 LLM HTTP 调用（不含重试）。非 2xx 抛 {@link LLMHttpException} 触发外层重试。
+     */
+    private String doCallLLM(String requestBody) throws Exception {
+        String url = properties.getBaseUrl() + "/chat/completions";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .header("Authorization", "Bearer " + properties.getApiKey())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request,
+                HttpResponse.BodyHandlers.ofString());
+        checkHttpStatus(response.statusCode());
+
+        String reply = parseResponse(response.body());
+        if (reply == null) {
+            log.warn("LLM响应不可用 | status={}", response.statusCode());
+        } else if (reply.isBlank()) {
+            log.warn("LLM响应成功但正文为空 | status={}", response.statusCode());
+        } else {
+            log.info("LLM响应成功 | contentLength={}", reply.length());
+        }
+        return reply;
     }
 
     /**
@@ -177,7 +197,7 @@ public class LLMClient {
         // history messages
         for (Message msg : history) {
             ObjectNode historyMsg = messages.addObject();
-            historyMsg.put("role", msg.role());
+            historyMsg.put("role", msg.role().value());
             historyMsg.put("content", msg.content());
         }
 
@@ -242,32 +262,47 @@ public class LLMClient {
             String requestBody = buildRequestBodyWithTools(systemPrompt, messages, tools);
             log.debug("LLM 请求（含 {} 个工具定义，自定义 system prompt）", tools != null ? tools.size() : 0);
 
-            String url = properties.getBaseUrl() + "/chat/completions";
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                    .header("Authorization", "Bearer " + properties.getApiKey())
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofString());
-
-            String responseBody = response.body();
-            log.info("LLM 原始响应 | status={} | body={}",
-                    response.statusCode(), truncate(responseBody, 1000));
-            LLMResponse result = parseStructuredResponse(responseBody);
-            if (result == null) {
-                log.warn("LLM 响应解析失败 | status={} | body={}",
-                        response.statusCode(), truncate(responseBody, 500));
-            }
-            return result;
+            // 发送 + 解析（含重试）
+            return retryExecute(() -> {
+                try {
+                    return doChatWithTools(requestBody);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }, MAX_RETRIES);
 
         } catch (Exception e) {
             log.error("LLM 调用失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 单次带工具定义的 LLM 调用（不含重试）。非 2xx 抛 {@link LLMHttpException} 触发外层重试。
+     */
+    private LLMResponse doChatWithTools(String requestBody) throws Exception {
+        String url = properties.getBaseUrl() + "/chat/completions";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .header("Authorization", "Bearer " + properties.getApiKey())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request,
+                HttpResponse.BodyHandlers.ofString());
+        checkHttpStatus(response.statusCode());
+
+        String responseBody = response.body();
+        log.debug("LLM 原始响应 | status={} | body={}",
+                response.statusCode(), truncate(responseBody, 1000));
+        LLMResponse result = parseStructuredResponse(responseBody);
+        if (result == null) {
+            log.warn("LLM 响应解析失败 | status={} | body={}",
+                    response.statusCode(), truncate(responseBody, 500));
+        }
+        return result;
     }
 
     /**
@@ -338,11 +373,11 @@ public class LLMClient {
         ObjectNode node = objectMapper.createObjectNode();
 
         switch (msg.role()) {
-            case "user" -> {
+            case USER -> {
                 node.put("role", "user");
                 node.put("content", msg.content() != null ? msg.content() : "");
             }
-            case "assistant" -> {
+            case ASSISTANT -> {
                 node.put("role", "assistant");
                 if (msg.reasoningContent() != null && !msg.reasoningContent().isBlank()) {
                     node.put("reasoning_content", msg.reasoningContent());
@@ -397,14 +432,13 @@ public class LLMClient {
                     node.put("content", msg.content() != null ? msg.content() : "");
                 }
             }
-            case "tool" -> {
+            case TOOL -> {
                 node.put("role", "tool");
                 node.put("content", msg.content() != null ? msg.content() : "");
                 node.put("tool_call_id", msg.toolCallId());
             }
-            default -> {
-                // 旧格式兼容（如 media 等自定义角色）
-                node.put("role", msg.role());
+            case SYSTEM -> {
+                node.put("role", "system");
                 node.put("content", msg.content() != null ? msg.content() : "");
             }
         }
@@ -483,5 +517,74 @@ public class LLMClient {
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
+    }
+
+    // ==================== 重试支持（P0-3） ====================
+
+    /**
+     * 带指数退避的重试执行。
+     * 只有 {@link #shouldRetry} 判定为可重试的异常才重试；不可重试（401/400 等）立即抛出。
+     */
+    private <T> T retryExecute(Supplier<T> supplier, int maxAttempts) {
+        int attempt = 0;
+        while (true) {
+            try {
+                return supplier.get();
+            } catch (RuntimeException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                attempt++;
+                if (attempt >= maxAttempts || !shouldRetry(cause)) {
+                    throw e;
+                }
+                long delay = RETRY_BASE_DELAY_MS * (1L << (attempt - 1));
+                log.warn("LLM 调用失败，第 {}/{} 次重试 | delay={}ms | cause={}",
+                        attempt, maxAttempts, delay, cause.getMessage());
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("重试等待被中断", ie);
+                }
+            }
+        }
+    }
+
+    /**
+     * 判定异常是否值得重试：
+     * <ul>
+     *   <li>429 / 5xx —— 服务端过载或临时故障，可重试</li>
+     *   <li>网络异常（超时/连接重置/IO）—— 可重试</li>
+     *   <li>401 / 400 —— API key 错误或参数/schema 错误，重试无意义，不重试</li>
+     * </ul>
+     */
+    private boolean shouldRetry(Throwable e) {
+        if (e == null) return false;
+        if (e instanceof LLMHttpException http) {
+            return http.statusCode() == 429 || http.statusCode() >= 500;
+        }
+        return e instanceof java.net.http.HttpTimeoutException
+                || e instanceof java.io.IOException
+                || e instanceof java.net.ConnectException;
+    }
+
+    /** HTTP 非 2xx 时抛异常，触发外层重试逻辑 */
+    private void checkHttpStatus(int statusCode) throws LLMHttpException {
+        if (statusCode >= 400) {
+            throw new LLMHttpException(statusCode, "LLM HTTP " + statusCode);
+        }
+    }
+
+    /** LLM HTTP 错误异常，携带状态码供重试分类 */
+    private static final class LLMHttpException extends RuntimeException {
+        private final int statusCode;
+
+        LLMHttpException(int statusCode, String message) {
+            super(message);
+            this.statusCode = statusCode;
+        }
+
+        int statusCode() {
+            return statusCode;
+        }
     }
 }

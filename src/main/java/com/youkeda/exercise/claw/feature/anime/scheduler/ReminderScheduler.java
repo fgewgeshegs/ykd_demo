@@ -3,8 +3,7 @@ package com.youkeda.exercise.claw.feature.anime.scheduler;
 import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.feature.anime.store.AnimeScheduleStore;
 import com.youkeda.exercise.claw.feature.anime.store.AnimeSubscriptionStore;
-import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.feature.scout.notifier.NotificationService;
+import com.youkeda.exercise.claw.notification.NotificationEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,14 +23,14 @@ public class ReminderScheduler {
 
     private final AnimeScheduleStore scheduleStore;
     private final AnimeSubscriptionStore subscriptionStore;
-    private final NotificationService notificationService;
+    private final NotificationEventPublisher publisher;
 
     public ReminderScheduler(AnimeScheduleStore scheduleStore,
                              AnimeSubscriptionStore subscriptionStore,
-                             NotificationService notificationService) {
+                             NotificationEventPublisher publisher) {
         this.scheduleStore = scheduleStore;
         this.subscriptionStore = subscriptionStore;
-        this.notificationService = notificationService;
+        this.publisher = publisher;
     }
 
     /** 每分钟执行一次 */
@@ -55,17 +54,8 @@ public class ReminderScheduler {
                     String message = "🎬 《" + anime.getTitle() + "》第 "
                         + task.getEpisode() + " 集即将在 " + airTime + " 播出！";
 
-                    // 通过 NotificationService 推送
-                    notificationService.notify(List.of(new Recommendation(
-                        "anime_" + task.getAnilistId() + "_" + task.getEpisode(),
-                        anime.getTitle() + " 第" + task.getEpisode() + "集",
-                        "播出提醒",
-                        "",
-                        message,
-                        "",
-                        1.0f,
-                        System.currentTimeMillis()
-                    )));
+                    // 通过统一事件总线推送（批次 3 落地）
+                    publisher.publish("ANIME", "🎬 播出提醒", message, 4);
 
                     // 标记已发送
                     scheduleStore.markReminderSent(task.getId());

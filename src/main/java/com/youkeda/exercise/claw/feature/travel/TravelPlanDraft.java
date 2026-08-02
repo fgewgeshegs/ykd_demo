@@ -30,17 +30,17 @@ class TravelPlanDraft {
     private String travelScope;
     private Map<String, String> preferences = new LinkedHashMap<>();
     private List<String> priorities = new ArrayList<>();
-    private String planMode = "BALANCED_DEFAULT";
+    private PlanMode planMode = PlanMode.BALANCED_DEFAULT;
     private int version = 1;
     private String lastFeedback;
     private List<TravelPlanOption> options = new ArrayList<>();
     private int optionCount = 3;
     private String selectedOptionId;
     private int optionSetVersion;
-    private String costStatus = "NOT_CALCULATED";
+    private CostStatus costStatus = CostStatus.NOT_CALCULATED;
 
-    public String getCostStatus() { return costStatus; }
-    public void setCostStatus(String costStatus) { this.costStatus = costStatus; }
+    public CostStatus getCostStatus() { return costStatus; }
+    public void setCostStatus(CostStatus costStatus) { this.costStatus = costStatus; }
 
     public String getDepartureCity() { return departureCity; }
     public void setDepartureCity(String departureCity) { this.departureCity = departureCity; }
@@ -84,8 +84,8 @@ class TravelPlanDraft {
     public void setPriorities(List<String> priorities) {
         this.priorities = priorities != null ? priorities : new ArrayList<>();
     }
-    public String getPlanMode() { return planMode; }
-    public void setPlanMode(String planMode) { this.planMode = planMode; }
+    public PlanMode getPlanMode() { return planMode; }
+    public void setPlanMode(PlanMode planMode) { this.planMode = planMode; }
     public int getVersion() { return version; }
     public void setVersion(int version) { this.version = version; }
     public String getLastFeedback() { return lastFeedback; }

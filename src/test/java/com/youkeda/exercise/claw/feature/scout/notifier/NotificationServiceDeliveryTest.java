@@ -41,7 +41,8 @@ class NotificationServiceDeliveryTest {
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
-                "https://example.com", 0.9f, System.currentTimeMillis())));
+                "https://example.com", 0.9f, Recommendation.Tier.STRONG,
+                System.currentTimeMillis())));
 
         verify(wechatClient, never()).sendTextMessage(any(), anyString());
         verify(summaryService, never()).summarize(anyList());
@@ -59,7 +60,8 @@ class NotificationServiceDeliveryTest {
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
-                "https://example.com", 0.9f, System.currentTimeMillis())));
+                "https://example.com", 0.9f, Recommendation.Tier.STRONG,
+                System.currentTimeMillis())));
 
         verify(summaryService, never()).summarize(anyList());
     }
@@ -77,29 +79,10 @@ class NotificationServiceDeliveryTest {
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
-                "https://example.com", 0.9f, System.currentTimeMillis())));
+                "https://example.com", 0.9f, Recommendation.Tier.STRONG,
+                System.currentTimeMillis())));
 
         verify(wechatClient, times(2)).sendTextMessage(eq("owner-1"), anyString());
-    }
-
-    @Test
-    void sendsTheSameRecommendationAgainOnLaterCalls() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        WechatUserManager userManager = mock(WechatUserManager.class);
-        RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
-        when(userManager.getOwnerUserId()).thenReturn("owner-1");
-        when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
-        NotificationService service = new NotificationService(
-                wechatClient, userManager, summaryService);
-        List<Recommendation> recommendations = List.of(new Recommendation(
-                "rec-1", "title", "summary", "reason", "suggestion",
-                "https://example.com", 0.9f, System.currentTimeMillis()));
-
-        service.notify(recommendations);
-        service.notify(recommendations);
-
-        verify(wechatClient, times(2))
-                .sendTextMessage(eq("owner-1"), anyString());
     }
 
     @Test
@@ -129,24 +112,6 @@ class NotificationServiceDeliveryTest {
                 report.getAllValues().get(0).contains("👀 值得扫一眼"));
         org.junit.jupiter.api.Assertions.assertTrue(
                 report.getAllValues().get(1).contains("📌 信息猎手总结"));
-    }
-
-    @Test
-    void plainNotificationDoesNotSendScoutSummary() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
-        WechatUserManager userManager = mock(WechatUserManager.class);
-        RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
-        when(userManager.getOwnerUserId()).thenReturn("owner-1");
-        when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
-        NotificationService service = new NotificationService(
-                wechatClient, userManager, summaryService);
-
-        service.notify(List.of(new Recommendation(
-                "campus", "考试提醒", "summary", "reason", "suggestion",
-                "https://example.com/campus", 1.0f, System.currentTimeMillis())));
-
-        verify(wechatClient, times(1)).sendTextMessage(eq("owner-1"), anyString());
-        verify(summaryService, never()).summarize(anyList());
     }
 
     @Test

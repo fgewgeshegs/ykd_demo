@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.feature.scout.store;
 
+import com.youkeda.exercise.claw.feature.scout.VectorUtils;
 import com.youkeda.exercise.claw.feature.scout.processor.InformationIdentity;
 import com.youkeda.exercise.claw.feature.scout.processor.InformationItem;
 import jakarta.annotation.PostConstruct;
@@ -143,8 +144,8 @@ public class SqliteInformationStore implements InformationStore {
 
         List<ScoredItem> scored = new ArrayList<>();
         for (InformationItem item : items) {
-            float score = cosineSimilarity(vector, item.getVector());
-            if (score > -1f) {
+            float score = VectorUtils.cosineSimilarity(vector, item.getVector());
+            if (score >= 0f) {
                 scored.add(new ScoredItem(item, score));
             }
         }
@@ -215,22 +216,6 @@ public class SqliteInformationStore implements InformationStore {
             vector[i] = buffer.getFloat();
         }
         return vector;
-    }
-
-    private float cosineSimilarity(float[] left, float[] right) {
-        if (left == null || right == null || left.length != right.length) {
-            return -1f;
-        }
-        double dot = 0;
-        double leftNorm = 0;
-        double rightNorm = 0;
-        for (int i = 0; i < left.length; i++) {
-            dot += left[i] * right[i];
-            leftNorm += left[i] * left[i];
-            rightNorm += right[i] * right[i];
-        }
-        double denominator = Math.sqrt(leftNorm) * Math.sqrt(rightNorm);
-        return denominator == 0 ? -1f : (float) (dot / denominator);
     }
 
     private String safe(String value) {

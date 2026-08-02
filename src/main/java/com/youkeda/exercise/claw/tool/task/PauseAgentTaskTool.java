@@ -3,12 +3,11 @@ package com.youkeda.exercise.claw.tool.task;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.feature.task.repository.ScheduledTaskRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,26 +23,17 @@ import org.springframework.stereotype.Component;
  * 恢复请调用 {@link ResumeAgentTaskFunction}。
  */
 @Component
-public class PauseAgentTaskTool implements Tool {
+public class PauseAgentTaskTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(PauseAgentTaskTool.class);
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final ScheduledTaskRepository taskRepository;
 
     public PauseAgentTaskTool(ObjectMapper objectMapper,
                                   ToolRegistry functionRegistry,
                                   ScheduledTaskRepository taskRepository) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.taskRepository = taskRepository;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("PauseAgentTaskTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -68,23 +58,9 @@ public class PauseAgentTaskTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        ObjectNode taskId = properties.putObject("task_id");
-        taskId.put("type", "integer");
-        taskId.put("description", "要暂停的 Agent 任务 ID。从 list_agent_tasks 的结果中获取。");
-
-        params.putArray("required").add("task_id");
-
-        return params;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return "{\"error\": \"缺少用户上下文，无法暂停 Agent 任务\"}";
+        return schema()
+                .integer("task_id", "要暂停的 Agent 任务 ID。从 list_agent_tasks 的结果中获取。", true)
+                .build();
     }
 
     @Override

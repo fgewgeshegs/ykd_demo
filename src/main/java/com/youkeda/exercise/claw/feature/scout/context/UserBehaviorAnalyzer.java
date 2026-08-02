@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.agent.memory.MessageRole;
 import com.youkeda.exercise.claw.agent.memory.SqliteContextStore;
 import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.memory.longterm.MemoryCategory;
@@ -101,7 +102,7 @@ public class UserBehaviorAnalyzer {
         for (Message msg : messages) {
             if (msg.role() == null || msg.content() == null) continue;
             // 只关注用户消息
-            if ("user".equals(msg.role())) {
+            if (msg.role() == MessageRole.USER) {
                 sb.append("用户：").append(msg.content()).append("\n");
             }
         }

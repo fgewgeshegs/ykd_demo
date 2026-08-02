@@ -2,13 +2,12 @@ package com.youkeda.exercise.claw.tool.anime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.anime.client.AniListClient;
 import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.feature.anime.store.AnimeSubscriptionStore;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,29 +19,20 @@ import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnProperty(name = "anime.enabled", havingValue = "true")
-public class AnimeRecommenderTool implements Tool {
+public class AnimeRecommenderTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(AnimeRecommenderTool.class);
 
     private final AniListClient aniListClient;
     private final AnimeSubscriptionStore subscriptionStore;
-    private final ToolRegistry functionRegistry;
-    private final ObjectMapper objectMapper;
 
     public AnimeRecommenderTool(AniListClient aniListClient,
                                     AnimeSubscriptionStore subscriptionStore,
                                     ToolRegistry functionRegistry,
                                     ObjectMapper objectMapper) {
+        super(functionRegistry, objectMapper);
         this.aniListClient = aniListClient;
         this.subscriptionStore = subscriptionStore;
-        this.functionRegistry = functionRegistry;
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("AnimeRecommenderTool 已注册");
     }
 
     @Override
@@ -58,15 +48,7 @@ public class AnimeRecommenderTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        var root = objectMapper.createObjectNode();
-        root.put("type", "object");
-        root.putObject("properties");
-        return root;
-    }
-
-    @Override
-    public String execute(String argumentsJson) {
-        return execute(argumentsJson, null);
+        return schema().build();
     }
 
     @Override

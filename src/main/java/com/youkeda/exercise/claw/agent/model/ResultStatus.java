@@ -10,5 +10,7 @@ public enum ResultStatus {
     SUCCESS,
     FAILED,
     PARTIAL,
-    BLOCKED
+    BLOCKED,
+    /** 工具返回结果无法解析（非 JSON 或格式异常）——解析失败 ≠ 工具失败，标记未知（P0-4 fail-closed） */
+    UNKNOWN
 }

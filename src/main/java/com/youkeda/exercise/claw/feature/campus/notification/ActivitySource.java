@@ -9,9 +9,7 @@ import com.youkeda.exercise.claw.feature.campus.policy.NotificationPolicy;
 import com.youkeda.exercise.claw.feature.campus.policy.rule.ActivityRules;
 import com.youkeda.exercise.claw.feature.campus.store.CampusNotificationStore;
 import com.youkeda.exercise.claw.feature.campus.store.PendingAskStore;
-import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.feature.scout.notifier.NotificationService;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
+import com.youkeda.exercise.claw.notification.NotificationEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -35,23 +33,20 @@ public class ActivitySource implements NotificationSource {
     private final ActivityClassifier classifier;
     private final DefaultPolicy policy;
     private final PendingAskStore pendingAskStore;
-    private final NotificationService notificationService;
-    private final WechatUserManager userManager;
+    private final NotificationEventPublisher publisher;
 
     public ActivitySource(CompetitionCollector collector,
                           CampusNotificationStore store,
                           ActivityClassifier classifier,
                           DefaultPolicy policy,
                           PendingAskStore pendingAskStore,
-                          NotificationService notificationService,
-                          WechatUserManager userManager) {
+                          NotificationEventPublisher publisher) {
         this.collector = collector;
         this.store = store;
         this.classifier = classifier;
         this.policy = policy;
         this.pendingAskStore = pendingAskStore;
-        this.notificationService = notificationService;
-        this.userManager = userManager;
+        this.publisher = publisher;
     }
 
     @Override
@@ -101,7 +96,6 @@ public class ActivitySource implements NotificationSource {
     }
 
     private void notifyUser(NotificationItem item) {
-        String userId = userManager.getOwnerUserId();
         String typeDisplayName = typeDisplayName(item.getType());
 
         String message = "🎉 活动提醒\n"
@@ -111,36 +105,17 @@ public class ActivitySource implements NotificationSource {
                 ? "发布日期: " + item.getPublishAt() + "\n" : "")
             + "详情: " + item.getUrl();
 
-        notificationService.notify(List.of(new Recommendation(
-            "act_" + item.getType(),
-            item.getTitle(),
-            typeDisplayName + "活动通知",
-            item.getClassifierReason(),
-            message,
-            item.getUrl(),
-            1.0f,
-            System.currentTimeMillis()
-        )));
+        publisher.publish("ACTIVITY", "🎉 活动提醒", message, 4);
         log.info("活动通知已推送 | title={}", item.getTitle());
     }
 
     private void askUser(NotificationItem item) {
-        String userId = userManager.getOwnerUserId();
         String typeDisplayName = typeDisplayName(item.getType());
 
         String question = "检测到新的「" + typeDisplayName + "」活动："
             + item.getTitle() + "，\n需要关注这类活动吗？（回复 需要/不需要）";
 
-        notificationService.notify(List.of(new Recommendation(
-            "ask_act_" + item.getType(),
-            item.getTitle() + " - 是否需要关注",
-            "需要用户确认",
-            item.getClassifierReason(),
-            question,
-            null,
-            0.8f,
-            System.currentTimeMillis()
-        )));
+        publisher.publish("ACTIVITY", "需要用户确认", question, 3);
 
         pendingAskStore.save("ACTIVITY", item.getType(), question, "PENDING");
         log.info("已询问用户是否关注活动 | type={} | title={}", item.getType(), item.getTitle());

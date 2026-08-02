@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.feature.scout.matcher;
 
 import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
 import com.youkeda.exercise.claw.feature.scout.ScoutProperties;
+import com.youkeda.exercise.claw.feature.scout.VectorUtils;
 import com.youkeda.exercise.claw.feature.scout.context.UserProfile;
 import com.youkeda.exercise.claw.feature.scout.processor.InformationFreshness;
 import com.youkeda.exercise.claw.feature.scout.processor.InformationItem;
@@ -83,7 +84,7 @@ public class CandidateMatcher {
                 if (item.getVector() == null) continue;
 
                 float topicScore = hasExplicitQuery
-                        ? cosineSimilarity(facetVectors.get(0), item.getVector())
+                        ? VectorUtils.cosineSimilarity(facetVectors.get(0), item.getVector())
                         : -1f;
                 if (hasExplicitQuery && topicScore < props.getFallbackMatchScore()) {
                     continue;
@@ -93,7 +94,7 @@ public class CandidateMatcher {
                 int bestFacet = -1;
                 int firstProfileFacet = hasExplicitQuery ? 1 : 0;
                 for (int i = firstProfileFacet; i < facetVectors.size(); i++) {
-                    float score = cosineSimilarity(facetVectors.get(i), item.getVector());
+                    float score = VectorUtils.cosineSimilarity(facetVectors.get(i), item.getVector());
                     if (score > bestScore) {
                         bestScore = score;
                         bestFacet = i;
@@ -168,25 +169,6 @@ public class CandidateMatcher {
                 .map(String::trim)
                 .map(value -> prefix + value)
                 .forEach(facets::add);
-    }
-
-    /**
-     * 余弦相似度
-     */
-    private float cosineSimilarity(float[] a, float[] b) {
-        if (a == null || b == null || a.length != b.length) return 0f;
-
-        double dotProduct = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.length; i++) {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        double denominator = Math.sqrt(normA) * Math.sqrt(normB);
-        if (denominator == 0) return 0f;
-
-        return (float) (dotProduct / denominator);
     }
 
     private List<MatchedCandidate> keywordMatch(List<InformationItem> items,

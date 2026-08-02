@@ -1,11 +1,11 @@
 package com.youkeda.exercise.claw.tool.time;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,7 +29,7 @@ import java.time.temporal.TemporalAdjusters;
  * <p>演示场景：团建计划设计 — LLM 通过此函数理解"这周末"、"下周五"等相对时间表达。
  */
 @Component
-public class TimeTool implements Tool {
+public class TimeTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(TimeTool.class);
 
@@ -42,18 +42,8 @@ public class TimeTool implements Tool {
             "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"
     };
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
-
     public TimeTool(ObjectMapper objectMapper, ToolRegistry functionRegistry) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("TimeTool 已注册到 ToolRegistry");
+        super(functionRegistry, objectMapper);
     }
 
     @Override
@@ -72,59 +62,36 @@ public class TimeTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        // action — 操作类型
-        ObjectNode action = properties.putObject("action");
+        ObjectNode action = objectMapper.createObjectNode();
         action.put("type", "string");
         action.put("description", "操作类型：get_current_time=获取当前时间, date_calculate=日期推算, date_diff=两日期差值");
         action.putArray("enum").add("get_current_time").add("date_calculate").add("date_diff");
 
-        // timezone — 时区（可选，默认 Asia/Shanghai）
-        ObjectNode timezone = properties.putObject("timezone");
-        timezone.put("type", "string");
-        timezone.put("description", "时区 ID，如 Asia/Shanghai、America/New_York、Europe/London。默认 Asia/Shanghai");
-
-        // base_date — 基准日期（可选，默认今天）
-        ObjectNode baseDate = properties.putObject("base_date");
-        baseDate.put("type", "string");
-        baseDate.put("description", "基准日期，ISO 格式 yyyy-MM-dd。默认今天。用于 date_calculate 和 date_diff");
-
-        // target_date — 目标日期（date_diff 必填）
-        ObjectNode targetDate = properties.putObject("target_date");
-        targetDate.put("type", "string");
-        targetDate.put("description", "目标日期，ISO 格式 yyyy-MM-dd。用于 date_diff（与 base_date 计算差值）");
-
-        // delta_days — 偏移天数
-        ObjectNode deltaDays = properties.putObject("delta_days");
-        deltaDays.put("type", "integer");
-        deltaDays.put("description", "偏移天数，正数=未来日期，负数=过去日期。用于 date_calculate 的日期偏移模式");
-
-        // target_weekday — 目标星期几
-        ObjectNode targetWeekday = properties.putObject("target_weekday");
+        ObjectNode targetWeekday = objectMapper.createObjectNode();
         targetWeekday.put("type", "string");
         targetWeekday.put("description", "目标星期几：monday/tuesday/wednesday/thursday/friday/saturday/sunday。用于 date_calculate 按星期查找模式");
         targetWeekday.putArray("enum")
                 .add("monday").add("tuesday").add("wednesday")
                 .add("thursday").add("friday").add("saturday").add("sunday");
 
-        // week_context — 星期范围
-        ObjectNode weekContext = properties.putObject("week_context");
+        ObjectNode weekContext = objectMapper.createObjectNode();
         weekContext.put("type", "string");
         weekContext.put("description", "配合 target_weekday 使用：this=本周，next=下周，last=上周。用于 date_calculate 按星期查找模式");
         weekContext.putArray("enum").add("this").add("next").add("last");
 
-        // required
-        params.putArray("required").add("action");
-
-        return params;
+        return schema()
+                .raw("action", action, true)
+                .string("timezone", "时区 ID，如 Asia/Shanghai、America/New_York、Europe/London。默认 Asia/Shanghai")
+                .string("base_date", "基准日期，ISO 格式 yyyy-MM-dd。默认今天。用于 date_calculate 和 date_diff")
+                .string("target_date", "目标日期，ISO 格式 yyyy-MM-dd。用于 date_diff（与 base_date 计算差值）")
+                .integer("delta_days", "偏移天数，正数=未来日期，负数=过去日期。用于 date_calculate 的日期偏移模式")
+                .raw("target_weekday", targetWeekday, false)
+                .raw("week_context", weekContext, false)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             JsonNode actionNode = args.get("action");

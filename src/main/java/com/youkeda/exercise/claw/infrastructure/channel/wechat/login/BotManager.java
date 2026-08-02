@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wechat.ilink.sdk.core.context.ResumeContext;
 import com.github.wechat.ilink.sdk.core.login.LoginContext;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityStore;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotSessionManager;
+import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotStatusManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -29,17 +29,17 @@ public class BotManager {
 
     private final BotSessionStore botSessionStore;
     private final ObjectMapper objectMapper;
-    private final BotSessionManager botSessionManager;
+    private final BotStatusManager botStatusManager;
     private final AgentActivityStore activityStore;
     private BotInstance bot;
     private volatile LoginPageServer pageServer;
 
     public BotManager(BotSessionStore botSessionStore, ObjectMapper objectMapper,
-                      BotSessionManager botSessionManager,
+                      BotStatusManager botStatusManager,
                       AgentActivityStore activityStore) {
         this.botSessionStore = botSessionStore;
         this.objectMapper = objectMapper;
-        this.botSessionManager = botSessionManager;
+        this.botStatusManager = botStatusManager;
         this.activityStore = activityStore;
     }
 
@@ -55,7 +55,7 @@ public class BotManager {
                 BotInstance instance = new BotInstance(ctx);
                 if (instance.isLoggedIn()) {
                     bot = instance;
-                    botSessionManager.markConnected();
+                    botStatusManager.markConnected();
                     stateManager.updateStatus(LoginStatus.SUCCESS);
                     log.info("Bot 会话恢复成功 | botId={} | expiresAt={}",
                             row.botId(), row.expiresAt());
@@ -109,7 +109,7 @@ public class BotManager {
                         stateManager.updateStatus(LoginStatus.SUCCESS);
                         log.info("扫码成功，切换账号");
                         replaceSession(qrBot);
-                        botSessionManager.markConnected();
+                        botStatusManager.markConnected();
                     } else {
                         stateManager.updateStatus(LoginStatus.TIMEOUT);
                         log.info("扫码超时，保持当前 session");
@@ -146,7 +146,7 @@ public class BotManager {
     private void startPageServer(LoginStateManager stateManager, String initialPath) {
         try {
             pageServer = new LoginPageServer(
-                    stateManager, botSessionManager, activityStore, objectMapper);
+                    stateManager, botStatusManager, activityStore, objectMapper);
             int port = pageServer.start();
             openBrowser("http://127.0.0.1:" + port + initialPath);
         } catch (IOException e) {

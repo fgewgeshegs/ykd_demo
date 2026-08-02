@@ -78,7 +78,7 @@ public class BudgetCalculatorService {
         }
 
         boolean allComplete = result.getPlans().stream()
-                .allMatch(plan -> "SUCCESS".equals(plan.getCostStatus()));
+                .allMatch(plan -> plan.getCostStatus() == OptionCostStatus.SUCCESS);
         result.setStatus(allComplete ? "SUCCESS" : "PARTIAL");
         buildComparison(result);
         return result;
@@ -88,7 +88,7 @@ public class BudgetCalculatorService {
                                              BigDecimal contingencyRate, BigDecimal targetBudget) {
         OptionCostResult result = new OptionCostResult();
         if (plan == null) {
-            result.setCostStatus("PARTIAL");
+            result.setCostStatus(OptionCostStatus.PARTIAL);
             result.getMissingPriceItems().add("方案内容");
             return result;
         }
@@ -126,8 +126,8 @@ public class BudgetCalculatorService {
                         category, money(totals[0]), money(totals[1]))));
 
         if (!result.getMissingPriceItems().isEmpty()) {
-            result.setCostStatus("PARTIAL");
-            result.setBudgetStatus("INDETERMINATE");
+            result.setCostStatus(OptionCostStatus.PARTIAL);
+            result.setBudgetStatus(BudgetStatus.INDETERMINATE);
             result.getWarnings().add("存在缺失价格，当前金额仅代表已知费用，不能作为完整总价。");
             return result;
         }
@@ -145,7 +145,7 @@ public class BudgetCalculatorService {
                 BigDecimal.valueOf(headcount), 8, RoundingMode.HALF_UP)));
         result.setPerPersonMax(money(totalMax.divide(
                 BigDecimal.valueOf(headcount), 8, RoundingMode.HALF_UP)));
-        result.setCostStatus("SUCCESS");
+        result.setCostStatus(OptionCostStatus.SUCCESS);
         applyBudgetComparison(result, targetBudget);
         return result;
     }
@@ -253,7 +253,7 @@ public class BudgetCalculatorService {
 
     private void applyBudgetComparison(OptionCostResult result, BigDecimal targetBudget) {
         if (targetBudget == null) {
-            result.setBudgetStatus("NO_LIMIT");
+            result.setBudgetStatus(BudgetStatus.NO_LIMIT);
             return;
         }
         BigDecimal min = result.getEstimatedTotalMin();
@@ -267,24 +267,24 @@ public class BudgetCalculatorService {
                 .multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
 
         if (max.compareTo(targetBudget) <= 0) {
-            result.setBudgetStatus("WITHIN_BUDGET");
+            result.setBudgetStatus(BudgetStatus.WITHIN_BUDGET);
         } else if (min.compareTo(targetBudget) > 0) {
-            result.setBudgetStatus("OVER_BUDGET");
+            result.setBudgetStatus(BudgetStatus.OVER_BUDGET);
         } else {
-            result.setBudgetStatus("POSSIBLY_OVER_BUDGET");
+            result.setBudgetStatus(BudgetStatus.POSSIBLY_OVER_BUDGET);
         }
     }
 
     private void buildComparison(PlanCostResult result) {
         List<OptionCostResult> complete = new ArrayList<>();
         for (OptionCostResult plan : result.getPlans()) {
-            if ("WITHIN_BUDGET".equals(plan.getBudgetStatus())) {
+            if (plan.getBudgetStatus() == BudgetStatus.WITHIN_BUDGET) {
                 result.getWithinBudgetPlans().add(plan.getPlanId());
-            } else if ("OVER_BUDGET".equals(plan.getBudgetStatus())
-                    || "POSSIBLY_OVER_BUDGET".equals(plan.getBudgetStatus())) {
+            } else if (plan.getBudgetStatus() == BudgetStatus.OVER_BUDGET
+                    || plan.getBudgetStatus() == BudgetStatus.POSSIBLY_OVER_BUDGET) {
                 result.getOverBudgetPlans().add(plan.getPlanId());
             }
-            if ("SUCCESS".equals(plan.getCostStatus())) complete.add(plan);
+            if (plan.getCostStatus() == OptionCostStatus.SUCCESS) complete.add(plan);
         }
         complete.stream().min(Comparator.comparing(OptionCostResult::getEstimatedTotalMax))
                 .ifPresent(plan -> result.setLowestCostPlan(plan.getPlanId()));

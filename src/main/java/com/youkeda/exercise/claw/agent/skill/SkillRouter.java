@@ -94,6 +94,13 @@ public class SkillRouter {
                         SkillRoutingResult.SkillRoutingAction.DEACTIVATE, 1.0,
                         "pending interaction cancelled");
             }
+            // 待确认状态超时保护：超过会话超时时间后释放 pendingAction，防止 skill 被长期锁定。
+            long minutesSinceActivity = ChronoUnit.MINUTES.between(session.lastActivityAt(), Instant.now());
+            if (minutesSinceActivity >= config.sessionTimeoutMinutes()) {
+                return new SkillRoutingResult("common", Set.of(),
+                        SkillRoutingResult.SkillRoutingAction.DEACTIVATE, 0.0,
+                        "pending interaction timeout, release " + session.activeSkill());
+            }
             return new SkillRoutingResult(session.activeSkill(), Set.of(),
                     SkillRoutingResult.SkillRoutingAction.CONTINUE, 0.95,
                     "pending interaction response for " + session.activeSkill());
@@ -256,18 +263,19 @@ public class SkillRouter {
                     "continuation of " + session.activeSkill());
         }
 
-        // 低置信度续接保护：当前消息与 activeSkill 弱关联/无关，不再维持旧 skill。
-        // 返回 DEACTIVATE 释放旧 skill，消息回到正常路由流程（common 兜底），
-        // 下一轮请求从 Layer 1 开始重新评估，避免「会话卡在旧 skill、工具白名单被错误限制」。
-        // 连续低置信度保护：inactivityCount 累计达到阈值后升级为「彻底释放」，防止 skill 长期占用。
+        // 低置信度续接保护：当前消息与 activeSkill 弱关联/无关。
+        // 第一次低置信度先 CONTINUE 计数（inactivityCount+1），继续维持旧 skill，
+        // 避免「估价后追问校区/车型」这类多轮澄清被误判为无关而中断；
+        // 连续低置信度达到 LOW_CONFIDENCE_RELEASE_LIMIT 后才升级为「彻底释放」（DEACTIVATE），
+        // 防止 skill 长期占用导致工具白名单被错误限制。
         if (session.inactivityCount() >= LOW_CONFIDENCE_RELEASE_LIMIT) {
             return new SkillRoutingResult("common", Set.of(),
                     SkillRoutingResult.SkillRoutingAction.DEACTIVATE, 0.0,
                     "consecutive low-confidence continuation, fully release " + session.activeSkill());
         }
-        return new SkillRoutingResult("common", Set.of(),
-                SkillRoutingResult.SkillRoutingAction.DEACTIVATE, 0.0,
-                "low-confidence continuation, release " + session.activeSkill());
+        return new SkillRoutingResult(session.activeSkill(), Set.of(),
+                SkillRoutingResult.SkillRoutingAction.CONTINUE, 0.1,
+                "low-confidence continuation, keep " + session.activeSkill());
     }
 
     private record SkillMatchResult(String skillName, double confidence, int priority) {}

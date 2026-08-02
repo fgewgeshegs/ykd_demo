@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.holiday.HolidayDataLoader;
 import com.youkeda.exercise.claw.domain.holiday.DayType;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -36,7 +36,7 @@ import java.util.List;
  * <p>注册方式：{@link ToolRegistry}（与 TimeFunction 相同模式）
  */
 @Component
-public class HolidayCheckTool implements Tool {
+public class HolidayCheckTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(HolidayCheckTool.class);
 
@@ -46,22 +46,13 @@ public class HolidayCheckTool implements Tool {
             "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"
     };
 
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
     private final HolidayDataLoader dataLoader;
 
     public HolidayCheckTool(ObjectMapper objectMapper,
                                 ToolRegistry functionRegistry,
                                 HolidayDataLoader dataLoader) {
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
+        super(functionRegistry, objectMapper);
         this.dataLoader = dataLoader;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("HolidayCheckTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -80,39 +71,18 @@ public class HolidayCheckTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-
-        // date — 单日期查询
-        ObjectNode dateProp = properties.putObject("date");
-        dateProp.put("type", "string");
-        dateProp.put("description", "查询的目标日期，ISO 格式 yyyy-MM-dd。与 date_range 二选一");
-
-        // date_range — 日期范围查询
-        ObjectNode dateRangeProp = properties.putObject("date_range");
-        dateRangeProp.put("type", "object");
-        dateRangeProp.put("description", "查询的日期范围（含首尾）。与 date 二选一");
-        ObjectNode rangeProps = dateRangeProp.putObject("properties");
-        ObjectNode rangeStart = rangeProps.putObject("start");
-        rangeStart.put("type", "string");
-        rangeStart.put("description", "起始日期 yyyy-MM-dd");
-        ObjectNode rangeEnd = rangeProps.putObject("end");
-        rangeEnd.put("type", "string");
-        rangeEnd.put("description", "结束日期 yyyy-MM-dd");
-        dateRangeProp.putArray("required").add("start").add("end");
-
-        // check_adjacent — 检查邻近节假日影响
-        ObjectNode checkAdj = properties.putObject("check_adjacent");
-        checkAdj.put("type", "boolean");
-        checkAdj.put("description", "是否同时检查日期前后各 3 天的状态，评估邻近节假日影响。默认 false。仅单日期查询时有效");
-
-        return params;
+        return schema()
+                .string("date", "查询的目标日期，ISO 格式 yyyy-MM-dd。与 date_range 二选一")
+                .object("date_range", "查询的日期范围（含首尾）。与 date 二选一", false)
+                    .string("start", "起始日期 yyyy-MM-dd", true)
+                    .string("end", "结束日期 yyyy-MM-dd", true)
+                    .end()
+                .bool("check_adjacent", "是否同时检查日期前后各 3 天的状态，评估邻近节假日影响。默认 false。仅单日期查询时有效")
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             log.info("HolidayCheckTool 执行 | args={}", argumentsJson);

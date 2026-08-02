@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.feature.scout.processor;
 
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
+import com.youkeda.exercise.claw.feature.scout.VectorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -134,7 +135,7 @@ public class InformationProcessor {
             // 与已保留的向量逐一比较
             boolean isDuplicate = false;
             for (float[] kept : keptVectors) {
-                if (cosineSimilarity(item.getVector(), kept) > DEDUP_SIMILARITY_THRESHOLD) {
+                if (VectorUtils.cosineSimilarity(item.getVector(), kept) > DEDUP_SIMILARITY_THRESHOLD) {
                     isDuplicate = true;
                     log.debug("向量去重 | title={}", item.getTitle());
                     break;
@@ -148,25 +149,6 @@ public class InformationProcessor {
         }
 
         return result;
-    }
-
-    /**
-     * 余弦相似度
-     */
-    private float cosineSimilarity(float[] a, float[] b) {
-        if (a == null || b == null || a.length != b.length) return 0f;
-
-        double dotProduct = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.length; i++) {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        double denominator = Math.sqrt(normA) * Math.sqrt(normB);
-        if (denominator == 0) return 0f;
-
-        return (float) (dotProduct / denominator);
     }
 
     /**

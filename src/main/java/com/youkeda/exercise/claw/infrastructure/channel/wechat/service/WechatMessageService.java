@@ -183,7 +183,8 @@ public class WechatMessageService {
                 && !item.getText_item().getText().isEmpty()) {
             wechatMsg.setType(MessageType.TEXT);
             wechatMsg.setText(item.getText_item().getText());
-            log.info("收到文本消息 | from={} | text={}", fromUserId, item.getText_item().getText());
+            // 用户聊天内容不进 INFO 日志（隐私最小化），调试需要时开 DEBUG
+            log.debug("收到文本消息 | from={} | text={}", fromUserId, item.getText_item().getText());
             return wechatMsg;
         }
 

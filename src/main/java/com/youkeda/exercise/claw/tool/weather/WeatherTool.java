@@ -3,10 +3,9 @@ package com.youkeda.exercise.claw.tool.weather;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.youkeda.exercise.claw.agent.runtime.Tool;
-import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
+import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
+import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.feature.weather.WeatherResponse;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,26 +21,17 @@ import java.time.temporal.ChronoUnit;
  * LLM 生成 {"city": "北京"} 参数，本函数执行后返回 JSON 格式的天气数据。
  */
 @Component
-public class WeatherTool implements Tool {
+public class WeatherTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(WeatherTool.class);
 
     private final com.youkeda.exercise.claw.feature.weather.WeatherService weatherTool;
-    private final ObjectMapper objectMapper;
-    private final ToolRegistry functionRegistry;
 
     public WeatherTool(com.youkeda.exercise.claw.feature.weather.WeatherService weatherTool,
                             ObjectMapper objectMapper,
-                            ToolRegistry functionRegistry) {
+                            com.youkeda.exercise.claw.agent.runtime.ToolRegistry registry) {
+        super(registry, objectMapper);
         this.weatherTool = weatherTool;
-        this.objectMapper = objectMapper;
-        this.functionRegistry = functionRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        functionRegistry.register(this);
-        log.info("WeatherTool 已注册到 ToolRegistry");
     }
 
     @Override
@@ -58,25 +48,14 @@ public class WeatherTool implements Tool {
 
     @Override
     public JsonNode getParameters() {
-        ObjectNode params = objectMapper.createObjectNode();
-        params.put("type", "object");
-
-        ObjectNode properties = params.putObject("properties");
-        ObjectNode city = properties.putObject("city");
-        city.put("type", "string");
-        city.put("description", "城市名称，如：北京、上海、广州、深圳");
-
-        ObjectNode date = properties.putObject("date");
-        date.put("type", "string");
-        date.put("description", "可选，出行日期，格式 yyyy-MM-dd；不传则查询当前天气");
-
-        params.putArray("required").add("city");
-
-        return params;
+        return schema()
+                .string("city", "城市名称，如：北京、上海、广州、深圳", true)
+                .string("date", "可选，出行日期，格式 yyyy-MM-dd；不传则查询当前天气", false)
+                .build();
     }
 
     @Override
-    public String execute(String argumentsJson) {
+    public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             JsonNode args = objectMapper.readTree(argumentsJson);
             JsonNode cityNode = args.has("city") ? args.get("city") : args.get("location");
