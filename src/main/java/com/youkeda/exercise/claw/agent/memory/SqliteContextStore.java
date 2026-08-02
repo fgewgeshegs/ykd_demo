@@ -87,7 +87,7 @@ public class SqliteContextStore implements ContextStore {
         String sql = """
             SELECT message_json FROM context_messages
             WHERE user_id = ?
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
             LIMIT ?
         """;
 
@@ -115,7 +115,7 @@ public class SqliteContextStore implements ContextStore {
         String sql = """
             SELECT message_json FROM context_messages
             WHERE user_id = ?
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
         """;
 
         List<String> jsons = jdbc.queryForList(sql, String.class, userId);
@@ -134,7 +134,7 @@ public class SqliteContextStore implements ContextStore {
         String sql = """
             SELECT message_json FROM context_messages
             WHERE user_id = ?
-            ORDER BY created_at ASC
+            ORDER BY created_at ASC, id ASC
         """;
 
         List<String> jsons = jdbc.queryForList(sql, String.class, userId);
@@ -174,7 +174,7 @@ public class SqliteContextStore implements ContextStore {
                 WHERE user_id = ? AND id NOT IN (
                     SELECT id FROM context_messages
                     WHERE user_id = ?
-                    ORDER BY created_at DESC
+                    ORDER BY created_at DESC, id DESC
                     LIMIT ?
                 )
             """, userId, userId, props.getMaxMessages());
