@@ -21,8 +21,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -87,6 +89,7 @@ public class ToolExecutor {
             Set<String> executedCalls) {
 
         List<String> results = new ArrayList<>();
+        Map<String, ResultStatus> toolStatuses = new LinkedHashMap<>();
         boolean executedInBatch = false;
         int toolCallCount = 0;
 
@@ -96,6 +99,7 @@ public class ToolExecutor {
 
             Tool fn = toolRegistry.find(toolName);
             String result;
+            ResultStatus resultStatus;
             String callSignature = toolName + "|" + tc.arguments();
 
             // Phase 1: 安全检查（CanExecute）
@@ -107,6 +111,7 @@ public class ToolExecutor {
                 result = "{\"error\":\"未知工具: " + toolName + "\"}";
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "未知工具");
+                resultStatus = ResultStatus.FAILED;
             }
             // 当前消息不满足工具的严格触发条件
             else if (!fn.isAvailable(execContext)) {
@@ -115,24 +120,28 @@ public class ToolExecutor {
                 result = policyBlocked(reason);
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, reason);
+                resultStatus = ResultStatus.BLOCKED;
             }
             // 安全检查阻止
             else if (blockedReason != null) {
                 result = policyBlocked(blockedReason);
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, blockedReason);
+                resultStatus = ResultStatus.BLOCKED;
             }
             // 工具调用数量上限
             else if (toolCallCount >= MAX_TOOL_CALLS) {
                 result = policyBlocked("本次请求工具调用数量已达上限，请使用已有结果生成答复。");
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "工具调用数量已达上限");
+                resultStatus = ResultStatus.BLOCKED;
             }
             // 去重（相同工具 + 相同参数）
             else if (!executedCalls.add(callSignature)) {
                 result = policyBlocked("相同工具和参数已经执行过，请使用已有结果，不要重复调用。");
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "重复工具调用");
+                resultStatus = ResultStatus.BLOCKED;
             }
             // 执行
             else {
@@ -143,8 +152,10 @@ public class ToolExecutor {
                         activityRequestId, activeSkillName, toolName);
                 try {
                     result = fn.execute(tc.arguments(), execContext);
-                    session = skillPendingCoordinator.afterToolExecution(session, toolName);
-                    ResultStatus resultStatus = parseResultStatus(result);
+                    session = skillPendingCoordinator.afterToolExecution(
+                            session, toolName, result);
+                    resultStatus = parseResultStatus(result);
+                    if (resultStatus == null) resultStatus = ResultStatus.FAILED;
                     boolean succeeded = resultStatus == ResultStatus.SUCCESS
                             || resultStatus == ResultStatus.PARTIAL;
                     activityRecorder.toolFinished(
@@ -172,9 +183,12 @@ public class ToolExecutor {
                 }
             }
             results.add(result);
+            toolStatuses.put(toolName, resultStatus);
         }
 
-        return new ToolExecutionBatch(results, session, planState, executedInBatch, toolCallCount);
+        return new ToolExecutionBatch(
+                results, session, planState, executedInBatch,
+                toolCallCount, Map.copyOf(toolStatuses));
     }
 
     /**
@@ -202,7 +216,8 @@ public class ToolExecutor {
             SkillSession session,
             PlanState planState,
             boolean executedInBatch,
-            int toolCallCount
+            int toolCallCount,
+            Map<String, ResultStatus> toolStatuses
     ) {}
 
     private String policyBlocked(String reason) {

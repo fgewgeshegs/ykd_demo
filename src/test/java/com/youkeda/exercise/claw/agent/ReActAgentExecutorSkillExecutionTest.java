@@ -18,6 +18,7 @@ import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
 import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
+import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuardRegistry;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,9 @@ class ReActAgentExecutorSkillExecutionTest {
         SkillSessionStore sessionStore = mock(SkillSessionStore.class);
         SkillRegistry skillRegistry = mock(SkillRegistry.class);
         SkillExecutionDispatcher dispatcher = mock(SkillExecutionDispatcher.class);
+        SkillLifecycleCoordinator lifecycleCoordinator = mock(SkillLifecycleCoordinator.class);
+        when(lifecycleCoordinator.onRouting(anyString(), any(), any(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
         AgentActivityRecorder activityRecorder = mock(AgentActivityRecorder.class);
         when(activityRecorder.beginRequest()).thenReturn("request-1");
         when(skillRouter.route("最近有什么值得关注", "owner"))
@@ -65,7 +69,8 @@ class ReActAgentExecutorSkillExecutionTest {
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
-                llmClient, toolExecutor, planStore, mock(PlanValidator.class), objectMapper);
+                llmClient, toolExecutor, planStore, mock(PlanValidator.class), objectMapper,
+                new SkillReplyGuardRegistry(java.util.List.of()));
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient,
@@ -82,6 +87,7 @@ class ReActAgentExecutorSkillExecutionTest {
                 mock(SkillKnowledgeService.class),
                 activityRecorder,
                 dispatcher,
+                lifecycleCoordinator,
                 executionLoop);
 
         String result = executor.execute(new AgentContext()
@@ -89,6 +95,9 @@ class ReActAgentExecutorSkillExecutionTest {
                 .setMessage("最近有什么值得关注"));
 
         assertEquals(ReActAgentExecutor.SILENT_REPLY, result);
+        verify(lifecycleCoordinator).onRouting(
+                eq("最近有什么值得关注"), any(SkillRoutingResult.class),
+                any(SkillSession.class), eq("request-1"));
         verifyNoInteractions(llmClient);
     }
 }

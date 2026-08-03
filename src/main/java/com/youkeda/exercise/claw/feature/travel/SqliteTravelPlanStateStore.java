@@ -5,6 +5,7 @@ import com.youkeda.exercise.claw.agent.memory.StorageProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -39,12 +40,11 @@ public class SqliteTravelPlanStateStore implements TravelPlanStateStore {
             String json = jdbc.queryForObject(sql, String.class, userId);
             if (json == null || json.isBlank()) return null;
             return objectMapper.readValue(json, TravelPlanDraft.class);
-        } catch (Exception e) {
-            if (e.getMessage() != null && e.getMessage().contains("EmptyResultDataAccessException")) {
-                return null;
-            }
-            log.warn("读取旅游方案状态失败 | user={} | error={}", userId, e.getMessage());
+        } catch (EmptyResultDataAccessException e) {
             return null;
+        } catch (Exception e) {
+            log.warn("读取旅游方案状态失败 | user={} | error={}", userId, e.getMessage());
+            throw new IllegalStateException("读取旅游方案状态失败", e);
         }
     }
 
@@ -62,6 +62,7 @@ public class SqliteTravelPlanStateStore implements TravelPlanStateStore {
 
         } catch (Exception e) {
             log.error("保存旅游方案状态失败 | user={} | error={}", userId, e.getMessage());
+            throw new IllegalStateException("保存旅游方案状态失败", e);
         }
     }
 

@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.tool.travel;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
+import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,9 +51,9 @@ public class TravelCollectTool implements Tool {
     public String getDescription() {
         return "收集和更新旅游规划需求。"
                 + "当用户需要制定旅游、公司出游、部门活动、集体旅行或完整多人行程方案时调用。"
+                + "新的旅游规划请求必须先调用本工具，传入用户已明确提供的全部信息。"
                 + "传入用户已提供的信息（出发地、人数、日期、天数、目的地/范围、预算等）；"
                 + "必要字段缺失时返回 NEED_MORE_INFORMATION 和缺失字段列表，LLM 应逐一追问。"
-                + "新方案首次调用前，若明显缺少必填信息（缺3项以上），应先用文字一次性追问，不调用此工具。"
                 + "已有方案状态时，用此工具记录用户补充或修改的信息。"
                 + "普通景点问答和简单地点推荐不调用。";
     }
@@ -102,7 +103,27 @@ public class TravelCollectTool implements Tool {
     public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
-            return objectMapper.writeValueAsString(planService.handle(args));
+            String newPlanRequestId = context != null
+                    && context.skillSession() != null
+                    ? context.skillSession().context().get(
+                    SkillPendingCoordinator.NEW_TRAVEL_PLAN)
+                    : null;
+            boolean newPlan = newPlanRequestId != null
+                    && !newPlanRequestId.isBlank();
+            String userId = context != null ? context.userId() : null;
+            ObjectNode result;
+            if (userId == null || userId.isBlank()) {
+                result = newPlan
+                        ? planService.startNewPlanForDefaultUser(
+                        args, newPlanRequestId)
+                        : planService.handle(args);
+            } else {
+                result = newPlan
+                        ? planService.startNewPlan(
+                        args, userId, newPlanRequestId)
+                        : planService.handle(args, userId);
+            }
+            return objectMapper.writeValueAsString(result);
         } catch (Exception e) {
             log.error("travel_collect 执行失败 | error={}", e.getMessage());
             return error("旅游需求收集失败: " + e.getMessage());

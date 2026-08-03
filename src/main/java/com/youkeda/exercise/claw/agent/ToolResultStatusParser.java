@@ -19,15 +19,15 @@ public class ToolResultStatusParser {
         try {
             JsonNode node = objectMapper.readTree(resultJson);
             if (node.has("error")) return ResultStatus.FAILED;
-            String status = node.path("status").asText("SUCCESS").toUpperCase();
+            String status = node.path("status").asText("").toUpperCase();
             return switch (status) {
-                case "SUCCESS", "STARTED" -> ResultStatus.SUCCESS;
-                case "PARTIAL" -> ResultStatus.PARTIAL;
+                case "SUCCESS", "STARTED", "ALL_COLLECTED" -> ResultStatus.SUCCESS;
+                case "PARTIAL", "NEED_MORE_INFORMATION" -> ResultStatus.PARTIAL;
                 case "BLOCKED" -> ResultStatus.BLOCKED;
                 default -> ResultStatus.FAILED;
             };
         } catch (Exception e) {
-            return ResultStatus.SUCCESS;
+            return ResultStatus.FAILED;
         }
     }
 }

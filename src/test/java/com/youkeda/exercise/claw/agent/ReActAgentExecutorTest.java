@@ -15,6 +15,7 @@ import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
 import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
+import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuardRegistry;
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillsProperties;
@@ -30,6 +31,11 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -138,6 +144,80 @@ class ReActAgentExecutorTest {
         assertEquals("你好！有什么可以帮你的？", reply);
     }
 
+    @Test
+    void shouldPersistSessionUpdatedByToolBeforeTextReply() {
+        Fixture fixture = fixture();
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList()))
+                .thenReturn(
+                        new LLMResponse(null,
+                                List.of(new LLMResponse.ToolCall(
+                                        "tc1", "dummy_tool", "{}")),
+                                "tool_calls"),
+                        new LLMResponse("完成", List.of(), "stop"));
+
+        fixture.executor.execute(new AgentContext().setMessage("执行工具"));
+
+        ArgumentCaptor<SkillSession> sessions = ArgumentCaptor.forClass(SkillSession.class);
+        verify(fixture.skillSessionStore, atLeastOnce()).save(anyString(), sessions.capture());
+        List<SkillSession> saved = sessions.getAllValues();
+        assertEquals("true", saved.get(saved.size() - 1)
+                .context().get("toolSessionUpdated"));
+    }
+
+    @Test
+    void shouldPersistSessionUpdatedByToolWhenLlmFailsAfterward() {
+        Fixture fixture = fixture();
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList()))
+                .thenReturn(new LLMResponse(null,
+                        List.of(new LLMResponse.ToolCall(
+                                "tc1", "dummy_tool", "{}")),
+                        "tool_calls"))
+                .thenReturn(null);
+
+        fixture.executor.execute(new AgentContext().setMessage("执行后失败"));
+
+        ArgumentCaptor<SkillSession> sessions = ArgumentCaptor.forClass(SkillSession.class);
+        verify(fixture.skillSessionStore, atLeastOnce()).save(anyString(), sessions.capture());
+        List<SkillSession> saved = sessions.getAllValues();
+        assertEquals("true", saved.get(saved.size() - 1)
+                .context().get("toolSessionUpdated"));
+    }
+
+    @Test
+    void serializesConcurrentRequestsForSameUser() throws Exception {
+        Fixture fixture = fixture();
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maxActive = new AtomicInteger();
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(fixture.llmClient.chatWithTools(anyString(), anyList(), anyList()))
+                .thenAnswer(invocation -> {
+                    int current = active.incrementAndGet();
+                    maxActive.accumulateAndGet(current, Math::max);
+                    firstStarted.countDown();
+                    release.await(2, TimeUnit.SECONDS);
+                    active.decrementAndGet();
+                    return new LLMResponse("完成", List.of(), "stop");
+                });
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<String> first = pool.submit(() -> fixture.executor.execute(
+                    new AgentContext().setUserId("same-user").setMessage("预算2000")));
+            assertTrue(firstStarted.await(1, TimeUnit.SECONDS));
+            Future<String> second = pool.submit(() -> fixture.executor.execute(
+                    new AgentContext().setUserId("same-user").setMessage("一个人")));
+            Thread.sleep(100);
+            release.countDown();
+            assertEquals("完成", first.get(2, TimeUnit.SECONDS));
+            assertEquals("完成", second.get(2, TimeUnit.SECONDS));
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+
+        assertEquals(1, maxActive.get());
+    }
+
     private Fixture fixture() {
         ObjectMapper objectMapper = new ObjectMapper();
         LLMClient llmClient = mock(LLMClient.class);
@@ -191,12 +271,18 @@ class ReActAgentExecutorTest {
                 .thenAnswer(invocation -> SkillExecutionResult.notHandled(
                         invocation.getArgument(2)));
 
+        SkillPendingCoordinator pendingCoordinator = mock(SkillPendingCoordinator.class);
+        when(pendingCoordinator.afterToolExecution(
+                any(SkillSession.class), anyString(), anyString()))
+                .thenAnswer(invocation -> ((SkillSession) invocation.getArgument(0))
+                        .withContextValue("toolSessionUpdated", "true"));
         ToolExecutor toolExecutor = new ToolExecutor(
-                registry, safetyPolicy, mock(SkillPendingCoordinator.class),
+                registry, safetyPolicy, pendingCoordinator,
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
-                llmClient, toolExecutor, planStore, planValidator, objectMapper);
+                llmClient, toolExecutor, planStore, planValidator, objectMapper,
+                new SkillReplyGuardRegistry(List.of()));
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
@@ -205,11 +291,13 @@ class ReActAgentExecutorTest {
                 mock(SkillKnowledgeService.class),
                 mock(AgentActivityRecorder.class),
                 skillExecutionDispatcher,
+                new SkillLifecycleCoordinator(List.of()),
                 executionLoop);
-        return new Fixture(llmClient, executor, contextStore);
+        return new Fixture(llmClient, executor, contextStore, skillSessionStore);
     }
 
     private record Fixture(LLMClient llmClient, ReActAgentExecutor executor,
-                           ContextStore contextStore) {
+                           ContextStore contextStore,
+                           SkillSessionStore skillSessionStore) {
     }
 }

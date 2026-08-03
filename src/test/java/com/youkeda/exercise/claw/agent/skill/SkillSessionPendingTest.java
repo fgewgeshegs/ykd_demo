@@ -18,4 +18,20 @@ class SkillSessionPendingTest {
         assertEquals("query", updated.pendingSlot());
         assertFalse(updated.clearPendingAction().hasPendingAction("START_INFORMATION_SCOUT"));
     }
+
+    @Test
+    void pendingActionIsSuspendedAndRestoredAcrossSkillSwitch() {
+        SkillSession travel = SkillSession.create("owner")
+                .withActiveSkill("travel")
+                .withPendingAction("COLLECT_TRAVEL_REQUIREMENTS", "budget");
+
+        SkillSession weather = travel.withActiveSkill("weather");
+        SkillSession resumed = weather.withActiveSkill("travel");
+
+        assertFalse(weather.hasPendingAction("COLLECT_TRAVEL_REQUIREMENTS"));
+        assertTrue(weather.hasSuspendedPendingAction(
+                "travel", "COLLECT_TRAVEL_REQUIREMENTS"));
+        assertTrue(resumed.hasPendingAction("COLLECT_TRAVEL_REQUIREMENTS"));
+        assertEquals("budget", resumed.pendingSlot());
+    }
 }

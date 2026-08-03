@@ -8,6 +8,7 @@ import com.youkeda.exercise.claw.agent.model.EvaluationState;
 import com.youkeda.exercise.claw.agent.model.ExecutionStatus;
 import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.model.PlanTask;
+import com.youkeda.exercise.claw.agent.model.ResultStatus;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
 import com.youkeda.exercise.claw.agent.plan.ValidationResult;
@@ -23,8 +24,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -48,23 +51,30 @@ public class ExecutionLoop {
 
     /** 工具调用循环最大轮次 */
     private static final int MAX_ROUNDS = 15;
+    private static final int MAX_REPLY_GUARD_RETRIES = 2;
+    private static final String REPLY_GUARD_FALLBACK =
+            "我还需要先确认并记录完整的出行信息，暂时不能直接给出完整行程。"
+                    + "请补充尚未提供的人数、预算等必要信息。";
 
     private final LLMClient llmClient;
     private final ToolExecutor toolExecutor;
     private final PlanStore planStore;
     private final PlanValidator planValidator;
     private final ObjectMapper objectMapper;
+    private final SkillReplyGuardRegistry replyGuardRegistry;
 
     public ExecutionLoop(LLMClient llmClient,
                          ToolExecutor toolExecutor,
                          PlanStore planStore,
                          PlanValidator planValidator,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         SkillReplyGuardRegistry replyGuardRegistry) {
         this.llmClient = llmClient;
         this.toolExecutor = toolExecutor;
         this.planStore = planStore;
         this.planValidator = planValidator;
         this.objectMapper = objectMapper;
+        this.replyGuardRegistry = replyGuardRegistry;
     }
 
     /**
@@ -93,7 +103,10 @@ public class ExecutionLoop {
             String userMessage) {
 
         Set<String> executedCalls = new HashSet<>();
+        Map<String, ResultStatus> toolStatuses = new HashMap<>();
         boolean forceTextResponse = false;
+        String unresolvedGuardCorrection = null;
+        int replyGuardRejections = 0;
         PlanState planState = initialPlanState;
 
         for (int round = 0; round < MAX_ROUNDS; round++) {
@@ -156,6 +169,20 @@ public class ExecutionLoop {
             // === 分支 2：直接回复文本 ===
             if (!response.isToolCall()) {
                 String reply = response.getContent();
+                SkillReplyGuard.GuardResult guardResult = replyGuardRegistry.validate(
+                        activeSkillName, userMessage, reply, session,
+                        executedCalls, toolStatuses);
+                if (!guardResult.allowed()) {
+                    log.warn("Skill 回复守卫阻止文本结束 | skill={}", activeSkillName);
+                    unresolvedGuardCorrection = guardResult.correction();
+                    replyGuardRejections++;
+                    if (replyGuardRejections >= MAX_REPLY_GUARD_RETRIES) {
+                        return Result.textReply(
+                                REPLY_GUARD_FALLBACK, messages, planState, session);
+                    }
+                    messages.add(new Message("system", guardResult.correction()));
+                    continue;
+                }
                 boolean createIntent =
                         ScheduleIntentResolver.resolve(userMessage) == ScheduleIntent.CREATE;
                 boolean toolCalled = wasScheduleTaskCalled(executedCalls);
@@ -194,6 +221,11 @@ public class ExecutionLoop {
                     activityRequestId, activeSkillName, userMessage, executedCalls);
             session = batch.session();
             planState = batch.planState();
+            toolStatuses.putAll(batch.toolStatuses());
+            if (batch.executedInBatch()) {
+                unresolvedGuardCorrection = null;
+                replyGuardRejections = 0;
+            }
 
             if (toolExecutor.isStartedInformationScout(toolCalls, batch.results())) {
                 log.info("信息猎手后台任务已受理，本轮保持静默");
@@ -217,7 +249,21 @@ public class ExecutionLoop {
 
         // 达到局部上限
         log.warn("工具调用循环达到上限 {} 轮", MAX_ROUNDS);
-        return Result.maxRounds(messages, planState, session);
+        if (unresolvedGuardCorrection != null) {
+            return Result.textReply(
+                    REPLY_GUARD_FALLBACK, messages, planState, session);
+        }
+        String synthesizedReply = synthesize(systemPrompt, messages);
+        SkillReplyGuard.GuardResult finalGuard = replyGuardRegistry.validate(
+                activeSkillName, userMessage, synthesizedReply, session,
+                executedCalls, toolStatuses);
+        if (!finalGuard.allowed()) {
+            log.warn("Skill 回复守卫阻止达到轮次上限后的合成回复 | skill={}",
+                    activeSkillName);
+            return Result.textReply(
+                    REPLY_GUARD_FALLBACK, messages, planState, session);
+        }
+        return Result.textReply(synthesizedReply, messages, planState, session);
     }
 
     /**

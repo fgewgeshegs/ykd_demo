@@ -95,7 +95,11 @@ public class TravelSelectOptionTool implements Tool {
             } else {
                 args.put("action", "select_option");
             }
-            return objectMapper.writeValueAsString(planService.handle(args));
+            String userId = context != null ? context.userId() : null;
+            ObjectNode result = userId == null || userId.isBlank()
+                    ? planService.handle(args)
+                    : planService.handle(args, userId);
+            return objectMapper.writeValueAsString(result);
         } catch (Exception e) {
             log.error("travel_select_option 执行失败 | error={}", e.getMessage());
             return error("选择方案失败: " + e.getMessage());

@@ -86,3 +86,4 @@ data/
 
 # 日志文件
 logs/
+hs_err_pid*.log

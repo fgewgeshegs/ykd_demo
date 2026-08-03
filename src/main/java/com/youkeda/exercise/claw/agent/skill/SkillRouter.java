@@ -57,9 +57,14 @@ public class SkillRouter {
 
         Optional<SkillSession> sessionOpt = sessionStore.find(userId);
 
-        // Layer 1: Pending interaction confirmation
-        SkillRoutingResult layer1 = handlePendingInteraction(message, sessionOpt);
-        if (layer1 != null) return layer1;
+        // Pending cancellation always wins, but a clear new Skill trigger may
+        // preempt a pending short-answer flow (for example, asking about the
+        // weather while travel is waiting for a budget).
+        SkillRoutingResult pending = handlePendingInteraction(message, sessionOpt);
+        if (pending != null
+                && pending.action() == SkillRoutingResult.SkillRoutingAction.DEACTIVATE) {
+            return pending;
+        }
 
         // Layer 2: Explicit skill switch
         SkillRoutingResult layer2 = handleExplicitSwitch(message, sessionOpt);
@@ -70,6 +75,10 @@ public class SkillRouter {
         if (layer3 != null && layer3.confidence() >= 0.8) {
             return layer3;
         }
+
+        // Layer 1: Pending interaction confirmation. It is evaluated after
+        // explicit/new triggers so an unrelated Skill request is not trapped.
+        if (pending != null) return pending;
 
         // Layer 4: Continuation check
         SkillRoutingResult layer4 = handleContinuation(message, sessionOpt);
@@ -115,7 +124,7 @@ public class SkillRouter {
     private boolean isPendingCancellation(String message) {
         if (message == null) return false;
         String normalized = message.replaceAll("\\s+", "");
-        return normalized.matches(".*(?:算了|取消|不用了|不查了|别查了|不要查了).*");
+        return normalized.matches(".*(?:算了|取消|不用了|不查了|别查了|不要查了|不规划了).*");
     }
 
     private SkillRoutingResult handleExplicitSwitch(String message, Optional<SkillSession> sessionOpt) {

@@ -50,7 +50,7 @@ public class TravelSaveOptionsTool implements Tool {
         return "保存已生成的候选旅游方案。"
                 + "当已有一个或多个完整的差异化方案，需要进入比较和选择阶段时调用。"
                 + "用户未指定数量时默认生成3个方案，明确指定时按指定数量生成，最多5个。"
-                + "调用前应先生成各方案的行程和费用项目，调用后再用 budget_calculator 核算总费用。";
+                + "调用前应先生成各方案的行程和费用项目，调用后再用 travel_calculate_cost 核算总费用。";
     }
 
     @Override
@@ -88,7 +88,11 @@ public class TravelSaveOptionsTool implements Tool {
     public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
-            return objectMapper.writeValueAsString(planService.handle(args));
+            String userId = context != null ? context.userId() : null;
+            ObjectNode result = userId == null || userId.isBlank()
+                    ? planService.handle(args)
+                    : planService.handle(args, userId);
+            return objectMapper.writeValueAsString(result);
         } catch (Exception e) {
             log.error("travel_save_options 执行失败 | error={}", e.getMessage());
             return error("保存候选方案失败: " + e.getMessage());

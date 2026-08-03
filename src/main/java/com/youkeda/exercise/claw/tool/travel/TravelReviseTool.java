@@ -52,7 +52,7 @@ public class TravelReviseTool implements Tool {
                 + "传入 source_option_ids 时为组合模式——从多个源方案生成一个新方案；"
                 + "传入 option_id 加其他修改字段时为指定方案修订模式；"
                 + "只传入 feedback 时为通用修订模式。"
-                + "修订后旧成本失效，需重新调用 budget_calculator 核算。";
+                + "修订后旧成本失效，需重新调用 travel_calculate_cost 核算。";
     }
 
     @Override
@@ -98,7 +98,11 @@ public class TravelReviseTool implements Tool {
                 args.put("action", "revise");
             }
 
-            return objectMapper.writeValueAsString(planService.handle(args));
+            String userId = context != null ? context.userId() : null;
+            ObjectNode result = userId == null || userId.isBlank()
+                    ? planService.handle(args)
+                    : planService.handle(args, userId);
+            return objectMapper.writeValueAsString(result);
         } catch (Exception e) {
             log.error("travel_revise 执行失败 | error={}", e.getMessage());
             return error("修订方案失败: " + e.getMessage());

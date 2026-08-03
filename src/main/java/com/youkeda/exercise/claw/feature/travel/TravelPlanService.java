@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +34,7 @@ public class TravelPlanService {
     private final TravelPlanStateStore stateStore;
     private final ObjectMapper objectMapper;
     private final WechatUserManager userManager;
+    private final Map<String, Object> userLocks = new ConcurrentHashMap<>();
 
     public TravelPlanService(TravelPlanStateStore stateStore, ObjectMapper objectMapper,
                                 WechatUserManager userManager) {
@@ -59,6 +61,13 @@ public class TravelPlanService {
      * 处理旅游方案工具调用（指定 userId）。
      */
     public ObjectNode handle(JsonNode args, String userId) {
+        String effectiveUserId = effectiveUserId(userId);
+        synchronized (userLock(effectiveUserId)) {
+            return handleLocked(args, effectiveUserId);
+        }
+    }
+
+    private ObjectNode handleLocked(JsonNode args, String userId) {
         normalizeAliases((ObjectNode) args);
         String action = text(args, "action");
         if ("reset".equals(action)) {
@@ -95,8 +104,65 @@ public class TravelPlanService {
         return result;
     }
 
+    /**
+     * 以本次收集到的字段创建全新草稿。旧草稿只在新草稿成功构建后才被替换。
+     */
+    public ObjectNode startNewPlan(JsonNode args, String userId) {
+        return startNewPlan(args, userId, UUID.randomUUID().toString());
+    }
+
+    public ObjectNode startNewPlan(
+            JsonNode args, String userId, String newPlanRequestId) {
+        String effectiveUserId = effectiveUserId(userId);
+        synchronized (userLock(effectiveUserId)) {
+            return startNewPlanLocked(args, effectiveUserId, newPlanRequestId);
+        }
+    }
+
+    private ObjectNode startNewPlanLocked(
+            JsonNode args, String userId, String newPlanRequestId) {
+        normalizeAliases((ObjectNode) args);
+        TravelPlanDraft existing = stateStore.get(userId);
+        boolean retry = existing != null
+                && newPlanRequestId != null
+                && newPlanRequestId.equals(existing.getNewPlanRequestId());
+        TravelPlanDraft draft = retry ? copyDraft(existing) : new TravelPlanDraft();
+        if (args.has("option_count") && args.get("option_count").canConvertToInt()) {
+            int optionCount = args.get("option_count").asInt();
+            if (optionCount < 1 || optionCount > 5) {
+                return saveError(draft, "候选方案数量必须在1到5之间。");
+            }
+        }
+        if (!retry) draft.setNewPlanRequestId(newPlanRequestId);
+        merge(draft, args);
+        ObjectNode result = collect(draft);
+        stateStore.save(userId, draft);
+        return result;
+    }
+
+    public ObjectNode startNewPlan(JsonNode args) {
+        return startNewPlan(args, resolveDefaultUserId());
+    }
+
+    public ObjectNode startNewPlanForDefaultUser(
+            JsonNode args, String newPlanRequestId) {
+        return startNewPlan(args, resolveDefaultUserId(), newPlanRequestId);
+    }
+
     public TravelPlanDraft getDraft() {
         return stateStore.get(resolveDefaultUserId());
+    }
+
+    private Object userLock(String userId) {
+        return userLocks.computeIfAbsent(userId, ignored -> new Object());
+    }
+
+    private TravelPlanDraft copyDraft(TravelPlanDraft draft) {
+        return objectMapper.convertValue(draft, TravelPlanDraft.class);
+    }
+
+    private String effectiveUserId(String userId) {
+        return userId == null || userId.isBlank() ? "default" : userId;
     }
 
     // ==================== Action Handlers ====================

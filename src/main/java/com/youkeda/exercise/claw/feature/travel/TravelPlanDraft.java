@@ -38,6 +38,12 @@ class TravelPlanDraft {
     private String selectedOptionId;
     private int optionSetVersion;
     private String costStatus = "NOT_CALCULATED";
+    private String newPlanRequestId;
+
+    public String getNewPlanRequestId() { return newPlanRequestId; }
+    public void setNewPlanRequestId(String newPlanRequestId) {
+        this.newPlanRequestId = newPlanRequestId;
+    }
 
     public String getCostStatus() { return costStatus; }
     public void setCostStatus(String costStatus) { this.costStatus = costStatus; }

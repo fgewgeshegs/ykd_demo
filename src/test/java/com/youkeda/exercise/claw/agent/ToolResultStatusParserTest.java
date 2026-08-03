@@ -16,4 +16,26 @@ class ToolResultStatusParserTest {
         assertEquals(ResultStatus.SUCCESS,
                 parser.parse("{\"status\":\"started\",\"taskId\":\"task-1\"}"));
     }
+
+    @Test
+    void treatsMissingTravelInformationAsPartialExecution() {
+        assertEquals(ResultStatus.PARTIAL,
+                parser.parse("{\"status\":\"NEED_MORE_INFORMATION\"}"));
+    }
+
+    @Test
+    void treatsCompletedTravelCollectionAsSuccessfulExecution() {
+        assertEquals(ResultStatus.SUCCESS,
+                parser.parse("{\"status\":\"ALL_COLLECTED\"}"));
+    }
+
+    @Test
+    void treatsMalformedToolOutputAsFailedExecution() {
+        assertEquals(ResultStatus.FAILED, parser.parse("not-json"));
+    }
+
+    @Test
+    void treatsMissingStatusAsFailedExecution() {
+        assertEquals(ResultStatus.FAILED, parser.parse("{}"));
+    }
 }

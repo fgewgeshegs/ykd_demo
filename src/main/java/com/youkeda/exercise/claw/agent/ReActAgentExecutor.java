@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.ConcurrentHashMap;
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillExecutionResult;
@@ -80,7 +81,10 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final SkillKnowledgeService skillKnowledgeService;
     private final AgentActivityRecorder activityRecorder;
     private final SkillExecutionDispatcher skillExecutionDispatcher;
+    private final SkillLifecycleCoordinator skillLifecycleCoordinator;
     private final ExecutionLoop executionLoop;
+    private final ConcurrentHashMap<String, Object> userExecutionLocks =
+            new ConcurrentHashMap<>();
 
     public ReActAgentExecutor(LLMClient llmClient,
                                ToolRegistry functionRegistry,
@@ -96,6 +100,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                                SkillKnowledgeService skillKnowledgeService,
                                AgentActivityRecorder activityRecorder,
                                SkillExecutionDispatcher skillExecutionDispatcher,
+                               SkillLifecycleCoordinator skillLifecycleCoordinator,
                                ExecutionLoop executionLoop) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
@@ -111,27 +116,46 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.skillKnowledgeService = skillKnowledgeService;
         this.activityRecorder = activityRecorder;
         this.skillExecutionDispatcher = skillExecutionDispatcher;
+        this.skillLifecycleCoordinator = skillLifecycleCoordinator;
         this.executionLoop = executionLoop;
     }
 
     @Override
     public String execute(AgentContext context) {
+        String userId = context.getUserId();
+        if (userId == null || userId.isBlank()) {
+            userId = wechatUserManager.getOwnerUserId();
+            context.setUserId(userId);
+        }
+        String effectiveUserId = userId == null || userId.isBlank()
+                ? "default" : userId;
+        synchronized (userExecutionLocks.computeIfAbsent(
+                effectiveUserId, ignored -> new Object())) {
+            return executeLocked(context, effectiveUserId);
+        }
+    }
+
+    private String executeLocked(AgentContext context, String userId) {
         long requestStartedAt = System.currentTimeMillis();
         String activityRequestId = activityRecorder.beginRequest();
         String userMessage = context.getMessage();
 
         log.info("AgentExecutor 执行 | message={}", userMessage);
 
-        // Resolve userId
-        String userId = context.getUserId();
-        if (userId == null || userId.isBlank()) {
-            userId = wechatUserManager.getOwnerUserId();
-            context.setUserId(userId);
-        }
-
         // Route through SkillRouter
         SkillRoutingResult routingResult = skillRouter.route(userMessage, userId);
         SkillSession session = updateSession(userId, routingResult);
+        String sourceRequestId = context.getRawMessage() != null
+                && context.getRawMessage().getMessageId() != null
+                && !context.getRawMessage().getMessageId().isBlank()
+                ? context.getRawMessage().getMessageId()
+                : activityRequestId;
+        SkillSession lifecycleSession = skillLifecycleCoordinator.onRouting(
+                userMessage, routingResult, session, sourceRequestId);
+        if (lifecycleSession != null) {
+            session = lifecycleSession;
+        }
+        skillSessionStore.save(userId, session);
         context.setSkillSession(session);
 
         // Get active SkillDefinition
@@ -271,6 +295,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                 return reply;
 
             case LLM_FAILED:
+                skillSessionStore.save(userId, session);
                 activityRecorder.requestFailed(
                         activityRequestId, "LLM 返回空", System.currentTimeMillis() - requestStartedAt);
                 return handleError();
