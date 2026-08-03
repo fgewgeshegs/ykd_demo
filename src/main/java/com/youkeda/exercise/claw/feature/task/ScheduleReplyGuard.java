@@ -3,7 +3,9 @@ package com.youkeda.exercise.claw.feature.task;
 import com.youkeda.exercise.claw.agent.runtime.ScheduleIntent;
 import com.youkeda.exercise.claw.agent.runtime.ScheduleIntentResolver;
 import com.youkeda.exercise.claw.agent.runtime.ScheduleReplyInspector;
-import com.youkeda.exercise.claw.agent.runtime.TextReplyGuard;
+import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuard;
+import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuard.GuardContext;
+import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuard.GuardResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,20 +24,33 @@ import java.util.Set;
  * </ul>
  */
 @Component
-public class ScheduleReplyGuard implements TextReplyGuard {
+public class ScheduleReplyGuard implements SkillReplyGuard {
 
     private static final Logger log = LoggerFactory.getLogger(ScheduleReplyGuard.class);
 
     /** 工具调用签名前缀（与 ToolExecutor 的 {@code toolName|arguments} 格式一致） */
     private static final String CREATE_SCHEDULE_SIGNATURE_PREFIX = "create_schedule_task|";
 
+    /** 横切：定时提醒意图不绑定特定 skill，由 {@link ScheduleIntentResolver} 自行判断 */
     @Override
-    public String inspectBeforeReply(String userMessage, String reply, Set<String> executedCalls) {
-        if (userMessage == null || reply == null || executedCalls == null) return null;
+    public String getSkillName() {
+        return null;
+    }
+
+    @Override
+    public GuardResult validate(GuardContext context) {
+        String userMessage = context.userMessage();
+        String reply = context.reply();
+        Set<String> executedCalls = context.executedCalls();
+        if (userMessage == null || reply == null || executedCalls == null) {
+            return GuardResult.allow();
+        }
         boolean createIntent =
                 ScheduleIntentResolver.resolve(userMessage) == ScheduleIntent.CREATE;
         boolean toolCalled = wasScheduleTaskCalled(executedCalls);
-        if (!createIntent || toolCalled) return null;
+        if (!createIntent || toolCalled) {
+            return GuardResult.allow();
+        }
 
         boolean claimsDone = ScheduleReplyInspector.claimsCreation(reply);
         boolean asksClarification = ScheduleReplyInspector.asksForClarification(reply);
@@ -50,9 +65,9 @@ public class ScheduleReplyGuard implements TextReplyGuard {
             log.warn("LLM 幻觉检测：{}，注入提示重试",
                     claimsDone ? "声称已创建但未调用 create_schedule_task"
                                : "创建意图未执行且未向用户澄清");
-            return hint;
+            return GuardResult.reject(hint);
         }
-        return null;
+        return GuardResult.allow();
     }
 
     /** 检查 executedCalls 中是否已包含 create_schedule_task 的调用记录 */

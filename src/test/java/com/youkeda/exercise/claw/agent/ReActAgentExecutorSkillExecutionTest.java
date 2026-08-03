@@ -18,6 +18,7 @@ import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
 import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
+import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuardRegistry;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
@@ -66,7 +67,8 @@ class ReActAgentExecutorSkillExecutionTest {
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
                 llmClient, toolExecutor, planStore, mock(PlanValidator.class), objectMapper,
-                java.util.List.of(), java.util.List.of());
+                java.util.List.of(),
+                new SkillReplyGuardRegistry(java.util.List.of()));
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient,
