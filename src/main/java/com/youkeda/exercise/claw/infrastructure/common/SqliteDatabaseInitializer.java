@@ -108,6 +108,17 @@ public class SqliteDatabaseInitializer {
             )
         """);
 
+        // === 迁移（ADR Phase 3）：对话摘要表（增量 covered_until_seq 锚点）===
+        // 单用户单行：长对话早期轮次的 LLM 摘要，随轮次推进增量合并。
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_summary (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                summary_text TEXT NOT NULL,
+                covered_until_seq INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+
         // 创建校园配置表
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS campus_config (

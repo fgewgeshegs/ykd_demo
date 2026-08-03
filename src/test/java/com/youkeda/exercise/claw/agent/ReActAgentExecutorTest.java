@@ -202,6 +202,7 @@ class ReActAgentExecutorTest {
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
                 planStore, longTermMemoryService,
+                mock(com.youkeda.exercise.claw.agent.memory.ConversationSummaryService.class),
                 skillRouter, skillSessionStore, skillRegistry, skillsProperties, wechatUserManager,
                 mock(SkillKnowledgeService.class),
                 mock(AgentActivityRecorder.class),

@@ -3,7 +3,9 @@ package com.youkeda.exercise.claw.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.context.ContextBuilder;
 import com.youkeda.exercise.claw.agent.context.DefaultContextBuilder;
+import com.youkeda.exercise.claw.agent.context.HeuristicTokenEstimator;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.ConversationSummaryService;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.memory.MessageRole;
 import com.youkeda.exercise.claw.agent.memory.TurnInitiator;
@@ -71,6 +73,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final ObjectMapper objectMapper;
     private final PlanStore planStore;
     private final LongTermMemoryService longTermMemoryService;
+    private final ConversationSummaryService conversationSummaryService;
     private final SkillRouter skillRouter;
     private final SkillSessionStore skillSessionStore;
     private final SkillRegistry skillRegistry;
@@ -93,6 +96,7 @@ public class ReActAgentExecutor implements AgentExecutor {
                                ObjectMapper objectMapper,
                                PlanStore planStore,
                                LongTermMemoryService longTermMemoryService,
+                               ConversationSummaryService conversationSummaryService,
                                SkillRouter skillRouter,
                                SkillSessionStore skillSessionStore,
                                SkillRegistry skillRegistry,
@@ -108,6 +112,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.objectMapper = objectMapper;
         this.planStore = planStore;
         this.longTermMemoryService = longTermMemoryService;
+        this.conversationSummaryService = conversationSummaryService;
         this.skillRouter = skillRouter;
         this.skillSessionStore = skillSessionStore;
         this.skillRegistry = skillRegistry;
@@ -121,7 +126,9 @@ public class ReActAgentExecutor implements AgentExecutor {
         // 内部 helper 用主类已有的依赖创建，保持 15 参构造签名不变（测试零改动）
         this.systemPromptBuilder = new SystemPromptBuilder(llmClient, skillKnowledgeService);
         this.skillSessionUpdater = new SkillSessionUpdater(skillRouter, skillSessionStore);
-        this.contextBuilder = new DefaultContextBuilder(contextStore, longTermMemoryService);
+        this.contextBuilder = new DefaultContextBuilder(
+                contextStore, longTermMemoryService, conversationSummaryService,
+                new HeuristicTokenEstimator(), 0);
         this.simpleChatClassifier = new SimpleChatClassifier(llmClient);
     }
 

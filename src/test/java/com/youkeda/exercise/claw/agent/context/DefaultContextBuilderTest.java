@@ -2,6 +2,8 @@ package com.youkeda.exercise.claw.agent.context;
 
 import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.ConversationSummary;
+import com.youkeda.exercise.claw.agent.memory.ConversationSummaryService;
 import com.youkeda.exercise.claw.agent.memory.ConversationTurn;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.memory.MessageRole;
@@ -190,5 +192,61 @@ class DefaultContextBuilderTest {
         assertTrue(result.messages().get(0).content().length() > 100);
         assertEquals("新消息", result.messages().get(1).content());
         assertEquals("r2", result.metadata().turnId());
+    }
+
+    // ==================== Phase 3 对话摘要 ====================
+
+    @Test
+    void summaryInjectedAtFrontWithCoveredUntilSeq() {
+        ConversationSummaryService summaryService = mock(ConversationSummaryService.class);
+        when(summaryService.getSummary())
+                .thenReturn(new ConversationSummary("用户喜欢旅游，偏好低价酒店", 12));
+        when(contextStore.getTurns(anyInt())).thenReturn(List.of(
+                turn("r13", 13, new Message("user", "继续"))));
+        DefaultContextBuilder builder = new DefaultContextBuilder(
+                contextStore, longTermMemoryService, summaryService,
+                new HeuristicTokenEstimator(), 0);
+
+        ContextBuilder.Result result = builder.build(ctx("继续"));
+
+        // 摘要 system 消息在最前
+        assertEquals(MessageRole.SYSTEM, result.messages().get(0).role());
+        assertTrue(result.messages().get(0).content().contains("用户喜欢旅游"));
+        assertTrue(result.messages().get(0).content().contains("12"));
+        // coveredUntilTurn 填充
+        assertEquals(12, result.coveredUntilTurn());
+        // 溯源元数据带 SUMMARY 来源
+        assertTrue(result.metadata().sources().stream()
+                .anyMatch(ref -> ref.source() == ContextSource.SUMMARY));
+    }
+
+    @Test
+    void noSummaryWhenServiceNull() {
+        // 默认 2 参构造（summaryService=null）→ 不注入摘要
+        when(contextStore.getTurns(anyInt())).thenReturn(List.of(
+                turn("r1", 1, new Message("user", "你好"))));
+        DefaultContextBuilder builder = newBuilder();
+
+        ContextBuilder.Result result = builder.build(ctx("你好"));
+
+        assertEquals(0, result.coveredUntilTurn());
+        assertFalse(result.messages().stream().anyMatch(m -> m.role() == MessageRole.SYSTEM));
+    }
+
+    @Test
+    void summaryZeroCoveredSeqNotInjected() {
+        ConversationSummaryService summaryService = mock(ConversationSummaryService.class);
+        when(summaryService.getSummary()).thenReturn(new ConversationSummary("内容", 0));
+        when(contextStore.getTurns(anyInt())).thenReturn(List.of(
+                turn("r1", 1, new Message("user", "你好"))));
+        DefaultContextBuilder builder = new DefaultContextBuilder(
+                contextStore, longTermMemoryService, summaryService,
+                new HeuristicTokenEstimator(), 0);
+
+        ContextBuilder.Result result = builder.build(ctx("你好"));
+
+        // coveredUntilSeq=0 表示摘要未启用 → 不注入
+        assertEquals(0, result.coveredUntilTurn());
+        assertFalse(result.messages().stream().anyMatch(m -> m.role() == MessageRole.SYSTEM));
     }
 }

@@ -2,6 +2,8 @@ package com.youkeda.exercise.claw.agent.context;
 
 import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.ConversationSummary;
+import com.youkeda.exercise.claw.agent.memory.ConversationSummaryService;
 import com.youkeda.exercise.claw.agent.memory.ConversationTurn;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.memory.MessageRole;
@@ -42,15 +44,16 @@ public class DefaultContextBuilder implements ContextBuilder {
 
     private final ContextStore contextStore;
     private final LongTermMemoryService longTermMemoryService;
+    private final ConversationSummaryService summaryService;
     private final TokenEstimator tokenEstimator;
     private final ContextBudgetManager budgetManager;
     /** token 预算；≤0 视为 unbounded（不裁剪）。 */
     private final int maxContextTokens;
 
-    /** 便捷构造：默认启发式估算 + 不裁剪（unbounded，行为与 1C 等价）。 */
+    /** 便捷构造：默认启发式估算 + 不裁剪 + 无摘要（行为与 1C 等价，测试用）。 */
     public DefaultContextBuilder(ContextStore contextStore,
                                  LongTermMemoryService longTermMemoryService) {
-        this(contextStore, longTermMemoryService, new HeuristicTokenEstimator(), 0);
+        this(contextStore, longTermMemoryService, null, new HeuristicTokenEstimator(), 0);
     }
 
     /**
@@ -62,8 +65,22 @@ public class DefaultContextBuilder implements ContextBuilder {
                                  LongTermMemoryService longTermMemoryService,
                                  TokenEstimator tokenEstimator,
                                  int maxContextTokens) {
+        this(contextStore, longTermMemoryService, null, tokenEstimator, maxContextTokens);
+    }
+
+    /**
+     * 完整构造（Phase 3：支持对话摘要）。
+     *
+     * @param summaryService 对话摘要服务（可 null = 关闭摘要，测试/未启用时）
+     */
+    public DefaultContextBuilder(ContextStore contextStore,
+                                 LongTermMemoryService longTermMemoryService,
+                                 ConversationSummaryService summaryService,
+                                 TokenEstimator tokenEstimator,
+                                 int maxContextTokens) {
         this.contextStore = contextStore;
         this.longTermMemoryService = longTermMemoryService;
+        this.summaryService = summaryService;
         this.tokenEstimator = tokenEstimator;
         this.maxContextTokens = maxContextTokens;
         this.budgetManager = new ContextBudgetManager(tokenEstimator);
@@ -89,7 +106,17 @@ public class DefaultContextBuilder implements ContextBuilder {
             messages.add(new Message("user", userMessage));
         }
 
-        // 3. Long-term memory recall（量小、价值高，优先注入）
+        // 3. 对话摘要（Phase 3）：早期对话的摘要注入最前（优先级高于 LongTermMemory）
+        ConversationSummary summary = loadSummary();
+        long coveredUntilSeq = 0;
+        if (summary != null && summary.coveredUntilSeq() > 0) {
+            String summaryText = "【之前的对话摘要】（覆盖到第 " + summary.coveredUntilSeq() + " 轮）：\n"
+                    + summary.text();
+            messages.add(0, new Message("system", summaryText));
+            coveredUntilSeq = summary.coveredUntilSeq();
+        }
+
+        // 4. Long-term memory recall（量小、价值高）
         ContextSourceRef memoryRef = null;
         try {
             List<MemoryItem> recalledMemories = longTermMemoryService.recall(userMessage);
@@ -104,20 +131,40 @@ public class DefaultContextBuilder implements ContextBuilder {
             log.warn("长期记忆召回失败，跳过注入 | error={}", e.getMessage());
         }
 
+        // 5. 异步触发归档判定（窗口外未覆盖 Turn 达阈值才生成摘要，不阻塞本次 build）
+        if (summaryService != null) {
+            summaryService.asyncArchiveIfNeeded();
+        }
+
         // 溯源元数据：turnId = 保留的最新 Turn roundId（无 Turn 时为 null）
         String turnId = trimmed.isEmpty() ? null : trimmed.get(0).roundId();
         List<ContextSourceRef> sources = new ArrayList<>();
+        if (coveredUntilSeq > 0) {
+            sources.add(new ContextSourceRef(ContextSource.SUMMARY, tokenEstimator.estimate(
+                    summary == null ? "" : summary.text())));
+        }
         if (memoryRef != null) sources.add(memoryRef);
         sources.add(new ContextSourceRef(ContextSource.RECENT_TURNS, estimateMessagesTokens(messages)));
 
         ContextMetadata metadata = new ContextMetadata(turnId, sources);
         int usedTokens = estimateMessagesTokens(messages);
-        log.debug("ContextBuilder 组装完成 | messages={} | turns={}/{} | tokens={}/{}",
-                messages.size(), trimmed.size(), turns.size(), usedTokens, maxContextTokens);
+        log.debug("ContextBuilder 组装完成 | messages={} | turns={}/{} | tokens={}/{} | coveredUntilSeq={}",
+                messages.size(), trimmed.size(), turns.size(), usedTokens, maxContextTokens, coveredUntilSeq);
 
         return new Result(messages, metadata, List.of(), context.getPlanState(),
                 maxContextTokens > 0 ? new ContextBudget(maxContextTokens, usedTokens)
-                        : ContextBudget.unbounded(), 0);
+                        : ContextBudget.unbounded(), (int) coveredUntilSeq);
+    }
+
+    /** 读当前对话摘要（无 summaryService 或读取失败返回 null）。 */
+    private ConversationSummary loadSummary() {
+        if (summaryService == null) return null;
+        try {
+            return summaryService.getSummary();
+        } catch (Exception e) {
+            log.warn("对话摘要读取失败 | error={}", e.getMessage());
+            return null;
+        }
     }
 
     // ==================== 历史加载 ====================

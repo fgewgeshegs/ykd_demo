@@ -75,6 +75,7 @@ class ReActAgentExecutorSkillExecutionTest {
                 objectMapper,
                 planStore,
                 mock(LongTermMemoryService.class),
+                mock(com.youkeda.exercise.claw.agent.memory.ConversationSummaryService.class),
                 skillRouter,
                 sessionStore,
                 skillRegistry,
