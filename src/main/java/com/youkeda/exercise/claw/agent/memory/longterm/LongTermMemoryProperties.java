@@ -41,6 +41,17 @@ public class LongTermMemoryProperties {
     /** 用户消息最短长度：低于此值跳过记忆提取 */
     private int minExtractLength = 10;
 
+    /** 记忆容量上限：超限时按质量分淘汰最弱 */
+    private int maxMemories = 500;
+
+    /** 质量分阈值：低于此值的记忆淘汰。
+     * <p>baseline（imp=0.3 门槛 + conf=0.5 默认）= 0.25，须高于 baseline 才能淘汰
+     * 「陈旧低重要」记忆（其分数约 0.29），同时保留「陈旧重要」（≈0.50）与「新近低重要」（≈0.55）。 */
+    private float minRetentionScore = 0.30f;
+
+    /** 定时淘汰 cron（默认凌晨 3 点） */
+    private String evictionCron = "0 0 3 * * *";
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -127,5 +138,29 @@ public class LongTermMemoryProperties {
 
     public void setMinExtractLength(int minExtractLength) {
         this.minExtractLength = minExtractLength;
+    }
+
+    public int getMaxMemories() {
+        return maxMemories;
+    }
+
+    public void setMaxMemories(int maxMemories) {
+        this.maxMemories = maxMemories;
+    }
+
+    public float getMinRetentionScore() {
+        return minRetentionScore;
+    }
+
+    public void setMinRetentionScore(float minRetentionScore) {
+        this.minRetentionScore = minRetentionScore;
+    }
+
+    public String getEvictionCron() {
+        return evictionCron;
+    }
+
+    public void setEvictionCron(String evictionCron) {
+        this.evictionCron = evictionCron;
     }
 }

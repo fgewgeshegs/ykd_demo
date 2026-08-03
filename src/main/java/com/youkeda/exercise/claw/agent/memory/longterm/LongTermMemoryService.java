@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -30,6 +29,7 @@ public class LongTermMemoryService {
     private final MemoryTopicResolver topicResolver;
     private final MemoryConsolidator consolidator;
     private final MemoryWriteCoordinator writeCoordinator;
+    private final MemoryEvictionService evictionService;
     private final Executor memoryTaskExecutor;
 
     public LongTermMemoryService(LongTermMemoryProperties props,
@@ -39,6 +39,7 @@ public class LongTermMemoryService {
                                   MemoryTopicResolver topicResolver,
                                   MemoryConsolidator consolidator,
                                   MemoryWriteCoordinator writeCoordinator,
+                                  MemoryEvictionService evictionService,
                                   @Qualifier("memoryTaskExecutor") Executor memoryTaskExecutor) {
         this.props = props;
         this.extractor = extractor;
@@ -47,6 +48,7 @@ public class LongTermMemoryService {
         this.topicResolver = topicResolver;
         this.consolidator = consolidator;
         this.writeCoordinator = writeCoordinator;
+        this.evictionService = evictionService;
         this.memoryTaskExecutor = memoryTaskExecutor;
     }
 
@@ -116,6 +118,13 @@ public class LongTermMemoryService {
                     log.error("单条记忆处理失败，继续处理剩余记忆 | memoryId={} | content={}",
                             item.id(), item.content(), e);
                 }
+            }
+
+            // 写后容量检查（Phase 4）：超限则淘汰最弱记忆（本方法已在异步线程内）
+            try {
+                evictionService.evictIfOverCapacity();
+            } catch (Exception e) {
+                log.warn("记忆淘汰检查失败 | error={}", e.getMessage());
             }
         } catch (Exception e) {
             log.error("记忆处理管线异常", e);
@@ -292,22 +301,12 @@ public class LongTermMemoryService {
 
     private double recallScore(MemorySearchResult result) {
         MemoryItem item = result.item();
-        double importance = Math.max(0d, Math.min(1d, item.importance()));
-        double confidence = Math.max(0d, Math.min(1d, item.confidence()));
-        double recency = recencyScore(item, Instant.now());
+        double importance = MemoryRetentionScorer.clamp01(item.importance());
+        double confidence = MemoryRetentionScorer.clamp01(item.confidence());
+        double recency = MemoryRetentionScorer.recencyScore(
+                item, Instant.now(), props.getRecencyHalfLifeDays());
         return 0.70d * result.semanticScore()
                 + 0.15d * importance + 0.10d * confidence + 0.05d * recency;
-    }
-
-    private double recencyScore(MemoryItem item, Instant now) {
-        long ageDays = Math.max(0L, Duration.between(item.updatedAt(), now).toDays());
-        int baseHalfLife = Math.max(1, props.getRecencyHalfLifeDays());
-        int halfLife = switch (item.category()) {
-            case RULE, FACT -> baseHalfLife * 10;
-            case GOAL -> Math.max(30, baseHalfLife / 2);
-            case PREFERENCE, EXPERIENCE -> baseHalfLife;
-        };
-        return Math.exp(-Math.log(2d) * ageDays / halfLife);
     }
 
     private StoreOutcome storeOrConsolidate(
