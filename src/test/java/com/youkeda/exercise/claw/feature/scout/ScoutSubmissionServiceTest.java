@@ -42,7 +42,9 @@ class ScoutSubmissionServiceTest {
         ScoutSubmissionService service = new ScoutSubmissionService(
                 taskManager, workflowRegistry, notificationService);
 
-        ScoutSubmissionResult result = service.submit("", "scoutWorkflow");
+        ScoutExecutionContext context = new ScoutExecutionContext(
+                "", "planning", "decision");
+        ScoutSubmissionResult result = service.submit(context, "scoutWorkflow");
 
         assertEquals(ScoutSubmissionResult.Status.STARTED, result.status());
         verify(taskManager).createTaskIfNoActive(anyString(), eq(""));
@@ -50,6 +52,7 @@ class ScoutSubmissionServiceTest {
         verify(worker, timeout(1000)).execute(request.capture());
         assertEquals(Duration.ofSeconds(12), request.getValue().timeout());
         assertEquals(1, request.getValue().retryMax());
+        assertEquals(context, ScoutWorkflowPayload.decode(request.getValue().payload()));
     }
 
     @Test

@@ -6,8 +6,11 @@ public record SkillKnowledgeChunk(
         String documentId,
         int chunkIndex,
         String content,
+        String contentHash,
         String source,
+        String heading,
         Integer pageNumber,
-        String version
+        String version,
+        boolean enabled
 ) {
 }

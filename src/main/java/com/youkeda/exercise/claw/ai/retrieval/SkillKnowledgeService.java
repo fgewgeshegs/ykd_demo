@@ -1,23 +1,33 @@
 package com.youkeda.exercise.claw.ai.retrieval;
 
+import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillRegistry;
-
-import com.youkeda.exercise.claw.agent.memory.longterm.EmbeddingClient;
+import com.youkeda.exercise.claw.skill.SkillsProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import java.util.*;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class SkillKnowledgeService {
 
     private static final Logger log = LoggerFactory.getLogger(SkillKnowledgeService.class);
+    private static final int MAX_CHUNKS_PER_DOCUMENT = 2;
 
     private final SkillKnowledgeStore knowledgeStore;
     private final EmbeddingClient embeddingClient;
     private final SkillRegistry skillRegistry;
+    private final SkillsProperties skillsProperties;
+    private final KnowledgePromptFormatter promptFormatter;
 
     @Value("${skill.knowledge.recall-top-k:5}")
     private int topK;
@@ -33,72 +43,94 @@ public class SkillKnowledgeService {
 
     public SkillKnowledgeService(SkillKnowledgeStore knowledgeStore,
                                  EmbeddingClient embeddingClient,
-                                 SkillRegistry skillRegistry) {
+                                 SkillRegistry skillRegistry,
+                                 SkillsProperties skillsProperties,
+                                 KnowledgePromptFormatter promptFormatter) {
         this.knowledgeStore = knowledgeStore;
         this.embeddingClient = embeddingClient;
         this.skillRegistry = skillRegistry;
+        this.skillsProperties = skillsProperties;
+        this.promptFormatter = promptFormatter;
     }
 
-    public String recall(String userMessage, String primarySkillName, Set<String> supportingSkills) {
+    public String recall(String userMessage, String primarySkillName) {
+        long startedAt = System.nanoTime();
+        if (!skillsProperties.getKnowledge().isGlobalEnabled()) {
+            log.debug("Skill knowledge recall skipped | skill={} | outcome=disabled_global", primarySkillName);
+            return "";
+        }
+        if (userMessage == null || userMessage.isBlank() || primarySkillName == null
+                || primarySkillName.isBlank()) {
+            return "";
+        }
+
         SkillDefinition skillDef = skillRegistry.find(primarySkillName).orElse(null);
         if (skillDef == null || skillDef.knowledge() == null || !skillDef.knowledge().enabled()) {
+            log.debug("Skill knowledge recall skipped | skill={} | outcome=disabled_skill", primarySkillName);
             return "";
         }
 
         SkillKnowledgeConfig config = skillDef.knowledge();
-
-        Set<String> targetSkills = new LinkedHashSet<>();
-        targetSkills.add(primarySkillName);
-        if (supportingSkills != null) targetSkills.addAll(supportingSkills);
+        int effectiveTopK = config.topK() > 0 ? config.topK() : Math.max(1, topK);
+        float effectiveMinScore = config.minScore() > 0 ? config.minScore() : minScore;
+        int budget = config.maxContextChars() > 0 ? config.maxContextChars() : maxContextChars;
+        int candidateLimit = Math.min(100,
+                effectiveTopK * Math.max(1, candidateMultiplier));
 
         try {
             float[] queryVector = embeddingClient.embed(userMessage);
-
-            int effectiveTopK = config.topK() > 0 ? config.topK() : topK;
-            float effectiveMinScore = config.minScore() > 0 ? config.minScore() : minScore;
-
             List<SkillKnowledgeSearchResult> candidates = knowledgeStore.search(
-                    queryVector, targetSkills, effectiveTopK * candidateMultiplier, effectiveMinScore);
-
-            if (candidates.isEmpty()) return "";
-
-            Map<String, SkillKnowledgeSearchResult> deduped = new LinkedHashMap<>();
-            for (SkillKnowledgeSearchResult r : candidates) {
-                String key = r.documentId() != null ? r.documentId() : r.chunkId();
-                if (!deduped.containsKey(key) || r.score() > deduped.get(key).score()) {
-                    deduped.put(key, r);
-                }
+                    queryVector, Set.of(primarySkillName), candidateLimit, effectiveMinScore);
+            if (candidates == null || candidates.isEmpty()) {
+                logRecall(primarySkillName, "no_hit", 0, 0, 0, startedAt);
+                return "";
             }
 
-            int budget = config.maxContextChars() > 0 ? config.maxContextChars() : maxContextChars;
-            StringBuilder sb = new StringBuilder();
-            int count = 0;
-
-            List<SkillKnowledgeSearchResult> sorted = deduped.values().stream()
-                    .sorted((a, b) -> Double.compare(b.score(), a.score()))
-                    .toList();
-
-            for (SkillKnowledgeSearchResult r : sorted) {
-                if (count >= effectiveTopK) break;
-                String text = r.content();
-                if (sb.length() + text.length() + 50 > budget) break;
-                sb.append("- [").append(r.skillName()).append("] ").append(text).append("\n");
-                count++;
-            }
-
-            if (sb.isEmpty()) return "";
-
-            return "[DOMAIN_KNOWLEDGE — untrusted reference]\n"
-                    + sb.toString().stripTrailing()
-                    + "\n[/DOMAIN_KNOWLEDGE]";
-
+            List<SkillKnowledgeSearchResult> selected = selectCandidates(candidates, candidateLimit);
+            String prompt = promptFormatter.format(selected, budget, effectiveTopK);
+            String outcome = prompt.isEmpty() ? "budget_empty" : "success";
+            logRecall(primarySkillName, outcome, candidates.size(), selected.size(),
+                    prompt.length(), startedAt);
+            return prompt;
         } catch (Exception e) {
-            log.error("Skill knowledge recall failed for skill: {}", primarySkillName, e);
+            log.warn("Skill knowledge recall failed; continuing without knowledge | skill={} | outcome=error",
+                    primarySkillName, e);
             return "";
         }
     }
 
-    public String recall(String userMessage, String primarySkillName) {
-        return recall(userMessage, primarySkillName, Set.of());
+    private List<SkillKnowledgeSearchResult> selectCandidates(
+            List<SkillKnowledgeSearchResult> candidates, int limit) {
+        List<SkillKnowledgeSearchResult> sorted = candidates.stream()
+                .filter(result -> result != null && result.content() != null
+                        && !result.content().isBlank())
+                .sorted(Comparator.comparingDouble(SkillKnowledgeSearchResult::score).reversed())
+                .toList();
+
+        Set<String> seenContent = new HashSet<>();
+        Map<String, Integer> chunksPerDocument = new HashMap<>();
+        List<SkillKnowledgeSearchResult> selected = new ArrayList<>();
+        for (SkillKnowledgeSearchResult result : sorted) {
+            String dedupKey = result.contentHash() == null || result.contentHash().isBlank()
+                    ? result.chunkId() : result.contentHash();
+            if (!seenContent.add(dedupKey)) continue;
+
+            String documentKey = result.documentId() == null || result.documentId().isBlank()
+                    ? result.chunkId() : result.documentId();
+            int documentCount = chunksPerDocument.getOrDefault(documentKey, 0);
+            if (documentCount >= MAX_CHUNKS_PER_DOCUMENT) continue;
+
+            selected.add(result);
+            chunksPerDocument.put(documentKey, documentCount + 1);
+            if (selected.size() >= limit) break;
+        }
+        return selected;
+    }
+
+    private void logRecall(String skill, String outcome, int candidates,
+                           int selected, int chars, long startedAt) {
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        log.info("Skill knowledge recall | skill={} | outcome={} | candidates={} | selected={} | chars={} | elapsedMs={}",
+                skill, outcome, candidates, selected, chars, elapsedMs);
     }
 }

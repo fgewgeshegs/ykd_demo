@@ -144,6 +144,24 @@ memory.embedding.base-url=http://localhost:11434
 memory.embedding.api-key=
 memory.embedding.model=bge-m3
 memory.embedding.dimension=1024
+memory.embedding.request-timeout=30s
+memory.embedding.circuit.failure-threshold=3
+memory.embedding.circuit.open-duration=30s
+
+# Skill RAG（知识内容和索引元数据不得包含凭据）
+skill.knowledge.collection=skill_knowledge
+skill.knowledge.operation-timeout=10s
+skill.knowledge.recall-top-k=5
+skill.knowledge.recall-candidate-multiplier=3
+skill.knowledge.min-score=0.50
+skill.knowledge.max-context-chars=12000
+skill.knowledge.management.enabled=false
+# Comma-separated authenticated user IDs allowed to manage knowledge. Empty denies everyone.
+skill.knowledge.management.allowed-users=
+skill.knowledge.management.max-import-chars=200000
+skill.knowledge.management.max-chunks=500
+skill.knowledge.management.max-source-chars=512
+skill.knowledge.management.max-version-chars=64
 
 # ============================================
 # Didi MCP Configuration

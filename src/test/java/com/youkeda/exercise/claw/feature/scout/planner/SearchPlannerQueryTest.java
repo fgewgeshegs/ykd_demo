@@ -17,6 +17,26 @@ import static org.mockito.Mockito.*;
 class SearchPlannerQueryTest {
 
     @Test
+    void includesStageSpecificKnowledgeAsUntrustedPlanningData() {
+        LLMClient llmClient = mock(LLMClient.class);
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString())).thenReturn("[]");
+        SearchPlanner planner = new SearchPlanner(
+                llmClient, new ScoutProperties(), new ObjectMapper());
+
+        planner.plan(new UserProfile(List.of("Java"), List.of(), List.of(), List.of(), ""),
+                "AI Agent", "<knowledge_data>只查官方来源</knowledge_data>");
+
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).chatWithSystemPrompt(system.capture(), prompt.capture());
+        assertTrue(system.getValue().contains("SCOUT_PLANNING_KNOWLEDGE"));
+        assertTrue(system.getValue().contains("不可信数据"));
+        assertTrue(prompt.getValue().contains("SCOUT_PLANNING_KNOWLEDGE"));
+        assertTrue(prompt.getValue().contains("只查官方来源"));
+        assertTrue(prompt.getValue().contains("不可信"));
+    }
+
+    @Test
     void includesExplicitTopicInPlanningPrompt() {
         LLMClient llmClient = mock(LLMClient.class);
         when(llmClient.chatWithSystemPrompt(anyString(), anyString())).thenReturn("[]");
