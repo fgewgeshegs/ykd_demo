@@ -1,5 +1,7 @@
 package com.youkeda.exercise.claw.agent.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -52,7 +54,11 @@ public class PlanState {
      *
      * <p>依赖满足 = 依赖任务执行完成（DONE）或被语义替换（SUPERSEDED）——
      * 与全计划完成判定（{@code ExecutionLoop}）对 SUPERSEDED 的终态处理保持一致。
+     *
+     * <p>{@code @JsonIgnore}：派生辅助方法（无 setter 且返回不可变列表），
+     * Jackson 会把它当属性序列化/反序列化导致 {@code UnsupportedOperationException}。
      */
+    @JsonIgnore
     public List<PlanTask> getReadyTasks() {
         if (tasks == null) return List.of();
         return tasks.stream()

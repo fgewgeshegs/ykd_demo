@@ -98,6 +98,16 @@ public class SqliteDatabaseInitializer {
             )
         """);
 
+        // === 迁移（ADR Phase 2）：Agent 执行状态表（PlanState 落库）===
+        // 单用户单行：当前 Agent 的多步任务执行状态，重启后可恢复。
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS agent_plans (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                plan_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+
         // 创建校园配置表
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS campus_config (
