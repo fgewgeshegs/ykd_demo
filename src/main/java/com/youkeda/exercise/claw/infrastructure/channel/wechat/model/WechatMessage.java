@@ -47,6 +47,13 @@ public class WechatMessage {
      */
     private String contextToken;
 
+    /**
+     * 轮次 ID（ADR Phase 1B）：saveMessageToContext 落库时生成并随消息传递，
+     * 使 executor 用 beginTurn 开启的 Turn 在本条消息上闭合。
+     * 非 agent 路径（IMAGE/FILE）为 null。
+     */
+    private String roundId;
+
     // ========== 语音相关字段（VOICE 类型时有效）==========
 
     /**
@@ -168,6 +175,14 @@ public class WechatMessage {
 
     public void setContextToken(String contextToken) {
         this.contextToken = contextToken;
+    }
+
+    public String getRoundId() {
+        return roundId;
+    }
+
+    public void setRoundId(String roundId) {
+        this.roundId = roundId;
     }
 
     public String getVoiceText() {

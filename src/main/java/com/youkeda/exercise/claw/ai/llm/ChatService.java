@@ -22,8 +22,8 @@ public class ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
-    /** 每次请求携带的最大历史消息条数 */
-    private static final int MAX_HISTORY = 20;
+    /** 每次请求携带的最大历史 Turn 数 */
+    private static final int MAX_TURNS = 10;
 
     private final LLMClient llmClient;
     private final ContextStore contextStore;
@@ -43,8 +43,8 @@ public class ChatService {
         log.info("ChatService 开始处理 | text={}", message);
 
         try {
-            // 1. 获取历史上下文
-            List<Message> history = contextStore.getHistory(MAX_HISTORY);
+            // 1. 获取历史上下文（turn-aware 读取，ADR 1E：窗口不切破工具轮次）
+            List<Message> history = contextStore.getRecentMessages(MAX_TURNS);
             log.debug("获取历史消息 | historySize={}", history.size());
 
             // 2. 调用 LLM（带历史）

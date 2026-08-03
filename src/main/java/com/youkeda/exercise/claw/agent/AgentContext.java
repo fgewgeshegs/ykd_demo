@@ -48,6 +48,12 @@ public class AgentContext {
      */
     private SkillSession skillSession;
 
+    /**
+     * 轮次 ID（ADR Phase 1B）：用户消息已在落库时 beginTurn，roundId 随消息贯通至此；
+     * 系统触发（定时任务）为 null，由 executor 自行 beginTurn。
+     */
+    private String roundId;
+
 
     public String getUserId() {
         return userId;
@@ -107,6 +113,15 @@ public class AgentContext {
 
     public AgentContext setPlanState(PlanState planState) {
         this.planState = planState;
+        return this;
+    }
+
+    public String getRoundId() {
+        return roundId;
+    }
+
+    public AgentContext setRoundId(String roundId) {
+        this.roundId = roundId;
         return this;
     }
 

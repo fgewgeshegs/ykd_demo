@@ -56,6 +56,39 @@ public class SqliteDatabaseInitializer {
             CREATE INDEX IF NOT EXISTS idx_context_user_id ON context_messages(user_id)
         """);
 
+        // === 迁移（ADR Phase 1B）：为 context_messages 添加 Turn 维度列 ===
+        // 幂等：旧库缺列时 ALTER ADD，新库/已迁移库跳过
+        try {
+            jdbcTemplate.execute("ALTER TABLE context_messages ADD COLUMN round_id TEXT");
+            log.info("DB迁移完成：context_messages 添加 round_id 列");
+        } catch (Exception e) {
+            log.debug("context_messages.round_id 列已存在，跳过迁移");
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE context_messages ADD COLUMN seq INTEGER");
+            log.info("DB迁移完成：context_messages 添加 seq 列");
+        } catch (Exception e) {
+            log.debug("context_messages.seq 列已存在，跳过迁移");
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE context_messages ADD COLUMN turn_status TEXT");
+            log.info("DB迁移完成：context_messages 添加 turn_status 列");
+        } catch (Exception e) {
+            log.debug("context_messages.turn_status 列已存在，跳过迁移");
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE context_messages ADD COLUMN turn_initiator TEXT");
+            log.info("DB迁移完成：context_messages 添加 turn_initiator 列");
+        } catch (Exception e) {
+            log.debug("context_messages.turn_initiator 列已存在，跳过迁移");
+        }
+        // Turn 维度索引：seq 每用户单调，query by (user_id, seq)
+        try {
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_context_user_seq ON context_messages(user_id, seq)");
+        } catch (Exception e) {
+            log.debug("idx_context_user_seq 索引已存在，跳过");
+        }
+
         // 创建旅游方案草稿表
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS travel_plans (

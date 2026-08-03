@@ -68,7 +68,8 @@ public class ChatHandler implements WechatMessageHandler {
                 .setContextToken(message.getContextToken())
                 .setRawMessage(message)
                 .setMessage(message.getText())
-                .setMessageType(MessageType.TEXT);
+                .setMessageType(MessageType.TEXT)
+                .setRoundId(message.getRoundId());
         String reply = agentExecutor.execute(context);
 
         if (ReActAgentExecutor.SILENT_REPLY.equals(reply)) {

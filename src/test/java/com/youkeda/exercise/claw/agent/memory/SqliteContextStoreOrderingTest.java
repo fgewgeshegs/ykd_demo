@@ -36,7 +36,11 @@ class SqliteContextStoreOrderingTest {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 message_json TEXT NOT NULL,
-                created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+                created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                round_id TEXT,
+                seq INTEGER,
+                turn_status TEXT,
+                turn_initiator TEXT
             )
         """);
 
@@ -70,5 +74,35 @@ class SqliteContextStoreOrderingTest {
         assertEquals("call_1", history.get(1).toolCallId());
         assertEquals(MessageRole.ASSISTANT, history.get(2).role());
         assertEquals("价格如下", history.get(2).content());
+    }
+
+    /**
+     * ADR §7.3/1E 契约：getHistory 返回精确 maxMessages 条，不再向前补取 tool_calls。
+     * 工具轮次的原子性由 turn-aware 读取（getTurns）保证；getHistory 是纯 LIMIT 查询。
+     */
+    @Test
+    void getHistoryReturnsExactWindowWithoutBackfill() {
+        // 按时间正序插入 21 条：首条是 assistant tool_calls，第二条是 tool 结果，其余为普通对话
+        long now = 2000;
+        jdbc.update(
+                "INSERT INTO context_messages (user_id, message_json, created_at) VALUES ('user-1', ?, ?)",
+                "{\"role\":\"assistant\",\"content\":\"{\\\"q\\\":\\\"weather\\\"}\","
+                        + "\"toolCallId\":\"call_0\",\"toolName\":\"weather\"}", now++);
+        jdbc.update(
+                "INSERT INTO context_messages (user_id, message_json, created_at) VALUES ('user-1', ?, ?)",
+                "{\"role\":\"tool\",\"content\":\"{result}\",\"toolCallId\":\"call_0\"}", now++);
+        for (int i = 0; i < 19; i++) {
+            String role = i % 2 == 0 ? "user" : "assistant";
+            jdbc.update(
+                    "INSERT INTO context_messages (user_id, message_json, created_at) VALUES ('user-1', ?, ?)",
+                    "{\"role\":\"" + role + "\",\"content\":\"filler " + i + "\"}", now++);
+        }
+
+        List<Message> history = store.getHistory("user-1", 20);
+
+        // 精确 20 条，不补取（窗口可能以孤立 tool 开头，由调用方负责 turn-aware 读取）
+        assertEquals(20, history.size());
+        assertEquals(MessageRole.TOOL, history.get(0).role());
+        assertEquals("call_0", history.get(0).toolCallId());
     }
 }

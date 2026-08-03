@@ -2,6 +2,8 @@ package com.youkeda.exercise.claw.infrastructure.channel.wechat.service;
 
 import com.github.wechat.ilink.sdk.core.model.WeixinMessage;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
+import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.agent.memory.TurnInitiator;
 import com.youkeda.exercise.claw.core.InstanceLockManager;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.MessageRouter;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
@@ -17,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -238,13 +241,17 @@ public class WechatMessageService {
     }
 
     /**
-     * 统一上下文存储：发一条存一条，文字/语音/图片全部进入对话历史
+     * 统一上下文存储：发一条存一条，文字/语音/图片全部进入对话历史。
+     *
+     * <p>ADR Phase 1B：TEXT/VOICE（都会走 agent executor）用 beginTurn 开启 Turn，
+     * roundId 随消息传给 executor 闭合；IMAGE/FILE（非 agent 路径）保持普通 append，
+     * 退化为逐条 Turn（round_id NULL）。
      */
     private void saveMessageToContext(WechatMessage msg) {
         switch (msg.getType()) {
             case TEXT -> {
                 if (msg.getText() != null && !msg.getText().isEmpty()) {
-                    contextStore.append("user", msg.getText());
+                    beginTurnForAgent(msg, new Message("user", msg.getText()));
                 }
             }
             case VOICE -> {
@@ -252,7 +259,12 @@ public class WechatMessageService {
                 String vKey = msg.getVoiceAesKey();
                 String vText = msg.getVoiceText() != null ? msg.getVoiceText() : "";
                 String content = !vText.isEmpty() ? "[语音]" + vText : "[语音消息]";
-                contextStore.append("user", content, vEnc, vKey, null);
+                // 语音经 ASR 后走 ChatHandler，同样开启 Turn；roundId 由 MessageRouter 传给 textMsg
+                // （语音识别失败时该 Turn 会在恢复扫描中超时转 INCOMPLETE，不进窗口）
+                String roundId = UUID.randomUUID().toString();
+                contextStore.beginTurn(roundId, TurnInitiator.USER,
+                        new Message("user", content, vEnc, vKey, null));
+                msg.setRoundId(roundId);
             }
             case IMAGE -> {
                 String iEnc = msg.getEncryptQueryParam();
@@ -267,6 +279,13 @@ public class WechatMessageService {
                 contextStore.append("user", "[文件: " + fName + "]", fEnc, fKey, null);
             }
         }
+    }
+
+    /** 开启一个用户消息触发的 Turn，并把 roundId 挂到消息上供 executor 闭合。 */
+    private void beginTurnForAgent(WechatMessage msg, Message firstMessage) {
+        String roundId = UUID.randomUUID().toString();
+        contextStore.beginTurn(roundId, TurnInitiator.USER, firstMessage);
+        msg.setRoundId(roundId);
     }
 
     /**

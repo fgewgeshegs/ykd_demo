@@ -96,6 +96,8 @@ public class MessageRouter {
             textMsg.setContextToken(message.getContextToken());
             textMsg.setType(MessageType.TEXT);
             textMsg.setText(voiceText);
+            // 继承语音消息的 roundId，使 executor 在同一 Turn 上闭合
+            textMsg.setRoundId(message.getRoundId());
 
             WechatReply textReply = chatHandler.handle(textMsg);
             if (textReply != null && textReply.isSilent()) {

@@ -1,5 +1,7 @@
 package com.youkeda.exercise.claw.agent.memory;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * 单条对话消息记录
  *
@@ -55,6 +57,7 @@ public record Message(MessageRole role, String content,
     }
 
     /** 是否为带 tool_calls 的 assistant 消息 */
+    @JsonIgnore
     public boolean isToolCall() {
         return role == MessageRole.ASSISTANT && toolCallId != null;
     }

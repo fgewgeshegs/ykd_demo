@@ -1,8 +1,12 @@
 package com.youkeda.exercise.claw.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.youkeda.exercise.claw.agent.context.ContextBuilder;
+import com.youkeda.exercise.claw.agent.context.DefaultContextBuilder;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.Message;
+import com.youkeda.exercise.claw.agent.memory.MessageRole;
+import com.youkeda.exercise.claw.agent.memory.TurnInitiator;
 import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder;
 import com.youkeda.exercise.claw.agent.model.*;
@@ -17,9 +21,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillExecutionResult;
@@ -55,9 +61,6 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(ReActAgentExecutor.class);
 
-    /** 每次请求携带的最大历史消息条数 */
-    private static final int MAX_HISTORY = 20;
-
     private static final String ERROR_REPLY = "抱歉，处理请求超时，请稍后再试。";
 
     public static final String SILENT_REPLY = "__HANDLED_WITHOUT_USER_REPLY__";
@@ -81,7 +84,7 @@ public class ReActAgentExecutor implements AgentExecutor {
     // ==== 批次 2 拆分出的内部 helper（非 Spring bean，构造内用已有依赖创建）====
     private final SystemPromptBuilder systemPromptBuilder;
     private final SkillSessionUpdater skillSessionUpdater;
-    private final MessageHistoryBuilder messageHistoryBuilder;
+    private final ContextBuilder contextBuilder;
     private final SimpleChatClassifier simpleChatClassifier;
 
     public ReActAgentExecutor(LLMClient llmClient,
@@ -118,8 +121,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         // 内部 helper 用主类已有的依赖创建，保持 15 参构造签名不变（测试零改动）
         this.systemPromptBuilder = new SystemPromptBuilder(llmClient, skillKnowledgeService);
         this.skillSessionUpdater = new SkillSessionUpdater(skillRouter, skillSessionStore);
-        this.messageHistoryBuilder =
-                new MessageHistoryBuilder(contextStore, longTermMemoryService, MAX_HISTORY);
+        this.contextBuilder = new DefaultContextBuilder(contextStore, longTermMemoryService);
         this.simpleChatClassifier = new SimpleChatClassifier(llmClient);
     }
 
@@ -136,6 +138,15 @@ public class ReActAgentExecutor implements AgentExecutor {
         if (userId == null || userId.isBlank()) {
             userId = wechatUserManager.getOwnerUserId();
             context.setUserId(userId);
+        }
+
+        // Turn 贯通（ADR Phase 1B）：roundId 由入口（saveMessageToContext 的 beginTurn）生成并随消息传入。
+        // 系统触发（定时任务，如 AgentTaskExecutor）无 roundId → 此处自行 beginTurn（initiator=SYSTEM）。
+        // 异常逃逸不在此处理：Turn 留 RUNNING，由启动恢复扫描超时转 INCOMPLETE。
+        String roundId = context.getRoundId();
+        if (roundId == null) {
+            roundId = UUID.randomUUID().toString();
+            contextStore.beginTurn(roundId, TurnInitiator.SYSTEM, new Message("user", userMessage));
         }
 
         // Route through SkillRouter
@@ -156,6 +167,7 @@ public class ReActAgentExecutor implements AgentExecutor {
             context.setSkillSession(session);
             skillSessionStore.save(userId, session);
             if (skillExecution.status() == SkillExecutionResult.Status.HANDLED_SILENT) {
+                contextStore.closeTurn(roundId);
                 activityRecorder.requestCompleted(
                         activityRequestId, System.currentTimeMillis() - requestStartedAt);
                 return SILENT_REPLY;
@@ -164,7 +176,8 @@ public class ReActAgentExecutor implements AgentExecutor {
             if (reply == null || reply.isBlank()) {
                 reply = "当前功能暂时不可用，请稍后重试。";
             }
-            contextStore.append("assistant", reply);
+            contextStore.appendToTurn(roundId, new Message("assistant", reply));
+            contextStore.closeTurn(roundId);
             if (skillExecution.status() == SkillExecutionResult.Status.FAILED) {
                 activityRecorder.requestFailed(
                         activityRequestId, reply, System.currentTimeMillis() - requestStartedAt);
@@ -193,9 +206,10 @@ public class ReActAgentExecutor implements AgentExecutor {
                 : planStore.get();
         context.setPlanState(planState);
 
-        // History + current message + long-term memory
-        List<Message> messages = messageHistoryBuilder.buildMessages(userMessage);
-        boolean continuationRequest = messageHistoryBuilder.isContinuationRequest(userMessage);
+        // History + current message + long-term memory（ContextBuilder 组装，Phase 1C 切换）。
+        // Result.messages 为不可变（防御性拷贝），ExecutionLoop 会原地追加，故复制为可变列表。
+        List<Message> messages = new ArrayList<>(contextBuilder.build(context).messages());
+        boolean continuationRequest = contextBuilder.isContinuationRequest(userMessage);
 
         // Fast path: simple chat without tools
         if (!continuationRequest && (activeSkill == null || "common".equals(activeSkill.name()))) {
@@ -207,7 +221,8 @@ public class ReActAgentExecutor implements AgentExecutor {
                         && !quickResponse.getContent().isBlank()) {
                     String reply = quickResponse.getContent();
                     log.info("快速对话回复 | reply={}", reply);
-                    contextStore.append("assistant", reply);
+                    contextStore.appendToTurn(roundId, new Message("assistant", reply));
+                    contextStore.closeTurn(roundId);
                     longTermMemoryService.processAndStoreAsync(userMessage, reply);
                     skillSessionStore.save(userId, session);
                     activityRecorder.requestCompleted(
@@ -233,12 +248,22 @@ public class ReActAgentExecutor implements AgentExecutor {
         session = loopResult.session();
         planState = loopResult.planState();
 
-        // 持久化本轮工具调用与结果，使下一轮 LLM 能看到真实的工具执行记录，
-        // 避免因历史中缺失工具证据而误判上一轮结果为编造。
-        messageHistoryBuilder.persistToolMessages(messages, initialMessageCount);
+        // 持久化本轮工具调用与结果到 Turn，使下一轮 LLM 能看到真实的工具执行记录，
+        // 避免因历史中缺失工具证据而误判上一轮结果为编造（ADR Phase 1B：写入 appendToTurn）。
+        for (int i = initialMessageCount; i < messages.size(); i++) {
+            Message m = messages.get(i);
+            if (m == null) continue;
+            boolean isToolResult = m.role() == MessageRole.TOOL;
+            boolean isToolCall = m.role() == MessageRole.ASSISTANT && m.isToolCall();
+            if (isToolResult || isToolCall) {
+                contextStore.appendToTurn(roundId, m);
+                log.debug("工具消息已写入 Turn | roundId={} | role={} | toolCallId={}",
+                        roundId, m.role(), m.toolCallId());
+            }
+        }
 
         // Handle loop result
-        return handleLoopResult(loopResult, userMessage, session, userId,
+        return handleLoopResult(loopResult, roundId, userMessage, session, userId,
                 systemPrompt, activityRequestId, requestStartedAt);
     }
 
@@ -246,6 +271,7 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     private String handleLoopResult(
             ExecutionLoop.Result result,
+            String roundId,
             String userMessage,
             SkillSession session,
             String userId,
@@ -255,13 +281,15 @@ public class ReActAgentExecutor implements AgentExecutor {
         switch (result.status()) {
             case SILENT:
                 skillSessionStore.save(userId, session);
+                contextStore.closeTurn(roundId);
                 activityRecorder.requestCompleted(
                         activityRequestId, System.currentTimeMillis() - requestStartedAt);
                 return SILENT_REPLY;
 
             case TEXT_REPLY:
                 String reply = result.reply();
-                contextStore.append("assistant", reply);
+                contextStore.appendToTurn(roundId, new Message("assistant", reply));
+                contextStore.closeTurn(roundId);
                 longTermMemoryService.processAndStoreAsync(userMessage, reply);
                 skillSessionStore.save(userId, session);
                 activityRecorder.requestCompleted(
@@ -271,11 +299,12 @@ public class ReActAgentExecutor implements AgentExecutor {
             case LLM_FAILED:
                 activityRecorder.requestFailed(
                         activityRequestId, "LLM 返回空", System.currentTimeMillis() - requestStartedAt);
-                return handleError();
+                return handleError(roundId);
 
             case MAX_ROUNDS:
                 String synthesizedReply = executionLoop.synthesize(systemPrompt, result.messages());
-                contextStore.append("assistant", synthesizedReply);
+                contextStore.appendToTurn(roundId, new Message("assistant", synthesizedReply));
+                contextStore.closeTurn(roundId);
                 longTermMemoryService.processAndStoreAsync(userMessage, synthesizedReply);
                 skillSessionStore.save(userId, session);
                 activityRecorder.requestCompleted(
@@ -287,8 +316,9 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     // ==================== 错误与兜底 ====================
 
-    private String handleError() {
-        contextStore.append("assistant", ERROR_REPLY);
+    private String handleError(String roundId) {
+        contextStore.appendToTurn(roundId, new Message("assistant", ERROR_REPLY));
+        contextStore.closeTurn(roundId);
         return ERROR_REPLY;
     }
 }

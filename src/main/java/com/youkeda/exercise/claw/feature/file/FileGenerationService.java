@@ -40,8 +40,6 @@ public class FileGenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(FileGenerationService.class);
 
-    private static final int MAX_HISTORY = 20;
-
     /** PDF 页面参数 */
     private static final float PAGE_WIDTH = PDRectangle.A4.getWidth();
     private static final float PAGE_HEIGHT = PDRectangle.A4.getHeight();
@@ -105,8 +103,8 @@ public class FileGenerationService {
         }
         log.info("检测到文件格式 | format={}", format);
 
-        // 2. 获取对话历史并调用 LLM 生成文档内容
-        List<Message> history = contextStore.getHistory(MAX_HISTORY);
+        // 2. 获取对话历史并调用 LLM 生成文档内容（turn-aware 读取，ADR 1E）
+        List<Message> history = contextStore.getRecentMessages(10);
         String content = llmClient.chatWithSystemPrompt(CONTENT_GENERATION_PROMPT, userText, history);
         if (content == null || content.trim().isEmpty()) {
             log.warn("LLM 生成文档内容为空");

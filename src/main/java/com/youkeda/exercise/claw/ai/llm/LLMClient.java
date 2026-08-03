@@ -4,10 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.youkeda.exercise.claw.infrastructure.common.PromptLoader;
 import com.youkeda.exercise.claw.agent.memory.Message;
-import com.youkeda.exercise.claw.agent.memory.MessageRole;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
 import com.youkeda.exercise.claw.ai.llm.ToolDefinition;
 import jakarta.annotation.PostConstruct;
@@ -47,6 +45,8 @@ public class LLMClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final PromptLoader promptLoader;
+    /** 协议序列化（含孤立 tool 丢弃兜底），构造时内部创建（保持构造签名不变）。 */
+    private final LLMAdapter llmAdapter;
 
     private String systemPrompt;
 
@@ -57,6 +57,7 @@ public class LLMClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build();
+        this.llmAdapter = new LLMAdapter(objectMapper);
     }
 
     @PostConstruct
@@ -339,10 +340,8 @@ public class LLMClient {
         sysNode.put("role", "system");
         sysNode.put("content", systemPrompt);
 
-        // 消息列表（按 role 分三种序列化）
-        for (Message msg : messages) {
-            msgArray.add(serializeMessage(msg));
-        }
+        // 消息列表（委托 LLMAdapter 序列化 + 孤立 tool 丢弃兜底）
+        msgArray.addAll(llmAdapter.toMessagesNode(messages));
 
         // tools 定义
         if (tools != null && !tools.isEmpty()) {
@@ -358,91 +357,6 @@ public class LLMClient {
         }
 
         return objectMapper.writeValueAsString(root);
-    }
-
-    /**
-     * 将单条 Message 序列化为 LLM 协议的 JSON 节点
-     * <p>按 role 分三种序列化策略：
-     * <ul>
-     *   <li>{@code "user"} — 常规内容</li>
-     *   <li>{@code "assistant"} — 可能携带 {@code tool_calls}</li>
-     *   <li>{@code "tool"} — 工具调用结果，带 {@code tool_call_id}</li>
-     * </ul>
-     */
-    private ObjectNode serializeMessage(Message msg) {
-        ObjectNode node = objectMapper.createObjectNode();
-
-        switch (msg.role()) {
-            case USER -> {
-                node.put("role", "user");
-                node.put("content", msg.content() != null ? msg.content() : "");
-            }
-            case ASSISTANT -> {
-                node.put("role", "assistant");
-                if (msg.reasoningContent() != null && !msg.reasoningContent().isBlank()) {
-                    node.put("reasoning_content", msg.reasoningContent());
-                }
-                if (msg.isToolCall()) {
-                    node.putNull("content");
-                    ArrayNode tcs = node.putArray("tool_calls");
-
-                    String tcId = msg.toolCallId();
-                    if (tcId != null && tcId.contains(",")) {
-                        // 多 tool_call：解析逗号分隔的 ID 列表和 JSON 数组参数
-                        String[] ids = tcId.split(",", -1);
-                        String[] names = msg.toolName() != null
-                                ? msg.toolName().split(",", -1)
-                                : new String[ids.length];
-                        JsonNode argsArray;
-                        try {
-                            argsArray = objectMapper.readTree(msg.content());
-                        } catch (Exception e) {
-                            log.warn("多 tool_call 参数解析失败: {}", e.getMessage());
-                            // 降级：回退到单 tool_call 逻辑
-                            ObjectNode tc = tcs.addObject();
-                            tc.put("id", ids[0].trim());
-                            tc.put("type", "function");
-                            ObjectNode func = tc.putObject("function");
-                            func.put("name", msg.toolName());
-                            func.put("arguments", msg.content());
-                            break;
-                        }
-
-                        for (int i = 0; i < ids.length; i++) {
-                            ObjectNode tc = tcs.addObject();
-                            tc.put("id", ids[i].trim());
-                            tc.put("type", "function");
-                            ObjectNode func = tc.putObject("function");
-                            func.put("name", i < names.length ? names[i].trim() : "unknown");
-                            JsonNode argNode = i < argsArray.size() ? argsArray.get(i) : null;
-                            func.put("arguments", argNode != null
-                                    ? (argNode instanceof TextNode ? ((TextNode) argNode).asText() : argNode.toString())
-                                    : "{}");
-                        }
-                    } else {
-                        // 单 tool_call（原有逻辑）
-                        ObjectNode tc = tcs.addObject();
-                        tc.put("id", tcId);
-                        tc.put("type", "function");
-                        ObjectNode func = tc.putObject("function");
-                        func.put("name", msg.toolName());
-                        func.put("arguments", msg.content());
-                    }
-                } else {
-                    node.put("content", msg.content() != null ? msg.content() : "");
-                }
-            }
-            case TOOL -> {
-                node.put("role", "tool");
-                node.put("content", msg.content() != null ? msg.content() : "");
-                node.put("tool_call_id", msg.toolCallId());
-            }
-            case SYSTEM -> {
-                node.put("role", "system");
-                node.put("content", msg.content() != null ? msg.content() : "");
-            }
-        }
-        return node;
     }
 
     /**
