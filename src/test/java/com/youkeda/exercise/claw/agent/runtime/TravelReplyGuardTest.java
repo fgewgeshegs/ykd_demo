@@ -3,16 +3,31 @@ package com.youkeda.exercise.claw.agent.runtime;
 import com.youkeda.exercise.claw.agent.model.ResultStatus;
 import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuard.GuardResult;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class TravelReplyGuardTest {
 
-    private final TravelReplyGuard guard = new TravelReplyGuard();
+    private final TravelDeliveryCredentialSource source =
+            mock(TravelDeliveryCredentialSource.class);
+    private final TravelReplyGuard guard = new TravelReplyGuard(source);
+
+    @BeforeEach
+    void setUp() {
+        // 默认无跨轮凭证：守卫退回「本轮 toolStatuses」判断（原行为）
+        when(source.getCredential(anyString())).thenReturn(Optional.empty());
+    }
 
     private SkillReplyGuard.GuardResult validate(String userMsg, String reply,
                                                  Map<String, ResultStatus> statuses) {
@@ -65,6 +80,53 @@ class TravelReplyGuardTest {
         // 回复不含行程完成词、不含预算结论，且无 travel 请求 → 放行
         GuardResult r = validate("三亚现在天气怎么样", "三亚今天晴。",
                 Map.of());
+        assertTrue(r.allowed());
+    }
+
+    // ==================== 跨轮凭证（E 方案） ====================
+
+    @Test
+    void allowsBudgetConclusionWithCrossRoundCredential() {
+        // 选方案/汇报轮：上轮已核算，跨轮凭证 costCalculated=true，
+        // 本轮 toolStatuses 无 calculate 也不误拦（修复重试死循环）
+        when(source.getCredential("u")).thenReturn(Optional.of(
+                new TravelDeliveryCredentialSource.DeliveryCredential(true, true)));
+
+        GuardResult r = validate("A吧", "方案A预计总费用约 3618 元，在预算内",
+                Map.of());
+        assertTrue(r.allowed(), "引用上轮已核算金额应放行，不得反复拦截");
+    }
+
+    @Test
+    void allowsCompletedPlanWithCrossRoundCollectCredential() {
+        // 需求已收集齐（跨轮凭证），回复声称完成行程，本轮无 collect 也放行
+        when(source.getCredential("u")).thenReturn(Optional.of(
+                new TravelDeliveryCredentialSource.DeliveryCredential(true, true)));
+
+        GuardResult r = validate("A吧", "行程已生成：Day 1 昆明，Day 2 大理",
+                Map.of());
+        assertTrue(r.allowed());
+    }
+
+    @Test
+    void blocksBudgetConclusionWhenCredentialMissingButIncomplete() {
+        // 跨轮凭证存在但需求未收集齐、无核算 → 预算结论仍拦截
+        when(source.getCredential("u")).thenReturn(Optional.of(
+                new TravelDeliveryCredentialSource.DeliveryCredential(false, false)));
+
+        GuardResult r = validate("帮我规划旅游", "总费用约 3000 元", Map.of());
+        assertFalse(r.allowed());
+    }
+
+    @Test
+    void prefersThisRoundToolCallOverMissingCredential() {
+        // 无跨轮凭证，但本轮确实调了 travel_collect(SUCCESS) + calculate(SUCCESS) → 放行
+        Map<String, ResultStatus> statuses = Map.of(
+                "travel_collect", ResultStatus.SUCCESS,
+                "travel_calculate_cost", ResultStatus.SUCCESS);
+
+        GuardResult r = validate("我要去三亚玩三天", "总费用 4800 元，行程已生成",
+                statuses);
         assertTrue(r.allowed());
     }
 }

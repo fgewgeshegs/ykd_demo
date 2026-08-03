@@ -11,12 +11,17 @@ import java.util.regex.Pattern;
  *
  * <p>只做「交付质量」确定性校验，不强制流程：
  * <ul>
- *   <li>声称完成行程，但 travel_collect 本轮未调用或未收集齐（FAILED=NEED_MORE_INFORMATION）→ 拦截</li>
- *   <li>回复含预算结论（总费用/人均/预算内/超预算），但本轮未调 travel_calculate_cost → 拦截</li>
+ *   <li>声称完成行程，但需求未收集齐（travel_collect 凭证缺失）→ 拦截</li>
+ *   <li>回复含预算结论（总费用/人均/预算内/超预算），但无有效核算凭证（travel_calculate_cost）→ 拦截</li>
  * </ul>
  *
+ * <p>凭证判定 = 「本轮 toolStatuses」∪「跨轮业务凭证」：
+ * 工具结果默认只进当轮 toolStatuses（且 travel_collect 的 ALL_COLLECTED 被 Parser 归为 FAILED），
+ * 若只看本轮，选方案/汇报轮引用上轮已核算金额会被误拦并触发重试死循环。
+ * 跨轮凭证由 {@link TravelDeliveryCredentialSource}（TravelPlanService 实现）持久化提供。
+ *
  * <p>与 cxx-tools 版本的区别：不依赖 SkillSession 的 travel 常量（Session/Plan 边界），
- * 只靠 toolStatuses；不含「天数不得超过用户要求」规则——该规则属策略，由 travel.txt prompt 引导，
+ * 不含「天数不得超过用户要求」规则——该规则属策略，由 travel.txt prompt 引导，
  * 避免 guard 用正则猜用户天数造成误伤（用户说「3 天 2 晚」时 2 晚不是第 3 天）。
  */
 @Component
@@ -28,6 +33,12 @@ public class TravelReplyGuard implements SkillReplyGuard {
     private static final Pattern BUDGET_SUMMARY = Pattern.compile(
             "总费用|总价|人均费用|人均价|预算内|超预算|合计.*元|共.*元");
 
+    private final TravelDeliveryCredentialSource credentialSource;
+
+    public TravelReplyGuard(TravelDeliveryCredentialSource credentialSource) {
+        this.credentialSource = credentialSource;
+    }
+
     @Override
     public String getSkillName() {
         return "travel";
@@ -38,10 +49,22 @@ public class TravelReplyGuard implements SkillReplyGuard {
         if (context.reply() == null || context.reply().isBlank()) {
             return GuardResult.allow();
         }
-        Map<String, ResultStatus> statuses = context.toolStatuses();
-        boolean collected = statuses.get("travel_collect") == ResultStatus.SUCCESS;
+        Map<String, ResultStatus> statuses = context.toolStatuses() != null
+                ? context.toolStatuses() : Map.of();
+        boolean collectedThisRound = statuses.get("travel_collect") == ResultStatus.SUCCESS;
+        boolean costThisRound = statuses.get("travel_calculate_cost") == ResultStatus.SUCCESS;
 
-        // 不变量 1：旅行请求 + 声称完成行程 + travel_collect 未收集齐 → 拦截
+        // 跨轮凭证：业务侧持久化的需求齐全度 + 核算凭证
+        TravelDeliveryCredentialSource.DeliveryCredential credential = null;
+        if (context.session() != null && context.session().userId() != null) {
+            credential = credentialSource.getCredential(context.session().userId()).orElse(null);
+        }
+        boolean collected = collectedThisRound
+                || (credential != null && credential.requirementsComplete());
+        boolean costCalculated = costThisRound
+                || (credential != null && credential.costCalculated());
+
+        // 不变量 1：旅行请求 + 声称完成行程 + 需求未收集齐 → 拦截
         boolean claimsCompleted = COMPLETED_PLAN.matcher(context.reply()).find();
         if (claimsCompleted && !collected) {
             return GuardResult.reject(
@@ -50,12 +73,10 @@ public class TravelReplyGuard implements SkillReplyGuard {
                             + "根据返回的 missing_fields 追问缺失项；需求未齐全前不得声称已完成行程。");
         }
 
-        // 不变量 2：预算结论必须本轮有 travel_calculate_cost 计算凭据
-        boolean costCalculated =
-                statuses.get("travel_calculate_cost") == ResultStatus.SUCCESS;
+        // 不变量 2：预算结论必须有核算凭证（本轮调用，或跨轮已有有效核算结果）
         if (BUDGET_SUMMARY.matcher(context.reply()).find() && !costCalculated) {
             return GuardResult.reject(
-                    "你的回复包含总费用/人均费用/预算结论，但本轮尚未调用 travel_calculate_cost。"
+                    "你的回复包含总费用/人均费用/预算结论，但尚未有对应的 travel_calculate_cost 核算凭证。"
                             + "请先调用 travel_calculate_cost 核算后再给出金额结论。");
         }
 
