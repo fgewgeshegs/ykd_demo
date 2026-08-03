@@ -36,6 +36,9 @@ public class SkillRouter {
     /** 续接最低置信度：低于该值视为「与 activeSkill 弱关联」，不再维持旧 skill */
     private static final double CONTINUATION_MIN_CONFIDENCE = 0.3;
 
+    /** 新触发词生效门槛：Layer 3 关键词触发与 pending 抢占共用，置信度达标才算「强新意图」 */
+    private static final double NEW_TRIGGER_MIN_CONFIDENCE = 0.8;
+
     /** 连续低置信度释放阈值：inactivityCount 达到该值后升级为「彻底释放」 */
     private static final int LOW_CONFIDENCE_RELEASE_LIMIT = 2;
 
@@ -67,7 +70,7 @@ public class SkillRouter {
 
         // Layer 3: New trigger word match
         SkillRoutingResult layer3 = handleNewTrigger(message, sessionOpt);
-        if (layer3 != null && layer3.confidence() >= 0.8) {
+        if (layer3 != null && layer3.confidence() >= NEW_TRIGGER_MIN_CONFIDENCE) {
             return layer3;
         }
 
@@ -94,6 +97,21 @@ public class SkillRouter {
                         SkillRoutingResult.SkillRoutingAction.DEACTIVATE, 1.0,
                         "pending interaction cancelled");
             }
+
+            // 新意图抢占：pending 待确认期间，若消息命中其他 skill 的强触发词
+            // （置信度 >= NEW_TRIGGER_MIN_CONFIDENCE，与 Layer 3 同一门槛）且 pending 并非
+            // 「正在收集必需输入」（pendingSlot 为空 = 纯确认状态，如行程估价待确认），
+            // 则直接切到新 skill，避免 pending 把新意图锁死在 Layer 1。
+            // 例：行程估价待确认时「今天天气怎么样」应能切入 weather 技能；
+            //     而信息猎手等待补充主题（pendingSlot="query"）时不抢占——
+            //     用户回复「天气」应是待收集的主题，而非查天气的强意图。
+            SkillRoutingResult preempted = tryPreemptPendingWithNewIntent(message, sessionOpt);
+            if (preempted != null) {
+                log.debug("pending 被强新意图抢占 | from={} | to={} | message={}",
+                        session.activeSkill(), preempted.primarySkill(), message);
+                return preempted;
+            }
+
             // 待确认状态超时保护：超过会话超时时间后释放 pendingAction，防止 skill 被长期锁定。
             long minutesSinceActivity = ChronoUnit.MINUTES.between(session.lastActivityAt(), Instant.now());
             if (minutesSinceActivity >= config.sessionTimeoutMinutes()) {
@@ -117,6 +135,33 @@ public class SkillRouter {
                     "pending interaction confirmation for " + session.activeSkill());
         }
         return null;
+    }
+
+    /**
+     * 待确认状态下新意图抢占。
+     *
+     * <p>仅当 pending 处于「纯确认」语义（pendingSlot 为空，如行程估价待确认）时允许抢占：
+     * 复用 Layer 3 的触发词匹配（{@link #handleNewTrigger}），命中其他 skill 且置信度达标即返回该结果，
+     * 由 {@link SkillSessionUpdater} 以 ACTIVATE 切换 skill（withActiveSkill 会清空旧 context，pending 随之清除）。
+     *
+     * <p>pending 正在收集必需输入（pendingSlot 非空，如信息猎手等待补充主题）时返回 null 不抢占：
+     * 此时用户回复很可能就是待收集的输入，触发词会误伤（回答主题「天气」不应路由到 weather 技能）。
+     *
+     * @return 可抢占的新意图路由结果；不抢占返回 null
+     */
+    private SkillRoutingResult tryPreemptPendingWithNewIntent(
+            String message, Optional<SkillSession> sessionOpt) {
+        SkillSession session = sessionOpt.get();
+        String pendingSlot = session.pendingSlot();
+        if (pendingSlot != null && !pendingSlot.isBlank()) {
+            return null;
+        }
+
+        SkillRoutingResult newIntent = handleNewTrigger(message, sessionOpt);
+        if (newIntent == null) return null;
+        if (newIntent.confidence() < NEW_TRIGGER_MIN_CONFIDENCE) return null;
+        if (newIntent.primarySkill().equals(session.activeSkill())) return null;
+        return newIntent;
     }
 
     private boolean isPendingCancellation(String message) {
@@ -156,6 +201,8 @@ public class SkillRouter {
     private SkillRoutingResult handleNewTrigger(String message, Optional<SkillSession> sessionOpt) {
         // Collect keyword triggers once (skill -> matching keywords)
         Map<String, List<String>> triggers = triggerProperties.getTriggers();
+        // 防御：无触发词配置（测试 mock 或配置缺失）时按无匹配处理，避免 NPE
+        if (triggers == null) return null;
 
         List<SkillMatchResult> matches = new ArrayList<>();
         List<SkillDefinition> all = new ArrayList<>(skillRegistry.getAll());
