@@ -67,8 +67,9 @@ public class ScoutWorkflowWorker implements WorkflowWorker {
             Future<WorkflowResult> future = null;
             try {
                 future = executor.submit(() -> {
+                    ScoutExecutionContext context = ScoutWorkflowPayload.decode(request.payload());
                     com.youkeda.exercise.claw.feature.scout.ScoutReport report =
-                            orchestrator.run(request.payload());
+                            orchestrator.run(context);
                     String summary = report.toString();
                     return new WorkflowResult(taskId, WorkflowResult.WorkflowStatus.COMPLETED,
                             Instant.now(), summary, null);

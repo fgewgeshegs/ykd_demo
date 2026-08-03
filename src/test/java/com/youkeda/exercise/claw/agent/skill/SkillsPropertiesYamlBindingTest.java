@@ -15,10 +15,19 @@ import org.springframework.core.io.ClassPathResource;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SkillsPropertiesYamlBindingTest {
+
+    @Test
+    void bindsKnowledgeGlobalSwitchAsEnabledByDefault() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+
+        assertNotNull(properties.getKnowledge());
+        assertTrue(properties.getKnowledge().isGlobalEnabled());
+    }
 
     @Test
     void bindsBackgroundWorkflowExecutionMetadataFromYaml() throws Exception {

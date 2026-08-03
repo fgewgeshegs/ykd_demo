@@ -9,12 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/**
- * 公共 Qdrant 客户端提供者
- *
- * <p>QdrantMemoryStore 继续使用自己的客户端连接（保持兼容），
- * QdrantSkillKnowledgeStore 使用此提供者。
- */
+/** Shared, configuration-driven Qdrant client for Skill knowledge. */
 @Component
 public class QdrantClientProvider {
 
@@ -31,12 +26,16 @@ public class QdrantClientProvider {
     @PostConstruct
     public void init() {
         this.client = new QdrantClient(
-            QdrantGrpcClient.newBuilder(properties.getHost(), properties.getPort(), false).build()
-        );
-        log.info("QdrantClientProvider initialized: {}:{}", properties.getHost(), properties.getPort());
+                QdrantGrpcClient.newBuilder(
+                        properties.getHost(), properties.getPort(), false).build());
+        log.info("QdrantClientProvider initialized: {}:{}",
+                properties.getHost(), properties.getPort());
     }
 
     public QdrantClient getClient() {
+        if (client == null) {
+            throw new IllegalStateException("Qdrant client is not initialized");
+        }
         return client;
     }
 
@@ -44,6 +43,7 @@ public class QdrantClientProvider {
     public void close() {
         if (client != null) {
             client.close();
+            client = null;
             log.info("QdrantClientProvider closed");
         }
     }

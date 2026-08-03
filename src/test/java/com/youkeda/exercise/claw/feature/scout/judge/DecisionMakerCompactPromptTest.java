@@ -18,6 +18,27 @@ import static org.mockito.Mockito.*;
 class DecisionMakerCompactPromptTest {
 
     @Test
+    void includesStageSpecificKnowledgeAsUntrustedDecisionData() {
+        LLMClient llmClient = mock(LLMClient.class);
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), eq(5000)))
+                .thenReturn("[]");
+        DecisionMaker maker = new DecisionMaker(
+                llmClient, new ScoutProperties(), new ObjectMapper());
+
+        maker.judge(profile(), List.of(candidate("候选", 0.70f)),
+                "<knowledge_data>高价值标准</knowledge_data>");
+
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).chatWithSystemPrompt(system.capture(), prompt.capture(), eq(5000));
+        assertTrue(system.getValue().contains("SCOUT_DECISION_KNOWLEDGE"));
+        assertTrue(system.getValue().contains("不可信数据"));
+        assertTrue(prompt.getValue().contains("SCOUT_DECISION_KNOWLEDGE"));
+        assertTrue(prompt.getValue().contains("高价值标准"));
+        assertTrue(prompt.getValue().contains("不可信"));
+    }
+
+    @Test
     void usesCompactBoundedResponseAndReusesCandidateFields() {
         LLMClient llmClient = mock(LLMClient.class);
         when(llmClient.chatWithSystemPrompt(anyString(), anyString(), eq(5000)))

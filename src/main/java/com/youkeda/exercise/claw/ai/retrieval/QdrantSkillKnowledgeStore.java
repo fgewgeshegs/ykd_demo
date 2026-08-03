@@ -19,7 +19,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import java.util.*;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Component
 public class QdrantSkillKnowledgeStore implements SkillKnowledgeStore {
@@ -34,6 +40,12 @@ public class QdrantSkillKnowledgeStore implements SkillKnowledgeStore {
     @Value("${memory.qdrant.vector-dimension:1024}")
     private int vectorDimension;
 
+    @Value("${skill.knowledge.operation-timeout:10s}")
+    private Duration operationTimeout;
+
+    private volatile boolean initialized;
+    private volatile String lastError = "not initialized";
+
     public QdrantSkillKnowledgeStore(QdrantClientProvider clientProvider) {
         this.clientProvider = clientProvider;
     }
@@ -42,126 +54,260 @@ public class QdrantSkillKnowledgeStore implements SkillKnowledgeStore {
     public void init() {
         try {
             var client = clientProvider.getClient();
-            boolean exists = client.collectionExistsAsync(collectionName).get();
+            boolean exists = client.collectionExistsAsync(collectionName, operationTimeout).get();
             if (!exists) {
                 client.createCollectionAsync(collectionName,
-                    Collections.VectorParams.newBuilder()
-                        .setDistance(Collections.Distance.Cosine)
-                        .setSize(vectorDimension)
-                        .build()
-                ).get();
+                        Collections.VectorParams.newBuilder()
+                                .setDistance(Collections.Distance.Cosine)
+                                .setSize(vectorDimension)
+                                .build(), operationTimeout).get();
                 log.info("Created Qdrant collection: {}", collectionName);
             }
+            createPayloadIndexes();
+            initialized = true;
+            lastError = "OK";
         } catch (Exception e) {
-            log.error("Failed to initialize Qdrant collection: {}", collectionName, e);
+            initialized = false;
+            lastError = rootMessage(e);
+            log.warn("Skill knowledge store unavailable at startup; RAG will degrade without knowledge | collection={} | error={}",
+                    collectionName, lastError);
         }
     }
 
     @Override
-    public void upsert(SkillKnowledgeChunk chunk, float[] vector) {
+    public void upsertAll(List<SkillKnowledgeVector> points) {
+        if (points == null || points.isEmpty()) return;
         try {
-            var client = clientProvider.getClient();
-
-            java.util.Map<String, io.qdrant.client.grpc.JsonWithInt.Value> payload = new java.util.HashMap<>();
-            payload.put("skillName", value(chunk.skillName()));
-            payload.put("documentId", value(chunk.documentId()));
-            payload.put("chunkIndex", value(chunk.chunkIndex()));
-            payload.put("content", value(chunk.content()));
-            if (chunk.source() != null) {
-                payload.put("source", value(chunk.source()));
+            List<PointStruct> qdrantPoints = new ArrayList<>(points.size());
+            for (SkillKnowledgeVector point : points) {
+                SkillKnowledgeChunk chunk = point.chunk();
+                if (point.vector().length != vectorDimension) {
+                    throw new IllegalArgumentException("Vector dimension mismatch: expected="
+                            + vectorDimension + ", actual=" + point.vector().length);
+                }
+                qdrantPoints.add(PointStruct.newBuilder()
+                        .setId(PointId.newBuilder().setUuid(chunk.chunkId()).build())
+                        .setVectors(Vectors.newBuilder()
+                                .setVector(Vector.newBuilder()
+                                        .addAllData(toFloatList(point.vector())).build())
+                                .build())
+                        .putAllPayload(toPayload(chunk))
+                        .build());
             }
-            payload.put("enabled", value(true));
-
-            PointStruct point = PointStruct.newBuilder()
-                .setId(PointId.newBuilder().setUuid(chunk.chunkId()).build())
-                .setVectors(Vectors.newBuilder()
-                    .setVector(Vector.newBuilder().addAllData(toFloatList(vector)).build())
-                    .build())
-                .putAllPayload(payload)
-                .build();
-
-            client.upsertAsync(collectionName, List.of(point)).get();
+            clientProvider.getClient()
+                    .upsertAsync(collectionName, qdrantPoints, operationTimeout).get();
         } catch (Exception e) {
-            log.error("Failed to upsert knowledge chunk: {}", chunk.chunkId(), e);
+            throw storeFailure("upsert knowledge chunks", e);
         }
     }
 
     @Override
     public List<SkillKnowledgeSearchResult> search(
             float[] queryVector, Set<String> skillNames, int topK, float minScore) {
+        if (queryVector == null || queryVector.length == 0 || topK <= 0) return List.of();
+        if (skillNames == null || skillNames.isEmpty()
+                || skillNames.stream().anyMatch(name -> name == null || name.isBlank())) {
+            throw new IllegalArgumentException("At least one non-blank skillName is required");
+        }
         try {
-            var client = clientProvider.getClient();
+            Points.SearchPoints.Builder builder = Points.SearchPoints.newBuilder()
+                    .setCollectionName(collectionName)
+                    .addAllVector(toFloatList(queryVector))
+                    .setLimit(topK)
+                    .setScoreThreshold(minScore)
+                    .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build());
 
-            var searchBuilder = Points.SearchPoints.newBuilder()
-                .setCollectionName(collectionName)
-                .addAllVector(toFloatList(queryVector))
-                .setLimit(topK)
-                .setScoreThreshold(minScore)
-                .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build());
-
+            Filter.Builder filter = Filter.newBuilder()
+                    .addMust(fieldCondition("enabled", Match.newBuilder().setBoolean(true).build()));
             if (skillNames != null && !skillNames.isEmpty()) {
-                Filter.Builder filter = Filter.newBuilder();
                 for (String name : skillNames) {
-                    filter.addShould(Condition.newBuilder()
-                        .setField(FieldCondition.newBuilder()
-                            .setKey("skillName")
-                            .setMatch(Match.newBuilder().setKeyword(name).build())
-                            .build())
-                        .build());
+                    filter.addShould(fieldCondition(
+                            "skillName", Match.newBuilder().setKeyword(name).build()));
                 }
-                searchBuilder.setFilter(filter.build());
             }
+            builder.setFilter(filter.build());
 
-            List<ScoredPoint> results = client.searchAsync(searchBuilder.build()).get();
-            List<SkillKnowledgeSearchResult> out = new ArrayList<>();
-
-            for (ScoredPoint sp : results) {
-                String content = "";
-                String skillName = "";
-                String docId = "";
-                if (sp.getPayloadMap().containsKey("content")) {
-                    content = sp.getPayloadMap().get("content").getStringValue();
-                }
-                if (sp.getPayloadMap().containsKey("skillName")) {
-                    skillName = sp.getPayloadMap().get("skillName").getStringValue();
-                }
-                if (sp.getPayloadMap().containsKey("documentId")) {
-                    docId = sp.getPayloadMap().get("documentId").getStringValue();
-                }
-
-                out.add(new SkillKnowledgeSearchResult(
-                        sp.getId().getUuid(), skillName, docId, content, "", null, sp.getScore()));
+            List<ScoredPoint> points = clientProvider.getClient()
+                    .searchAsync(builder.build(), operationTimeout).get();
+            List<SkillKnowledgeSearchResult> results = new ArrayList<>(points.size());
+            for (ScoredPoint point : points) {
+                results.add(new SkillKnowledgeSearchResult(
+                        point.getId().getUuid(),
+                        readString(point, "skillName"),
+                        readString(point, "documentId"),
+                        readString(point, "content"),
+                        readString(point, "contentHash"),
+                        readString(point, "source"),
+                        readString(point, "heading"),
+                        readInteger(point, "pageNumber"),
+                        readString(point, "version"),
+                        point.getScore()));
             }
-            return out;
-
+            return results;
         } catch (Exception e) {
-            log.error("Failed to search skill knowledge", e);
-            return List.of();
+            throw storeFailure("search skill knowledge", e);
         }
     }
 
     @Override
-    public void deleteByDocument(String documentId) {
+    public long setDocumentEnabled(String skillName, String documentId, boolean enabled) {
+        Filter filter = documentFilter(skillName, documentId);
+        long count = count(filter);
+        if (count == 0) return 0;
         try {
-            var client = clientProvider.getClient();
-            var filter = Filter.newBuilder()
-                .addMust(Condition.newBuilder()
-                    .setField(FieldCondition.newBuilder()
-                        .setKey("documentId")
-                        .setMatch(Match.newBuilder().setKeyword(documentId).build())
-                        .build())
-                    .build())
-                .build();
-            client.deleteAsync(collectionName, filter).get();
-            log.info("Deleted knowledge documents: {}", documentId);
+            clientProvider.getClient().setPayloadAsync(
+                    collectionName,
+                    Map.of("enabled", value(enabled)),
+                    filter,
+                    true,
+                    null,
+                    operationTimeout).get();
+            return count;
         } catch (Exception e) {
-            log.error("Failed to delete document: {}", documentId, e);
+            throw storeFailure("set knowledge document activation", e);
         }
     }
 
+    @Override
+    public long softDeleteByDocument(String skillName, String documentId) {
+        return setDocumentEnabled(skillName, documentId, false);
+    }
+
+    @Override
+    public long hardDeleteByDocument(String skillName, String documentId) {
+        Filter filter = documentFilter(skillName, documentId);
+        long count = count(filter);
+        if (count == 0) return 0;
+        try {
+            clientProvider.getClient().deleteAsync(collectionName, filter, operationTimeout).get();
+            return count;
+        } catch (Exception e) {
+            throw storeFailure("hard delete knowledge document", e);
+        }
+    }
+
+    @Override
+    public long countByDocument(String skillName, String documentId) {
+        return count(documentFilter(skillName, documentId));
+    }
+
+    @Override
+    public KnowledgeStoreStatus status(String skillName) {
+        try {
+            clientProvider.getClient().healthCheckAsync(operationTimeout).get();
+            Filter.Builder filterBuilder = Filter.newBuilder()
+                    .addMust(fieldCondition("enabled",
+                            Match.newBuilder().setBoolean(true).build()));
+            if (skillName != null && !skillName.isBlank()) {
+                filterBuilder.addMust(fieldCondition("skillName",
+                        Match.newBuilder().setKeyword(skillName).build()));
+            }
+            Filter filter = filterBuilder.build();
+            long points = clientProvider.getClient()
+                    .countAsync(collectionName, filter, true, operationTimeout).get();
+            initialized = true;
+            lastError = "OK";
+            return new KnowledgeStoreStatus(true, collectionName, points, "OK");
+        } catch (Exception e) {
+            initialized = false;
+            lastError = rootMessage(e);
+            return new KnowledgeStoreStatus(false, collectionName, 0, lastError);
+        }
+    }
+
+    private void createPayloadIndexes() {
+        createPayloadIndex("skillName", Collections.PayloadSchemaType.Keyword);
+        createPayloadIndex("documentId", Collections.PayloadSchemaType.Keyword);
+        createPayloadIndex("enabled", Collections.PayloadSchemaType.Bool);
+    }
+
+    private void createPayloadIndex(String field, Collections.PayloadSchemaType schemaType) {
+        try {
+            clientProvider.getClient().createPayloadIndexAsync(
+                    collectionName, field, schemaType, null, true, null,
+                    operationTimeout).get();
+        } catch (Exception e) {
+            log.debug("Payload index already exists or could not be created | collection={} | field={} | error={}",
+                    collectionName, field, rootMessage(e));
+        }
+    }
+
+    private Map<String, io.qdrant.client.grpc.JsonWithInt.Value> toPayload(
+            SkillKnowledgeChunk chunk) {
+        Map<String, io.qdrant.client.grpc.JsonWithInt.Value> payload = new HashMap<>();
+        payload.put("skillName", value(chunk.skillName()));
+        payload.put("documentId", value(chunk.documentId()));
+        payload.put("chunkIndex", value(chunk.chunkIndex()));
+        payload.put("content", value(chunk.content()));
+        payload.put("contentHash", value(nullToEmpty(chunk.contentHash())));
+        payload.put("source", value(nullToEmpty(chunk.source())));
+        payload.put("heading", value(nullToEmpty(chunk.heading())));
+        if (chunk.pageNumber() != null) payload.put("pageNumber", value(chunk.pageNumber()));
+        payload.put("version", value(nullToEmpty(chunk.version())));
+        payload.put("enabled", value(chunk.enabled()));
+        return payload;
+    }
+
+    private long count(Filter filter) {
+        try {
+            return clientProvider.getClient()
+                    .countAsync(collectionName, filter, true, operationTimeout).get();
+        } catch (Exception e) {
+            throw storeFailure("count knowledge chunks", e);
+        }
+    }
+
+    private Filter documentFilter(String skillName, String documentId) {
+        if (skillName == null || skillName.isBlank()) {
+            throw new IllegalArgumentException("skillName is required");
+        }
+        if (documentId == null || documentId.isBlank()) {
+            throw new IllegalArgumentException("documentId is required");
+        }
+        return Filter.newBuilder()
+                .addMust(fieldCondition("skillName",
+                        Match.newBuilder().setKeyword(skillName).build()))
+                .addMust(fieldCondition("documentId",
+                        Match.newBuilder().setKeyword(documentId).build()))
+                .build();
+    }
+
+    private Condition fieldCondition(String key, Match match) {
+        return Condition.newBuilder()
+                .setField(FieldCondition.newBuilder().setKey(key).setMatch(match).build())
+                .build();
+    }
+
+    private String readString(ScoredPoint point, String key) {
+        return point.getPayloadMap().containsKey(key)
+                ? point.getPayloadMap().get(key).getStringValue() : "";
+    }
+
+    private Integer readInteger(ScoredPoint point, String key) {
+        return point.getPayloadMap().containsKey(key)
+                ? (int) point.getPayloadMap().get(key).getIntegerValue() : null;
+    }
+
     private List<Float> toFloatList(float[] vector) {
-        List<Float> list = new ArrayList<>(vector.length);
-        for (float v : vector) list.add(v);
-        return list;
+        List<Float> values = new ArrayList<>(vector.length);
+        for (float value : vector) values.add(value);
+        return values;
+    }
+
+    private SkillKnowledgeStoreException storeFailure(String operation, Exception cause) {
+        initialized = false;
+        lastError = rootMessage(cause);
+        return new SkillKnowledgeStoreException(
+                "Failed to " + operation + ": " + lastError, cause);
+    }
+
+    private String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) current = current.getCause();
+        return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 }

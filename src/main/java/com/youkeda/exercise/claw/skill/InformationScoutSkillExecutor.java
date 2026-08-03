@@ -1,6 +1,8 @@
 package com.youkeda.exercise.claw.skill;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
+import com.youkeda.exercise.claw.feature.scout.ScoutExecutionContext;
+import com.youkeda.exercise.claw.feature.scout.ScoutKnowledgeProvider;
 import com.youkeda.exercise.claw.feature.scout.ScoutSubmissionResult;
 import com.youkeda.exercise.claw.agent.runtime.SkillExecutor;
 import com.youkeda.exercise.claw.feature.scout.ScoutSubmissionService;
@@ -13,11 +15,21 @@ public class InformationScoutSkillExecutor implements SkillExecutor {
 
     private final InformationScoutIntentResolver intentResolver;
     private final ScoutSubmissionService submissionService;
+    private final ScoutKnowledgeProvider knowledgeProvider;
 
+    /** Compatibility constructor for focused unit tests; Spring uses the full constructor. */
     public InformationScoutSkillExecutor(InformationScoutIntentResolver intentResolver,
                                          ScoutSubmissionService submissionService) {
+        this(intentResolver, submissionService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public InformationScoutSkillExecutor(InformationScoutIntentResolver intentResolver,
+                                         ScoutSubmissionService submissionService,
+                                         ScoutKnowledgeProvider knowledgeProvider) {
         this.intentResolver = intentResolver;
         this.submissionService = submissionService;
+        this.knowledgeProvider = knowledgeProvider;
     }
 
     @Override
@@ -49,7 +61,13 @@ public class InformationScoutSkillExecutor implements SkillExecutor {
             return SkillExecutionResult.failed(
                     "信息猎手暂时无法启动，请稍后重试。", session.clearPendingAction());
         }
-        ScoutSubmissionResult result = submissionService.submit(query, workflowName);
+        ScoutSubmissionResult result;
+        if (knowledgeProvider == null) {
+            result = submissionService.submit(query, workflowName);
+        } else {
+            ScoutExecutionContext context = knowledgeProvider.forExplicitQuery(query);
+            result = submissionService.submit(context, workflowName);
+        }
         return switch (result.status()) {
             case STARTED, DUPLICATE ->
                     SkillExecutionResult.reply(

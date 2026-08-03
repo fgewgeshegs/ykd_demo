@@ -9,12 +9,18 @@ import java.util.*;
 public class SkillsProperties {
 
     private Set<String> globalTools = new LinkedHashSet<>();
+    private KnowledgeProperties knowledge = new KnowledgeProperties();
     private Map<String, SkillDefinition> skills = new LinkedHashMap<>();
     private Map<String, WorkflowDefinition> workflows = new LinkedHashMap<>();
     private Map<String, String> skillWorkflowBindings = new LinkedHashMap<>();
 
     public Set<String> getGlobalTools() { return globalTools; }
     public void setGlobalTools(Set<String> globalTools) { this.globalTools = globalTools; }
+
+    public KnowledgeProperties getKnowledge() { return knowledge; }
+    public void setKnowledge(KnowledgeProperties knowledge) {
+        this.knowledge = knowledge == null ? new KnowledgeProperties() : knowledge;
+    }
 
     public Map<String, SkillDefinition> getSkills() { return skills; }
     public void setSkills(Map<String, SkillDefinition> skills) { this.skills = skills; }
@@ -24,4 +30,11 @@ public class SkillsProperties {
 
     public Map<String, String> getSkillWorkflowBindings() { return skillWorkflowBindings; }
     public void setSkillWorkflowBindings(Map<String, String> skillWorkflowBindings) { this.skillWorkflowBindings = skillWorkflowBindings; }
+
+    public static class KnowledgeProperties {
+        private boolean globalEnabled;
+
+        public boolean isGlobalEnabled() { return globalEnabled; }
+        public void setGlobalEnabled(boolean globalEnabled) { this.globalEnabled = globalEnabled; }
+    }
 }

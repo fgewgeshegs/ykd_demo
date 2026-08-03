@@ -1,4 +1,7 @@
 claw:
+  knowledge:
+    globalEnabled: true
+
   global-tools:
     - memory_manage
     - time_query
@@ -20,7 +23,6 @@ claw:
       systemPromptResource: prompts/skills/common.txt
       knowledge:
         enabled: false
-        namespaces: []
         topK: 0
         minScore: 0.0
         maxContextChars: 0
@@ -38,7 +40,6 @@ claw:
       systemPromptResource: prompts/skills/campus.txt
       knowledge:
         enabled: false
-        namespaces: []
         topK: 0
         minScore: 0.0
         maxContextChars: 0
@@ -65,11 +66,10 @@ claw:
       systemPromptResource: prompts/skills/travel.txt
       triggerPolicyName: travelTriggerPolicy
       knowledge:
-        enabled: false
-        namespaces: [travel]
-        topK: 5
-        minScore: 0.50
-        maxContextChars: 12000
+        enabled: true
+        topK: 4
+        minScore: 0.68
+        maxContextChars: 1800
 
     transport:
       enabled: true
@@ -87,7 +87,6 @@ claw:
       triggerPolicyName: transportTriggerPolicy
       knowledge:
         enabled: false
-        namespaces: [transport]
         topK: 3
         minScore: 0.50
         maxContextChars: 6000
@@ -113,7 +112,6 @@ claw:
       systemPromptResource: prompts/skills/anime.txt
       knowledge:
         enabled: false
-        namespaces: []
         topK: 0
         minScore: 0.0
         maxContextChars: 0
@@ -131,11 +129,10 @@ claw:
         mode: BACKGROUND_WORKFLOW
         executorName: informationScoutSkillExecutor
       knowledge:
-        enabled: false
-        namespaces: [scout]
-        topK: 3
-        minScore: 0.50
-        maxContextChars: 6000
+        enabled: true
+        topK: 4
+        minScore: 0.70
+        maxContextChars: 1600
 
   workflows:
     scoutWorkflow:

@@ -24,7 +24,7 @@ class ScoutWorkflowWorkerTest {
     void updatesTheTaskIdAllocatedByTheEntrypoint() {
         ScoutOrchestrator orchestrator = mock(ScoutOrchestrator.class);
         ScoutTaskManager taskManager = mock(ScoutTaskManager.class);
-        when(orchestrator.run("AI agents"))
+        when(orchestrator.run(ScoutExecutionContext.withoutKnowledge("AI agents")))
                 .thenReturn(new ScoutReport(1, 2, 1));
 
         ScoutWorkflowWorker worker = new ScoutWorkflowWorker(orchestrator, taskManager);
@@ -40,7 +40,7 @@ class ScoutWorkflowWorkerTest {
         verify(taskManager, never()).createTask(anyString(), anyString());
         verify(taskManager).updateStatus("task-123", ScoutTaskStatus.RUNNING);
         verify(taskManager).updateStatus("task-123", ScoutTaskStatus.COMPLETED);
-        verify(orchestrator).run("AI agents");
+        verify(orchestrator).run(ScoutExecutionContext.withoutKnowledge("AI agents"));
     }
 
     @Test
@@ -48,7 +48,7 @@ class ScoutWorkflowWorkerTest {
         ScoutOrchestrator orchestrator = mock(ScoutOrchestrator.class);
         ScoutTaskManager taskManager = mock(ScoutTaskManager.class);
         AtomicBoolean interrupted = new AtomicBoolean();
-        when(orchestrator.run("slow query")).thenAnswer(invocation -> {
+        when(orchestrator.run(ScoutExecutionContext.withoutKnowledge("slow query"))).thenAnswer(invocation -> {
             try {
                 Thread.sleep(10_000);
                 return new ScoutReport(0, 0, 0);
