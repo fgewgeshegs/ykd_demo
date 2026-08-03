@@ -73,7 +73,8 @@ class SkillReplyGuardRegistryTest {
             }
         };
         SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of(guard));
-        Map<String, ResultStatus> input = Map.of("some_tool", ResultStatus.SUCCESS);
+        // 用非 SUCCESS 值作为输入：若实现"盲全映射为 SUCCESS"，map 将不等，测试即可捕获
+        Map<String, ResultStatus> input = Map.of("some_tool", ResultStatus.FAILED);
         registry.validate("test", "msg", "reply", SkillSession.create("u"),
                 Set.of(), input);
         assertEquals(input, captured.get(),
@@ -82,17 +83,40 @@ class SkillReplyGuardRegistryTest {
 
     @Test
     void allowsWhenToolStatusesNull() {
-        SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of());
-        GuardResult result = registry.validate("weather", "今天天气", "晴",
+        // 含 guard 的 registry：null 输入必须真正走到 Map.copyOf 防御，而不是空 registry 短路
+        var captured = new java.util.concurrent.atomic.AtomicReference<Map<String, ResultStatus>>();
+        SkillReplyGuard guard = new SkillReplyGuard() {
+            @Override public String getSkillName() { return "test"; }
+            @Override public GuardResult validate(GuardContext ctx) {
+                captured.set(ctx.toolStatuses());
+                return GuardResult.allow();
+            }
+        };
+        SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of(guard));
+        GuardResult result = registry.validate("test", "今天天气", "晴",
                 SkillSession.create("u"), Set.of(), null);
         assertTrue(result.allowed());
+        assertNotNull(captured.get());
+        assertTrue(captured.get().isEmpty(),
+                "toolStatuses=null 时必须被防御为空 map 传给 guard（而非 NPE）");
     }
 
     @Test
     void allowsWhenExecutedCallsNull() {
-        SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of());
-        GuardResult result = registry.validate("weather", "今天天气", "晴",
+        var captured = new java.util.concurrent.atomic.AtomicReference<Set<String>>();
+        SkillReplyGuard guard = new SkillReplyGuard() {
+            @Override public String getSkillName() { return "test"; }
+            @Override public GuardResult validate(GuardContext ctx) {
+                captured.set(ctx.executedCalls());
+                return GuardResult.allow();
+            }
+        };
+        SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of(guard));
+        GuardResult result = registry.validate("test", "今天天气", "晴",
                 SkillSession.create("u"), null, Map.of());
         assertTrue(result.allowed());
+        assertNotNull(captured.get());
+        assertTrue(captured.get().isEmpty(),
+                "executedCalls=null 时必须被防御为空 set 传给 guard（而非 NPE）");
     }
 }
