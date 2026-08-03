@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -179,7 +180,9 @@ public class ExecutionLoop {
                 if (!guardResult.allowed()) {
                     log.warn("Skill 回复守卫阻止文本结束 | skill={} | correction={}",
                             activeSkillName, guardResult.correction());
-                    messages.add(new Message("system", guardResult.correction()));
+                    messages.add(new Message("system",
+                            Objects.requireNonNull(guardResult.correction(),
+                                    "guard correction must not be null")));
                     continue;
                 }
 

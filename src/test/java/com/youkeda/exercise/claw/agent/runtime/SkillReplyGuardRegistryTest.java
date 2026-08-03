@@ -61,4 +61,38 @@ class SkillReplyGuardRegistryTest {
                 SkillSession.create("u"), Set.of(), Map.of());
         assertFalse(result.allowed());
     }
+
+    @Test
+    void passesExactToolStatusesToGuard() {
+        var captured = new java.util.concurrent.atomic.AtomicReference<Map<String, ResultStatus>>();
+        SkillReplyGuard guard = new SkillReplyGuard() {
+            @Override public String getSkillName() { return "test"; }
+            @Override public GuardResult validate(GuardContext ctx) {
+                captured.set(ctx.toolStatuses());
+                return GuardResult.allow();
+            }
+        };
+        SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of(guard));
+        Map<String, ResultStatus> input = Map.of("some_tool", ResultStatus.SUCCESS);
+        registry.validate("test", "msg", "reply", SkillSession.create("u"),
+                Set.of(), input);
+        assertEquals(input, captured.get(),
+                "toolStatuses 必须无修改地透传——禁止全映射为 SUCCESS");
+    }
+
+    @Test
+    void allowsWhenToolStatusesNull() {
+        SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of());
+        GuardResult result = registry.validate("weather", "今天天气", "晴",
+                SkillSession.create("u"), Set.of(), null);
+        assertTrue(result.allowed());
+    }
+
+    @Test
+    void allowsWhenExecutedCallsNull() {
+        SkillReplyGuardRegistry registry = new SkillReplyGuardRegistry(java.util.List.of());
+        GuardResult result = registry.validate("weather", "今天天气", "晴",
+                SkillSession.create("u"), null, Map.of());
+        assertTrue(result.allowed());
+    }
 }
