@@ -63,6 +63,7 @@ claw:
         - place_image_search
         - web_search
       systemPromptResource: prompts/skills/travel.txt
+      triggerPolicyName: travelTriggerPolicy
       knowledge:
         enabled: false
         namespaces: [travel]

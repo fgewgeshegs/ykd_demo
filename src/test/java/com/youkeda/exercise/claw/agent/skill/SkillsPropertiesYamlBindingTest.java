@@ -65,6 +65,15 @@ class SkillsPropertiesYamlBindingTest {
     }
 
     @Test
+    void bindsTravelTriggerPolicyNameFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        SkillDefinition travel = properties.getSkills().get("travel");
+        assertNotNull(travel);
+        assertEquals("travelTriggerPolicy", travel.triggerPolicyName(),
+                "travel 必须声明 custom triggerPolicy，否则「去 Bali 玩五天」这类非中文目的地请求无法触发");
+    }
+
+    @Test
     void bindsTransportSkillWithRideToolFromYaml() throws Exception {
         SkillsProperties properties = bindSkillsProperties();
         SkillDefinition transport = properties.getSkills().get("transport");
