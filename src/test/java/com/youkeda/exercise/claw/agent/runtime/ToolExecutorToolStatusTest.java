@@ -5,6 +5,7 @@ import com.youkeda.exercise.claw.agent.ToolResultStatusParser;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder;
 import com.youkeda.exercise.claw.agent.model.ResultStatus;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
+import com.youkeda.exercise.claw.agent.skill.PendingToolCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -60,6 +61,7 @@ class ToolExecutorToolStatusTest {
 
         ToolExecutor executor = new ToolExecutor(
                 registry, allowAll, mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), new ToolResultStatusParser(om),
                 mock(PlanStore.class), om);
 
@@ -92,6 +94,7 @@ class ToolExecutorToolStatusTest {
 
         ToolExecutor executor = new ToolExecutor(
                 registry, blocking, mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), new ToolResultStatusParser(om),
                 mock(PlanStore.class), om);
 
@@ -116,6 +119,7 @@ class ToolExecutorToolStatusTest {
 
         ToolExecutor executor = new ToolExecutor(
                 registry, allowAll, mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), new ToolResultStatusParser(om),
                 mock(PlanStore.class), om);
 
@@ -144,6 +148,7 @@ class ToolExecutorToolStatusTest {
         when(allowAll.canExecute(any(), any())).thenReturn(null);
         ToolExecutor executor = new ToolExecutor(
                 registry, allowAll, mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), new ToolResultStatusParser(om),
                 mock(PlanStore.class), om);
 

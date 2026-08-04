@@ -323,7 +323,8 @@ class ToolAssemblyCrossSkillTest {
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
                 llmClient, toolExecutor, planStore, new PlanValidator(), objectMapper,
-                List.of(), List.of());
+                List.of(),
+                new com.youkeda.exercise.claw.agent.runtime.SkillReplyGuardRegistry(List.of()));
 
         CommonCapabilityRegistry commonCapRegistry = new CommonCapabilityRegistry(props);
 

@@ -1,4 +1,7 @@
 ﻿claw:
+  knowledge:
+    globalEnabled: true
+
   global-tools:
     - memory_manage
     - time_query
@@ -69,6 +72,7 @@
         - transport_recommend
         - place_image_search
       systemPromptResource: prompts/skills/travel.txt
+      triggerPolicyName: travelTriggerPolicy
       knowledge:
         enabled: false
         namespaces: [travel]
