@@ -49,6 +49,8 @@ public class DefaultContextBuilder implements ContextBuilder {
     private final ContextBudgetManager budgetManager;
     /** token 预算；≤0 视为 unbounded（不裁剪）。 */
     private final int maxContextTokens;
+    /** L1 埋点聚合器（可 null = 不记录）。 */
+    private final ContextUsageTracker usageTracker;
 
     /** 便捷构造：默认启发式估算 + 不裁剪 + 无摘要（行为与 1C 等价，测试用）。 */
     public DefaultContextBuilder(ContextStore contextStore,
@@ -78,11 +80,27 @@ public class DefaultContextBuilder implements ContextBuilder {
                                  ConversationSummaryService summaryService,
                                  TokenEstimator tokenEstimator,
                                  int maxContextTokens) {
+        this(contextStore, longTermMemoryService, summaryService, tokenEstimator, maxContextTokens, null);
+    }
+
+    /**
+     * 完整构造（Phase 3：对话摘要 + L1 埋点）。
+     *
+     * @param summaryService 对话摘要服务（可 null = 关闭摘要，测试/未启用时）
+     * @param usageTracker   上下文占用聚合器（可 null = 不埋点）
+     */
+    public DefaultContextBuilder(ContextStore contextStore,
+                                 LongTermMemoryService longTermMemoryService,
+                                 ConversationSummaryService summaryService,
+                                 TokenEstimator tokenEstimator,
+                                 int maxContextTokens,
+                                 ContextUsageTracker usageTracker) {
         this.contextStore = contextStore;
         this.longTermMemoryService = longTermMemoryService;
         this.summaryService = summaryService;
         this.tokenEstimator = tokenEstimator;
         this.maxContextTokens = maxContextTokens;
+        this.usageTracker = usageTracker;
         this.budgetManager = new ContextBudgetManager(tokenEstimator);
     }
 
@@ -148,6 +166,10 @@ public class DefaultContextBuilder implements ContextBuilder {
 
         ContextMetadata metadata = new ContextMetadata(turnId, sources);
         int usedTokens = estimateMessagesTokens(messages);
+        // L1 埋点：实际发送 token（观察平均值是否受控，而非随轮次线性增长）
+        if (usageTracker != null) {
+            usageTracker.recordBuild(usedTokens);
+        }
         log.debug("ContextBuilder 组装完成 | messages={} | turns={}/{} | tokens={}/{} | coveredUntilSeq={}",
                 messages.size(), trimmed.size(), turns.size(), usedTokens, maxContextTokens, coveredUntilSeq);
 

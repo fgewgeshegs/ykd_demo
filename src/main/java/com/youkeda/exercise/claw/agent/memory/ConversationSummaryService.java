@@ -1,5 +1,8 @@
 package com.youkeda.exercise.claw.agent.memory;
 
+import com.youkeda.exercise.claw.agent.context.ContextUsageTracker;
+import com.youkeda.exercise.claw.agent.context.HeuristicTokenEstimator;
+import com.youkeda.exercise.claw.agent.context.TokenEstimator;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +55,10 @@ public class ConversationSummaryService {
     private final ContextStore contextStore;
     private final LLMClient llmClient;
     private final Executor taskExecutor;
+    /** L1 埋点：摘要压缩率统计（可 null = 不记录）。由 ReActAgentExecutor 装配共享实例。 */
+    private ContextUsageTracker usageTracker;
+    /** 字符启发式 token 估算（无状态，仅用于埋点，不参与核心逻辑）。 */
+    private final TokenEstimator tokenEstimator = new HeuristicTokenEstimator();
 
     public ConversationSummaryService(ConversationSummaryStore summaryStore,
                                       ContextStore contextStore,
@@ -66,6 +73,11 @@ public class ConversationSummaryService {
     /** 获取当前摘要（无则 null）。 */
     public ConversationSummary getSummary() {
         return summaryStore.get();
+    }
+
+    /** 装配共享的 L1 埋点聚合器（与 DefaultContextBuilder 同一实例）。 */
+    public void setUsageTracker(ContextUsageTracker usageTracker) {
+        this.usageTracker = usageTracker;
     }
 
     /** 异步触发归档判定（不阻塞调用方）。 */
@@ -107,6 +119,7 @@ public class ConversationSummaryService {
             // 生成合并摘要
             String oldText = summary != null ? summary.text() : "（无）";
             String batchText = formatTurns(unarchived);
+            int rawTokens = tokenEstimator.estimate(batchText);
             String merged = llmClient.chatWithSystemPrompt(
                     "你是对话摘要助手。请根据系统提示合并对话摘要。",
                     String.format(SUMMARY_PROMPT, oldText, batchText));
@@ -117,8 +130,13 @@ public class ConversationSummaryService {
 
             long newCoveredSeq = unarchived.get(unarchived.size() - 1).seq();
             summaryStore.save(new ConversationSummary(merged.strip(), newCoveredSeq));
-            log.info("对话摘要归档完成 | 覆盖到 seq={} | turns={} | summaryLen={}",
-                    newCoveredSeq, unarchived.size(), merged.length());
+            // L1 埋点：原文 token → 摘要 token 的压缩率
+            int mergedTokens = tokenEstimator.estimate(merged);
+            if (usageTracker != null) {
+                usageTracker.recordSummary(rawTokens, mergedTokens);
+            }
+            log.info("对话摘要归档完成 | 覆盖到 seq={} | turns={} | summaryLen={} | tokens={}→{}",
+                    newCoveredSeq, unarchived.size(), merged.length(), rawTokens, mergedTokens);
         } catch (Exception e) {
             log.warn("对话摘要归档失败 | error={}", e.getMessage());
         }

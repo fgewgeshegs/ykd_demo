@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.context.ContextBuilder;
+import com.youkeda.exercise.claw.agent.context.ContextUsageTracker;
 import com.youkeda.exercise.claw.agent.context.DefaultContextBuilder;
 import com.youkeda.exercise.claw.agent.context.HeuristicTokenEstimator;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
@@ -75,6 +76,9 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     public static final String SILENT_REPLY = "__HANDLED_WITHOUT_USER_REPLY__";
 
+    /** L1 埋点：每 N 次上下文组装打一次汇总日志。 */
+    private static final long CONTEXT_USAGE_REPORT_EVERY = 50;
+
     private final LLMClient llmClient;
     private final ToolRegistry functionRegistry;
     private final ContextStore contextStore;
@@ -96,6 +100,8 @@ public class ReActAgentExecutor implements AgentExecutor {
 
     // ==== 批次 2 拆分出的内部 helper（非 Spring bean，构造内用已有依赖创建）====
     private final SystemPromptBuilder systemPromptBuilder;
+    /** L1 埋点：上下文占用聚合器（DefaultContextBuilder 与 ConversationSummaryService 共享同一实例）。 */
+    private final ContextUsageTracker contextUsageTracker;
     private final SkillSessionUpdater skillSessionUpdater;
     private final ContextBuilder contextBuilder;
     private final SimpleChatClassifier simpleChatClassifier;
@@ -138,11 +144,15 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.pendingToolCoordinator = pendingToolCoordinator;
 
         // 内部 helper 用主类已有的依赖创建，保持 15 参构造签名不变（测试零改动）
+        this.contextUsageTracker = new ContextUsageTracker(CONTEXT_USAGE_REPORT_EVERY);
         this.systemPromptBuilder = new SystemPromptBuilder(llmClient, skillKnowledgeService);
         this.skillSessionUpdater = new SkillSessionUpdater(skillRouter, skillSessionStore);
         this.contextBuilder = new DefaultContextBuilder(
                 contextStore, longTermMemoryService, conversationSummaryService,
-                new HeuristicTokenEstimator(), 0);
+                new HeuristicTokenEstimator(), 0, contextUsageTracker);
+        if (conversationSummaryService != null) {
+            conversationSummaryService.setUsageTracker(contextUsageTracker);
+        }
         this.simpleChatClassifier = new SimpleChatClassifier(llmClient);
     }
 
