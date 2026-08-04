@@ -2,6 +2,7 @@ package com.youkeda.exercise.claw.agent.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.youkeda.exercise.claw.agent.CancellationManager;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.memory.MessageRole;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
@@ -51,7 +52,7 @@ class ExecutionLoopSkillReplyGuardTest {
 
         ExecutionLoop loop = new ExecutionLoop(
                 llm, toolExecutor, mock(PlanStore.class), validator, om,
-                List.of(), registry);
+                List.of(), registry, mock(CancellationManager.class));
 
         List<Message> messages = new ArrayList<>();
         messages.add(new Message("user", "我要去三亚"));
@@ -92,7 +93,7 @@ class ExecutionLoopSkillReplyGuardTest {
 
         ExecutionLoop loop = new ExecutionLoop(
                 llm, toolExecutor, mock(PlanStore.class), validator, om,
-                List.of(), registry);
+                List.of(), registry, mock(CancellationManager.class));
 
         List<Message> messages = new ArrayList<>();
         messages.add(new Message("user", "我要去三亚"));

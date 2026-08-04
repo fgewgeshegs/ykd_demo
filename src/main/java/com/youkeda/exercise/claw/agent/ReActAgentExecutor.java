@@ -372,6 +372,15 @@ public class ReActAgentExecutor implements AgentExecutor {
                 activityRecorder.requestCompleted(
                         activityRequestId, System.currentTimeMillis() - requestStartedAt);
                 return synthesizedReply;
+
+            case CANCELLED:
+                // 取消确认消息已由 ChatHandler 在 poll 线程同步发送，
+                // 此处仅做清理（关闭 Turn、保存 Session），返回 SILENT_REPLY 避免重复回复。
+                contextStore.closeTurn(roundId);
+                skillSessionStore.save(userId, session);
+                activityRecorder.requestCompleted(
+                        activityRequestId, System.currentTimeMillis() - requestStartedAt);
+                return SILENT_REPLY;
         }
         throw new IllegalStateException("Unknown loop status: " + result.status());
     }

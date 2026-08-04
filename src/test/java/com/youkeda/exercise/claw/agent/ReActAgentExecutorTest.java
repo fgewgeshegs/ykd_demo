@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.youkeda.exercise.claw.agent.CancellationManager;
 import com.youkeda.exercise.claw.agent.memory.ContextStore;
 import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.agent.model.PlanState;
@@ -200,7 +201,8 @@ class ReActAgentExecutorTest {
         ExecutionLoop executionLoop = new ExecutionLoop(
                 llmClient, toolExecutor, planStore, planValidator, objectMapper,
                 java.util.List.of(),
-                new SkillReplyGuardRegistry(java.util.List.of()));
+                new SkillReplyGuardRegistry(java.util.List.of()),
+                mock(CancellationManager.class));
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,
