@@ -55,7 +55,6 @@ public class SafetyPolicy {
             "text_to_speech",
             "course_schedule",
             "exam_schedule",
-            "execute_plan_tasks",
             "anime_subscribe"
     );
 
