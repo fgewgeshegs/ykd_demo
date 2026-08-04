@@ -1,3 +1,4 @@
+
 package com.youkeda.exercise.claw.agent.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +12,7 @@ import com.youkeda.exercise.claw.agent.model.PlanTask;
 import com.youkeda.exercise.claw.agent.model.ResultStatus;
 import com.youkeda.exercise.claw.agent.model.TaskResult;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
+import com.youkeda.exercise.claw.agent.skill.PendingToolCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
@@ -41,6 +43,7 @@ public class ToolExecutor {
     private final ToolRegistry toolRegistry;
     private final SafetyPolicy safetyPolicy;
     private final SkillPendingCoordinator skillPendingCoordinator;
+    private final PendingToolCoordinator pendingToolCoordinator;
     private final AgentActivityRecorder activityRecorder;
     private final ToolResultStatusParser toolResultStatusParser;
     private final PlanStore planStore;
@@ -49,6 +52,7 @@ public class ToolExecutor {
     public ToolExecutor(ToolRegistry toolRegistry,
                         SafetyPolicy safetyPolicy,
                         SkillPendingCoordinator skillPendingCoordinator,
+                        PendingToolCoordinator pendingToolCoordinator,
                         AgentActivityRecorder activityRecorder,
                         ToolResultStatusParser toolResultStatusParser,
                         PlanStore planStore,
@@ -56,6 +60,7 @@ public class ToolExecutor {
         this.toolRegistry = toolRegistry;
         this.safetyPolicy = safetyPolicy;
         this.skillPendingCoordinator = skillPendingCoordinator;
+        this.pendingToolCoordinator = pendingToolCoordinator;
         this.activityRecorder = activityRecorder;
         this.toolResultStatusParser = toolResultStatusParser;
         this.planStore = planStore;
@@ -120,6 +125,11 @@ public class ToolExecutor {
                 result = policyBlocked(blockedReason);
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, blockedReason);
+                // Phase 5: 高风险工具创建待确认操作
+                if (blockedReason.contains("CONFIRM_REQUIRED")) {
+                    pendingToolCoordinator.createPending(
+                            execContext.userId(), toolName, tc.arguments());
+                }
             }
             // 工具调用数量上限
             else if (toolCallCount >= MAX_TOOL_CALLS) {
@@ -150,11 +160,15 @@ public class ToolExecutor {
                     activityRecorder.toolFinished(
                             activityRequestId, activeSkillName, toolName, succeeded,
                             System.currentTimeMillis() - toolStartedAt);
-                } catch (RuntimeException e) {
+                } catch (Exception e) {
+                    // Phase 3: 消费化异常 —— 不允许异常直接穿透 Agent Loop。
+                    // 转换为标准 ToolResult JSON 使 LLM 下一轮可见并自行恢复。
+                    log.error("工具执行异常 | name={} | args={} | error={}",
+                            toolName, tc.arguments(), e.getMessage(), e);
+                    result = toErrorResult(toolName, e);
                     activityRecorder.toolFinished(
                             activityRequestId, activeSkillName, toolName, false,
                             System.currentTimeMillis() - toolStartedAt);
-                    throw e;
                 }
                 log.info("工具执行完成 | name={} | result={}", toolName, truncate(result, 200));
 
@@ -186,6 +200,37 @@ public class ToolExecutor {
             boolean executedInBatch,
             int toolCallCount
     ) {}
+
+    /**
+     * 统一 ToolResult 格式：将异常转换为 LLM 可消费的标准 JSON。
+     *
+     * <p>格式：
+     * <pre>{@code
+     * {
+     *   "status": "ERROR",
+     *   "errorCode": "TOOL_EXECUTION_FAILED",
+     *   "message": "工具执行异常: xxx",
+     *   "fallback_required": true
+     * }
+     * }</pre>
+     */
+    static String toErrorResult(String toolName, Exception e) {
+        // 用 ObjectMapper 安全构建（避免手动拼接 JSON）
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode node =
+                    new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            node.put("status", "ERROR");
+            node.put("errorCode", "TOOL_EXECUTION_FAILED");
+            node.put("message", "工具 " + toolName + " 执行异常: "
+                    + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+            node.put("fallback_required", true);
+            return node.toString();
+        } catch (Exception jsonEx) {
+            // 理论上不可能到这里；兜底返回硬编码 JSON
+            return "{\"status\":\"ERROR\",\"errorCode\":\"TOOL_EXECUTION_FAILED\","
+                    + "\"message\":\"工具执行异常\",\"fallback_required\":true}";
+        }
+    }
 
     private String policyBlocked(String reason) {
         try {

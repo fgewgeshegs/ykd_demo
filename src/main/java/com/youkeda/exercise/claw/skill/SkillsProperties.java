@@ -9,12 +9,16 @@ import java.util.*;
 public class SkillsProperties {
 
     private Set<String> globalTools = new LinkedHashSet<>();
+    private Set<String> commonCapabilityTools = new LinkedHashSet<>();
     private Map<String, SkillDefinition> skills = new LinkedHashMap<>();
     private Map<String, WorkflowDefinition> workflows = new LinkedHashMap<>();
     private Map<String, String> skillWorkflowBindings = new LinkedHashMap<>();
 
     public Set<String> getGlobalTools() { return globalTools; }
     public void setGlobalTools(Set<String> globalTools) { this.globalTools = globalTools; }
+
+    public Set<String> getCommonCapabilityTools() { return commonCapabilityTools; }
+    public void setCommonCapabilityTools(Set<String> commonCapabilityTools) { this.commonCapabilityTools = commonCapabilityTools; }
 
     public Map<String, SkillDefinition> getSkills() { return skills; }
     public void setSkills(Map<String, SkillDefinition> skills) { this.skills = skills; }

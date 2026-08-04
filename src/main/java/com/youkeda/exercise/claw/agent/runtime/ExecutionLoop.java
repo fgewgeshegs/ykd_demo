@@ -52,6 +52,10 @@ public class ExecutionLoop {
     @Value("${agent.max-rounds:15}")
     private int maxRounds = 15;
 
+    /** 单次请求累计工具调用次数上限（独立于 maxRounds，可配置，默认 32） */
+    @Value("${agent.max-total-tool-calls:32}")
+    private int maxTotalToolCalls = 32;
+
     private final LLMClient llmClient;
     private final ToolExecutor toolExecutor;
     private final PlanStore planStore;
@@ -106,9 +110,17 @@ public class ExecutionLoop {
         Set<String> executedCalls = new HashSet<>();
         boolean forceTextResponse = false;
         PlanState planState = initialPlanState;
+        int totalToolCalls = 0;
 
         for (int round = 0; round < maxRounds; round++) {
             log.info("工具调用循环第 {} 轮 | messages={}", round + 1, messages.size());
+
+            // 累计工具调用次数超限 → 强制文本汇总
+            if (totalToolCalls >= maxTotalToolCalls) {
+                log.warn("累计工具调用次数已达上限 {} | totalToolCalls={}",
+                        maxTotalToolCalls, totalToolCalls);
+                forceTextResponse = true;
+            }
 
             List<ToolDefinition> roundTools = forceTextResponse ? List.of() : tools;
             LLMResponse response = llmClient.chatWithTools(systemPrompt, messages, roundTools);
@@ -132,6 +144,10 @@ public class ExecutionLoop {
                 log.info("LLM 返回计划 | goal={} | tasks={}",
                         plan.getGoal(),
                         plan.getTasks().stream().map(TaskDefinition::getId).toList());
+
+                logAgentLoop(round + 1, activeSkillName, tools.size(),
+                        "plan", List.of(), List.of(),
+                        totalToolCalls, maxTotalToolCalls);
 
                 PlanState newPlan = planDecisionToState(plan);
                 ValidationResult vr = planValidator.validate(newPlan);
@@ -184,6 +200,11 @@ public class ExecutionLoop {
                 }
 
                 log.info("LLM 直接回复 | reply={}", reply);
+
+                logAgentLoop(round + 1, activeSkillName, tools.size(),
+                        "text", List.of(), List.of(),
+                        totalToolCalls, maxTotalToolCalls);
+
                 return Result.textReply(reply, messages, planState, session);
             }
 
@@ -194,6 +215,12 @@ public class ExecutionLoop {
                     activityRequestId, activeSkillName, userMessage, executedCalls);
             session = batch.session();
             planState = batch.planState();
+            totalToolCalls += batch.toolCallCount();
+
+            // Phase 3: Agent Loop 汇总日志
+            logAgentLoop(round + 1, activeSkillName, tools.size(),
+                    "tool_calls", toolCalls, batch.results(),
+                    totalToolCalls, maxTotalToolCalls);
 
             // 静默策略（批次 2 外移，业务方注入）：命中表示已受理后台任务，
             // 必须在追加 assistant/tool 消息之前返回，否则本轮工具消息会进入上下文
@@ -351,5 +378,41 @@ public class ExecutionLoop {
             log.info("合并 {} 个并行工具调用 | ids={} | names={}",
                     toolCalls.size(), ids, names);
         }
+    }
+
+    // ==================== Agent Loop 日志 ====================
+
+    /**
+     * Phase 3：Agent Loop 级别汇总日志。
+     *
+     * <p>每轮打印一行，用于排查 Function Calling 问题。
+     * userMessage 截断 60 字符，tool args 不打印（脱敏）。
+     */
+    private void logAgentLoop(int iteration, String activeSkill, int availableTools,
+                              String responseType, List<LLMResponse.ToolCall> toolCalls,
+                              List<String> toolResults, int currentTotalToolCalls,
+                              int maxTotalToolCallsParam) {
+        if (!log.isInfoEnabled()) return;
+
+        List<String> toolNames = toolCalls.stream()
+                .map(LLMResponse.ToolCall::name)
+                .toList();
+        List<String> resultSummaries = toolResults.stream()
+                .map(r -> {
+                    if (r == null) return "null";
+                    // 只取 status 字段，不打印完整结果（避免日志膨胀）
+                    if (r.contains("\"status\":\"SUCCESS\"")) return "SUCCESS";
+                    if (r.contains("\"status\":\"BLOCKED\"")) return "BLOCKED";
+                    if (r.contains("\"status\":\"ERROR\"")) return "ERROR";
+                    if (r.contains("\"status\":\"PARTIAL\"")) return "PARTIAL";
+                    return r.length() > 20 ? r.substring(0, 20) + "..." : r;
+                })
+                .toList();
+
+        log.info("[Agent Loop] iteration={} | activeSkill={} | availableTools={} | "
+                        + "responseType={} | toolCalls={} | toolResults={} | totalToolCalls={}/{}",
+                iteration, activeSkill, availableTools,
+                responseType, toolNames, resultSummaries,
+                currentTotalToolCalls, maxTotalToolCallsParam);
     }
 }

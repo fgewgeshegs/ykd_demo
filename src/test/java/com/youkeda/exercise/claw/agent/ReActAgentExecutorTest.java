@@ -193,6 +193,7 @@ class ReActAgentExecutorTest {
 
         ToolExecutor toolExecutor = new ToolExecutor(
                 registry, safetyPolicy, mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
@@ -207,8 +208,17 @@ class ReActAgentExecutorTest {
                 mock(SkillKnowledgeService.class),
                 mock(AgentActivityRecorder.class),
                 skillExecutionDispatcher,
-                executionLoop);
+                executionLoop,
+                new CommonCapabilityRegistry(skillsProperties),
+                notHandlingPendingCoordinator());
         return new Fixture(llmClient, executor, contextStore);
+    }
+
+    private static PendingToolCoordinator notHandlingPendingCoordinator() {
+        PendingToolCoordinator mock = mock(PendingToolCoordinator.class);
+        when(mock.handleUserMessage(anyString(), anyString()))
+                .thenReturn(PendingToolCoordinator.Result.notHandled());
+        return mock;
     }
 
     private record Fixture(LLMClient llmClient, ReActAgentExecutor executor,

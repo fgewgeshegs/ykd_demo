@@ -47,21 +47,43 @@ class SkillsPropertiesYamlBindingTest {
     }
 
     @Test
-    void bindsCommonSkillWithGeneralPurposeToolsFromYaml() throws Exception {
+    void bindsCommonCapabilityToolsFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        Set<String> commonCapTools = properties.getCommonCapabilityTools();
+
+        assertNotNull(commonCapTools, "common-capability-tools 必须在 skills.yml 中定义");
+        assertTrue(commonCapTools.contains("create_schedule_task"),
+                "create_schedule_task 必须是通用能力工具，否则「设置提醒」永远不会真正创建定时任务");
+        assertTrue(commonCapTools.contains("list_schedule_tasks"),
+                "list_schedule_tasks 必须是通用能力工具，否则「我有哪些提醒」LLM 无工具可查，只能编造");
+        assertTrue(commonCapTools.contains("update_schedule_task"),
+                "update_schedule_task 必须是通用能力工具，否则「修改提醒」无法生效");
+        assertTrue(commonCapTools.contains("cancel_schedule_task"),
+                "cancel_schedule_task 必须是通用能力工具，否则「取消提醒」无法生效");
+        assertTrue(commonCapTools.contains("web_search"),
+                "web_search 必须是通用能力工具，否则各 skill 无法使用搜索能力");
+        assertTrue(commonCapTools.contains("file_generate"),
+                "file_generate 必须是通用能力工具");
+        assertTrue(commonCapTools.contains("file_read"),
+                "file_read 必须是通用能力工具");
+        assertTrue(commonCapTools.contains("file_search"),
+                "file_search 必须是通用能力工具");
+        assertTrue(commonCapTools.contains("image_generate"),
+                "image_generate 必须是通用能力工具");
+        assertTrue(commonCapTools.contains("text_to_speech"),
+                "text_to_speech 必须是通用能力工具");
+    }
+
+    @Test
+    void bindsCommonSkillWithNoRedundantCapabilityToolsFromYaml() throws Exception {
         SkillsProperties properties = bindSkillsProperties();
         SkillDefinition common = properties.getSkills().get("common");
 
         assertNotNull(common);
+        // common skill no longer lists capability tools — they come from commonCapabilityTools
         Set<String> tools = common.allowedTools();
-        assertTrue(tools.contains("create_schedule_task"),
-                "create_schedule_task 必须由 common 暴露，否则「设置提醒」永远不会真正创建定时任务");
-        assertTrue(tools.contains("list_schedule_tasks"),
-                "list_schedule_tasks 必须由 common 暴露，否则「我有哪些提醒」LLM 无工具可查，只能编造");
-        assertTrue(tools.contains("update_schedule_task"),
-                "update_schedule_task 必须由 common 暴露，否则「修改提醒」无法生效");
-        assertTrue(tools.contains("cancel_schedule_task"),
-                "cancel_schedule_task 必须由 common 暴露，否则「取消提醒」无法生效");
-        assertTrue(tools.contains("web_search"));
+        assertTrue(tools.isEmpty() || !tools.contains("web_search"),
+                "common skill 的 optionalTools 不应再包含 web_search（已提升到 common-capability-tools）");
     }
 
     @Test
@@ -73,6 +95,16 @@ class SkillsPropertiesYamlBindingTest {
         assertTrue(transport.allowedTools().contains("didi_ride"),
                 "transport 必须声明 didi_ride，且 DidiRideTool.getName() 必须一致（见 DidiRideToolTest）");
         assertTrue(transport.allowedTools().contains("transport_recommend"));
+    }
+
+    @Test
+    void bindsImageSkillWithGenerateToolFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        SkillDefinition image = properties.getSkills().get("image");
+
+        assertNotNull(image, "image 技能必须在 skills.yml 中定义，否则「生成图片」无法路由到 image_generate");
+        assertTrue(image.allowedTools().contains("image_generate"),
+                "image 必须声明 image_generate，且 ImageGenerationTool.getName() 必须一致");
     }
 
     private SkillsProperties bindSkillsProperties() throws Exception {

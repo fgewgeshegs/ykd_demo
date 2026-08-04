@@ -62,6 +62,7 @@ class ReActAgentExecutorSkillExecutionTest {
         PlanStore planStore = mock(PlanStore.class);
         ToolExecutor toolExecutor = new ToolExecutor(
                 toolRegistry, mock(SafetyPolicy.class), mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
@@ -84,7 +85,9 @@ class ReActAgentExecutorSkillExecutionTest {
                 mock(SkillKnowledgeService.class),
                 activityRecorder,
                 dispatcher,
-                executionLoop);
+                executionLoop,
+                new CommonCapabilityRegistry(new SkillsProperties()),
+                notHandlingPendingCoordinator());
 
         String result = executor.execute(new AgentContext()
                 .setUserId("owner")
@@ -92,5 +95,12 @@ class ReActAgentExecutorSkillExecutionTest {
 
         assertEquals(ReActAgentExecutor.SILENT_REPLY, result);
         verifyNoInteractions(llmClient);
+    }
+
+    private static PendingToolCoordinator notHandlingPendingCoordinator() {
+        PendingToolCoordinator mock = mock(PendingToolCoordinator.class);
+        when(mock.handleUserMessage(anyString(), anyString()))
+                .thenReturn(PendingToolCoordinator.Result.notHandled());
+        return mock;
     }
 }

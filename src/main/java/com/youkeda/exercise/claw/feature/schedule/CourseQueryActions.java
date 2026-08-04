@@ -30,19 +30,22 @@ public class CourseQueryActions {
     private final SemesterService semesterService;
     private final CourseMessageFormatter messageFormatter;
     private final ObjectMapper objectMapper;
+    private final CourseImportStateManager importStateManager;
 
     public CourseQueryActions(CourseService courseService,
                               CourseRepository courseRepository,
                               SemesterConfig semesterConfig,
                               SemesterService semesterService,
                               CourseMessageFormatter messageFormatter,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              CourseImportStateManager importStateManager) {
         this.courseService = courseService;
         this.courseRepository = courseRepository;
         this.semesterConfig = semesterConfig;
         this.semesterService = semesterService;
         this.messageFormatter = messageFormatter;
         this.objectMapper = objectMapper;
+        this.importStateManager = importStateManager;
     }
 
     public String handleQueryToday(String userId) {
@@ -91,6 +94,11 @@ public class CourseQueryActions {
     public String handleQueryAll(String userId) {
         List<CourseEntity> allCourses = courseService.getAllCourses(userId);
         if (allCourses.isEmpty()) {
+            // 课表为空：进入课表导入状态，使用户随后发送的课表文件/图片能被
+            // MessageRouter 正确路由到 CourseImportHandler（而非通用 FileHandler）。
+            // 这样「查看课表发现是空 → 引导上传 → 发文件」整条链路可衔接。
+            importStateManager.setWaitingFile(userId);
+            log.info("课表为空，已进入课表导入状态 | userId={}", userId);
             return "{\"action\":\"query_all\",\"courses\":[],\"message\":\"你还没有导入课表，快上传课表文件或告诉我课程信息吧！\"}";
         }
         return buildQueryResult("query_all", allCourses,

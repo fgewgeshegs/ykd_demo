@@ -42,6 +42,14 @@ import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserMa
  * <p>核心调度器：接收用户消息，通过 LLM + Function Calling 的循环自主决定调用哪些工具，
  * 最终给出回复。支持三路 LLM 输出：文本回复、工具调用、结构化计划。
  *
+ * <p>工具白名单（三级模型）：
+ * <ol>
+ *   <li>global tools — 系统级工具（memory_manage 等），始终可用</li>
+ *   <li>common capability tools — 跨 Skill 通用能力（web_search、file_generate 等），
+ *       通过 {@link CommonCapabilityRegistry} 管理</li>
+ *   <li>active skill tools — 当前活跃 Skill 的 allowedTools()</li>
+ * </ol>
+ *
  * <p>执行流程：
  * <ol>
  *   <li>取对话历史 + 当前用户消息</li>
@@ -83,6 +91,8 @@ public class ReActAgentExecutor implements AgentExecutor {
     private final AgentActivityRecorder activityRecorder;
     private final SkillExecutionDispatcher skillExecutionDispatcher;
     private final ExecutionLoop executionLoop;
+    private final CommonCapabilityRegistry commonCapabilityRegistry;
+    private final PendingToolCoordinator pendingToolCoordinator;
 
     // ==== 批次 2 拆分出的内部 helper（非 Spring bean，构造内用已有依赖创建）====
     private final SystemPromptBuilder systemPromptBuilder;
@@ -105,7 +115,9 @@ public class ReActAgentExecutor implements AgentExecutor {
                                SkillKnowledgeService skillKnowledgeService,
                                AgentActivityRecorder activityRecorder,
                                SkillExecutionDispatcher skillExecutionDispatcher,
-                               ExecutionLoop executionLoop) {
+                               ExecutionLoop executionLoop,
+                               CommonCapabilityRegistry commonCapabilityRegistry,
+                               PendingToolCoordinator pendingToolCoordinator) {
         this.llmClient = llmClient;
         this.functionRegistry = functionRegistry;
         this.contextStore = contextStore;
@@ -122,6 +134,8 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.activityRecorder = activityRecorder;
         this.skillExecutionDispatcher = skillExecutionDispatcher;
         this.executionLoop = executionLoop;
+        this.commonCapabilityRegistry = commonCapabilityRegistry;
+        this.pendingToolCoordinator = pendingToolCoordinator;
 
         // 内部 helper 用主类已有的依赖创建，保持 15 参构造签名不变（测试零改动）
         this.systemPromptBuilder = new SystemPromptBuilder(llmClient, skillKnowledgeService);
@@ -166,6 +180,25 @@ public class ReActAgentExecutor implements AgentExecutor {
         SkillDefinition activeSkill = skillRegistry.find(activeSkillName).orElse(null);
         activityRecorder.skillSelected(activityRequestId, activeSkillName);
 
+        // Phase 5: Pending Tool Confirmation — 拦截确认/取消消息
+        PendingToolCoordinator.Result pendingResult =
+                pendingToolCoordinator.handleUserMessage(userId, userMessage);
+        if (pendingResult.handled()) {
+            String reply = pendingResult.userReply();
+            contextStore.appendToTurn(roundId, new Message("assistant", reply));
+            contextStore.closeTurn(roundId);
+            skillSessionStore.save(userId, session);
+            if (pendingResult.type() == PendingToolCoordinator.Result.Type.EXECUTED
+                    || pendingResult.type() == PendingToolCoordinator.Result.Type.CANCELLED) {
+                activityRecorder.requestCompleted(
+                        activityRequestId, System.currentTimeMillis() - requestStartedAt);
+            } else {
+                activityRecorder.requestFailed(
+                        activityRequestId, reply, System.currentTimeMillis() - requestStartedAt);
+            }
+            return reply;
+        }
+
         // Skill dispatch (short-circuit)
         SkillExecutionResult skillExecution = skillExecutionDispatcher.dispatch(
                 activeSkill, userMessage, session);
@@ -195,14 +228,26 @@ public class ReActAgentExecutor implements AgentExecutor {
             return reply;
         }
 
-        // Build effective tool set
+        // Build effective tool set (three-tier whitelist)
+        // Tier 1: global tools (system-level, always available)
+        // Tier 2: common capability tools (cross-skill, e.g. web_search, file_generate)
+        // Tier 3: active skill tools (skill-specific allowedTools)
         Set<String> effectiveTools = new LinkedHashSet<>();
-        if (skillsProperties.getGlobalTools() != null) {
-            effectiveTools.addAll(skillsProperties.getGlobalTools());
-        }
-        if (activeSkill != null) {
-            effectiveTools.addAll(activeSkill.allowedTools());
-        }
+        Set<String> globalTools = skillsProperties.getGlobalTools() != null
+                ? skillsProperties.getGlobalTools() : Set.of();
+        Set<String> commonCapTools = commonCapabilityRegistry.getTools();
+        Set<String> skillTools = activeSkill != null
+                ? activeSkill.allowedTools() : Set.of();
+
+        effectiveTools.addAll(globalTools);
+        effectiveTools.addAll(commonCapTools);
+        effectiveTools.addAll(skillTools);
+
+        log.debug("[Tool Assembly] activeSkill: {}", activeSkillName);
+        log.debug("[Tool Assembly] globalTools: {}", globalTools);
+        log.debug("[Tool Assembly] commonCapabilityTools: {}", commonCapTools);
+        log.debug("[Tool Assembly] skillTools: {}", skillTools);
+        log.debug("[Tool Assembly] finalTools ({} total): {}", effectiveTools.size(), effectiveTools);
 
         // Build dynamic system prompt
         String systemPrompt = systemPromptBuilder.build(context, activeSkill);

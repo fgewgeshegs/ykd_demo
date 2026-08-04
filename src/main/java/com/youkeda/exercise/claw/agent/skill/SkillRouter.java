@@ -187,12 +187,31 @@ public class SkillRouter {
 
         for (SkillDefinition skill : all) {
             if ("common".equals(skill.name())) continue;
-            SkillTriggerPolicy policy = triggerPolicyFactory.getPolicy(skill.triggerPolicyName());
-            SkillTriggerMatch match = policy.match(afterNegation, Optional.empty());
-            if (match.matched() && match.confidence() >= 0.6) {
+
+            // 与 Layer 3 相同的「按 skill 取词」：默认关键词策略直接匹配本 skill 的关键词，
+            // 避免共享 KeywordTriggerPolicy 把别家 skill 的关键词记到当前遍历的 skill 头上
+            // （否则 travel 会抢走 transport 的「打车」）。自定义策略（transport/scout）走各自 policy。
+            boolean isDefaultKeywordPolicy = skill.triggerPolicyName() == null
+                    || "keywordTriggerPolicy".equals(skill.triggerPolicyName());
+
+            double confidence;
+            boolean matched;
+            if (isDefaultKeywordPolicy) {
+                List<String> skillKeywords = triggerProperties.getTriggers().get(skill.name());
+                if (skillKeywords == null || skillKeywords.isEmpty()) continue;
+                matched = skillKeywords.stream().anyMatch(afterNegation::contains);
+                confidence = 0.85;
+            } else {
+                SkillTriggerPolicy policy = triggerPolicyFactory.getPolicy(skill.triggerPolicyName());
+                SkillTriggerMatch match = policy.match(afterNegation, Optional.empty());
+                matched = match.matched();
+                confidence = match.confidence();
+            }
+
+            if (matched && confidence >= 0.6) {
                 return new SkillRoutingResult(skill.name(), Set.of(),
                         SkillRoutingResult.SkillRoutingAction.SWITCH,
-                        match.confidence(), "explicit switch to " + skill.name());
+                        confidence, "explicit switch to " + skill.name());
             }
         }
         return null;

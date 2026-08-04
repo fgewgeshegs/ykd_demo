@@ -1,3 +1,4 @@
+
 package com.youkeda.exercise.claw.agent.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +9,7 @@ import com.youkeda.exercise.claw.agent.model.ExecutionStatus;
 import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.model.PlanTask;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
+import com.youkeda.exercise.claw.agent.skill.PendingToolCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
@@ -37,6 +39,7 @@ class ToolExecutorTest {
     private final ToolResultStatusParser statusParser = mock(ToolResultStatusParser.class);
     private final ToolExecutor executor = new ToolExecutor(
             registry, safetyPolicy, mock(SkillPendingCoordinator.class),
+            mock(PendingToolCoordinator.class),
             mock(AgentActivityRecorder.class), statusParser, planStore, new ObjectMapper());
 
     private final ToolExecutionBatchRunner runner = new ToolExecutionBatchRunner();

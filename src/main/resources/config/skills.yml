@@ -4,19 +4,27 @@ claw:
     - time_query
     - skill_knowledge_manage
 
+  common-capability-tools:
+    - file_generate
+    - file_save
+    - file_read
+    - file_search
+    - image_generate
+    - text_to_speech
+    - create_schedule_task
+    - list_schedule_tasks
+    - update_schedule_task
+    - cancel_schedule_task
+    - web_search
+    - holiday_check
+
   skills:
     common:
       enabled: true
       priority: 0
       tags: [通用]
       requiredTools: []
-      optionalTools:
-        - create_schedule_task
-        - list_schedule_tasks
-        - update_schedule_task
-        - cancel_schedule_task
-        - web_search
-        - holiday_check
+      optionalTools: []
       systemPromptResource: prompts/skills/common.txt
       knowledge:
         enabled: false
@@ -58,10 +66,8 @@ claw:
         - map_route_planning
         - map_distance_calculate
         - weather_query
-        - holiday_check
         - transport_recommend
         - place_image_search
-        - web_search
       systemPromptResource: prompts/skills/travel.txt
       knowledge:
         enabled: false
@@ -81,7 +87,6 @@ claw:
         - map_search_place
         - map_route_planning
         - map_distance_calculate
-        - web_search
       systemPromptResource: prompts/skills/transport.txt
       triggerPolicyName: transportTriggerPolicy
       knowledge:
@@ -96,7 +101,7 @@ claw:
       priority: 2
       tags: [天气]
       requiredTools: [weather_query]
-      optionalTools: [web_search]
+      optionalTools: []
       systemPromptResource: prompts/skills/weather.txt
       triggerPolicyName: keywordTriggerPolicy
 
@@ -135,6 +140,22 @@ claw:
         topK: 3
         minScore: 0.50
         maxContextChars: 6000
+
+    image:
+      enabled: true
+      priority: 5
+      tags: [图片]
+      description: 图片生成。根据用户描述生成写实、卡通、水墨、油画、素描等风格的图片，适用于画图、生成图片、绘图请求。
+      requiredTools:
+        - image_generate
+      optionalTools: []
+      systemPromptResource: prompts/skills/image.txt
+      knowledge:
+        enabled: false
+        namespaces: []
+        topK: 0
+        minScore: 0.0
+        maxContextChars: 0
 
   workflows:
     scoutWorkflow:
