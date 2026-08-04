@@ -73,10 +73,7 @@ public class SafetyPolicy {
             "place_image_search",
             "transport_recommend",
             "anime_recommend",
-            "exam_reminder_setup",
-            "scout_rss",
-            "scout_job",
-            "scout_github"
+            "exam_reminder_setup"
     );
 
     /** 是否要求高风险工具确认（可通过配置关闭，默认开启） */
