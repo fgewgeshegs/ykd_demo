@@ -318,12 +318,12 @@ class ToolAssemblyCrossSkillTest {
         PlanStore planStore = new DefaultPlanStore();
         ToolExecutor toolExecutor = new ToolExecutor(
                 registry, mock(SafetyPolicy.class), mock(SkillPendingCoordinator.class),
-                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), new ToolResultStatusParser(objectMapper),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
                 llmClient, toolExecutor, planStore, new PlanValidator(), objectMapper,
-                List.of(), List.of());
+                List.of(), new SkillReplyGuardRegistry(List.of()),
+                mock(com.youkeda.exercise.claw.agent.CancellationManager.class));
 
         CommonCapabilityRegistry commonCapRegistry = new CommonCapabilityRegistry(props);
 

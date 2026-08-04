@@ -34,7 +34,6 @@ class ToolExecutionReliabilityTest {
     private final ToolResultStatusParser statusParser = mock(ToolResultStatusParser.class);
     private final ToolExecutor executor = new ToolExecutor(
             registry, safetyPolicy, pendingCoordinator,
-            mock(PendingToolCoordinator.class),
             activityRecorder, statusParser, mock(com.youkeda.exercise.claw.agent.plan.PlanStore.class),
             objectMapper);
 
@@ -158,22 +157,7 @@ class ToolExecutionReliabilityTest {
         assertDoesNotThrow(() -> objectMapper.readTree(errorResult));
     }
 
-    // ==================== 4. toErrorResult 静态方法 ====================
-
-    @Test
-    void toErrorResultProducesValidJson() {
-        String result = ToolExecutor.toErrorResult("test_tool",
-                new RuntimeException("连接被拒绝"));
-        assertNotNull(result);
-        assertTrue(result.contains("TOOL_EXECUTION_FAILED"));
-        assertTrue(result.contains("test_tool"));
-        assertTrue(result.contains("连接被拒绝"));
-
-        // must be valid JSON
-        assertDoesNotThrow(() -> objectMapper.readTree(result));
-    }
-
-    // ==================== 5. 多 Tool 连续调用不丢上下文 ====================
+    // ==================== 4. 多 Tool 连续调用不丢上下文 ====================
 
     @Test
     void multiToolCallSequenceShouldKeepContext() {

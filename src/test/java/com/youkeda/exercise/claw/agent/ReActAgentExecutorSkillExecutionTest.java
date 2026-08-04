@@ -63,13 +63,13 @@ class ReActAgentExecutorSkillExecutionTest {
         PlanStore planStore = mock(PlanStore.class);
         ToolExecutor toolExecutor = new ToolExecutor(
                 toolRegistry, mock(SafetyPolicy.class), mock(SkillPendingCoordinator.class),
-                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
                 llmClient, toolExecutor, planStore, mock(PlanValidator.class), objectMapper,
                 java.util.List.of(),
-                new SkillReplyGuardRegistry(java.util.List.of()));
+                new SkillReplyGuardRegistry(java.util.List.of()),
+                mock(com.youkeda.exercise.claw.agent.CancellationManager.class));
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient,

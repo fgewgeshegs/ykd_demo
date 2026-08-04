@@ -67,7 +67,9 @@ public class LLMAdapter {
                     node.put("reasoning_content", msg.reasoningContent());
                 }
                 if (msg.isToolCall()) {
-                    node.putNull("content");
+                    // 不输出 content 字段（而非 putNull），部分兼容端点（含 DeepSeek V4）
+                    // 拒绝显式 null 值返回 HTTP 400
+                    node.put("content", "");
                     ArrayNode tcs = node.putArray("tool_calls");
 
                     String tcId = msg.toolCallId();

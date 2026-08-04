@@ -120,7 +120,6 @@ class SafetyPolicyTest {
 
         ToolExecutor executor = new ToolExecutor(
                 registry, policy, mock(SkillPendingCoordinator.class),
-                mock(PendingToolCoordinator.class),
                 recorder, mock(ToolResultStatusParser.class), mock(PlanStore.class),
                 new ObjectMapper());
 
@@ -152,7 +151,6 @@ class SafetyPolicyTest {
 
         ToolExecutor executor = new ToolExecutor(
                 registry, policy, mock(SkillPendingCoordinator.class),
-                mock(PendingToolCoordinator.class),
                 recorder, mock(ToolResultStatusParser.class), mock(PlanStore.class),
                 new ObjectMapper());
 
@@ -184,7 +182,6 @@ class SafetyPolicyTest {
 
         ToolExecutor executor = new ToolExecutor(
                 registry, policy, mock(SkillPendingCoordinator.class),
-                mock(PendingToolCoordinator.class),
                 recorder, statusParser, mock(PlanStore.class),
                 new ObjectMapper());
 

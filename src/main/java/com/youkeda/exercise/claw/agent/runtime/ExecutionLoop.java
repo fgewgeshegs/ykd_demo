@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.agent.runtime;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 
+import com.youkeda.exercise.claw.agent.CancellationManager;
 import com.youkeda.exercise.claw.agent.memory.Message;
 import com.youkeda.exercise.claw.agent.memory.MessageRole;
 import com.youkeda.exercise.claw.agent.model.EvaluationState;
@@ -69,6 +70,8 @@ public class ExecutionLoop {
     private final List<LoopSuspensionPolicy> suspensionPolicies;
     /** Skill 文本回复结束条件校验注册表（业务方注入，如定时提醒防幻觉） */
     private final SkillReplyGuardRegistry replyGuardRegistry;
+    /** 用户任务取消状态管理器 */
+    private final CancellationManager cancellationManager;
 
     public ExecutionLoop(LLMClient llmClient,
                          ToolExecutor toolExecutor,
@@ -76,7 +79,8 @@ public class ExecutionLoop {
                          PlanValidator planValidator,
                          ObjectMapper objectMapper,
                          List<LoopSuspensionPolicy> suspensionPolicies,
-                         SkillReplyGuardRegistry replyGuardRegistry) {
+                         SkillReplyGuardRegistry replyGuardRegistry,
+                         CancellationManager cancellationManager) {
         this.llmClient = llmClient;
         this.toolExecutor = toolExecutor;
         this.planStore = planStore;
@@ -85,6 +89,7 @@ public class ExecutionLoop {
         this.suspensionPolicies = suspensionPolicies != null ? suspensionPolicies : List.of();
         this.replyGuardRegistry = replyGuardRegistry != null
                 ? replyGuardRegistry : new SkillReplyGuardRegistry(List.of());
+        this.cancellationManager = cancellationManager;
     }
 
     /**
@@ -121,6 +126,12 @@ public class ExecutionLoop {
         for (int round = 0; round < maxRounds; round++) {
             log.info("工具调用循环第 {} 轮 | messages={}", round + 1, messages.size());
 
+            // === 取消检查点 1：每轮 LLM 调用前 ===
+            if (isCancelled(execContext)) {
+                log.info("用户取消，终止循环（检查点1：LLM调用前）| userId={}", execContext.userId());
+                return Result.cancelled(messages, planState, session);
+            }
+
             // 累计工具调用次数超限 → 强制文本汇总
             if (totalToolCalls >= maxTotalToolCalls) {
                 log.warn("累计工具调用次数已达上限 {} | totalToolCalls={}",
@@ -136,12 +147,18 @@ public class ExecutionLoop {
             if (response == null) {
                 if (!roundTools.isEmpty()) {
                     log.warn("本轮带工具的 LLM 调用失败，降级不带工具重试（下一轮恢复工具）");
-                    response = llmClient.chatWithTools(messages, List.of());
+                    response = llmClient.chatWithTools(systemPrompt, messages, List.of());
                 }
                 if (response == null) {
                     log.warn("LLM 调用失败，结束循环");
                     return Result.llmFailed(messages, planState, session);
                 }
+            }
+
+            // === 取消检查点 2：LLM 返回后 ===
+            if (isCancelled(execContext)) {
+                log.info("用户取消，终止循环（检查点2：LLM返回后）| userId={}", execContext.userId());
+                return Result.cancelled(messages, planState, session);
             }
 
             // === 分支 1：结构化计划 ===
@@ -213,6 +230,13 @@ public class ExecutionLoop {
 
             // === 分支 3：工具调用 ===
             List<LLMResponse.ToolCall> toolCalls = response.getToolCalls();
+
+            // === 取消检查点 3：tool 执行前 ===
+            if (isCancelled(execContext)) {
+                log.info("用户取消，终止循环（检查点3：tool执行前）| userId={}", execContext.userId());
+                return Result.cancelled(messages, planState, session);
+            }
+
             ToolExecutor.ToolExecutionBatch batch = toolExecutor.executeToolCalls(
                     toolCalls, execContext, session, planState,
                     activityRequestId, activeSkillName, userMessage, executedCalls);
@@ -290,7 +314,9 @@ public class ExecutionLoop {
         /** 信息猎手后台任务已受理，需静默返回 */
         SILENT,
         /** 达到循环上限，需要使用 synthesize 汇总 */
-        MAX_ROUNDS
+        MAX_ROUNDS,
+        /** 用户取消，任务被中断 */
+        CANCELLED
     }
 
     public record Result(
@@ -318,6 +344,11 @@ public class ExecutionLoop {
         static Result maxRounds(List<Message> messages,
                                 PlanState planState, SkillSession session) {
             return new Result(LoopStatus.MAX_ROUNDS, null, messages, planState, session);
+        }
+
+        static Result cancelled(List<Message> messages,
+                                PlanState planState, SkillSession session) {
+            return new Result(LoopStatus.CANCELLED, null, messages, planState, session);
         }
     }
 
@@ -384,6 +415,21 @@ public class ExecutionLoop {
             log.info("合并 {} 个并行工具调用 | ids={} | names={}",
                     toolCalls.size(), ids, names);
         }
+    }
+
+    // ==================== 取消检查 ====================
+
+    /**
+     * 检查当前用户是否已被取消。
+     *
+     * @param execContext 工具执行上下文（含 userId）
+     * @return true 表示已取消
+     */
+    private boolean isCancelled(ToolExecutionContext execContext) {
+        if (cancellationManager == null) return false;
+        String userId = execContext != null ? execContext.userId() : null;
+        if (userId == null || userId.isEmpty()) return false;
+        return cancellationManager.isCancelled(userId);
     }
 
     // ==================== Agent Loop 日志 ====================
