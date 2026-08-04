@@ -16,6 +16,7 @@ import com.youkeda.exercise.claw.feature.scout.processor.InformationProcessor;
 import com.youkeda.exercise.claw.feature.scout.store.InformationStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -49,6 +50,7 @@ public class ScoutOrchestrator {
     private final DecisionMaker decisionMaker;
     private final NotificationService notifier;
     private final ScoutProperties props;
+    private ScoutKnowledgeProvider knowledgeProvider;
 
     public ScoutOrchestrator(UserContextService contextService,
                               UserBehaviorAnalyzer behaviorAnalyzer,
@@ -72,6 +74,11 @@ public class ScoutOrchestrator {
         this.props = props;
     }
 
+    @Autowired
+    void setKnowledgeProvider(ScoutKnowledgeProvider knowledgeProvider) {
+        this.knowledgeProvider = knowledgeProvider;
+    }
+
     // ==================== 手动触发：完整流程 ====================
 
 
@@ -79,10 +86,17 @@ public class ScoutOrchestrator {
      * 执行信息猎手完整流程（手动触发时使用）
      */
     public ScoutReport run() {
-        return run(null);
+        return run(ScoutExecutionContext.withoutKnowledge(""));
     }
 
     public ScoutReport run(String explicitQuery) {
+        return run(ScoutExecutionContext.withoutKnowledge(explicitQuery));
+    }
+
+    public ScoutReport run(ScoutExecutionContext executionContext) {
+        ScoutExecutionContext context = executionContext == null
+                ? ScoutExecutionContext.withoutKnowledge("") : executionContext;
+        String explicitQuery = context.explicitQuery();
         log.info("========== 信息猎手启动（完整流程）==========");
 
         try {
@@ -92,7 +106,8 @@ public class ScoutOrchestrator {
 
             // 2. 生成搜索任务
             log.info("[2/7] 生成搜索任务...");
-            List<SearchTask> tasks = planner.plan(profile, explicitQuery);
+            List<SearchTask> tasks = planner.plan(
+                    profile, explicitQuery, context.planningKnowledge());
             log.info("搜索任务 | count={}", tasks.size());
 
             // 3. 多源采集
@@ -121,7 +136,8 @@ public class ScoutOrchestrator {
 
             // 7. LLM 价值判断 + 推送
             log.info("[7/7] LLM 价值判断...");
-            List<Recommendation> recommendations = decisionMaker.judge(profile, candidates);
+            List<Recommendation> recommendations = decisionMaker.judge(
+                    profile, candidates, context.decisionKnowledge());
             log.info("推荐结果 | count={}", recommendations.size());
 
             // 推送
@@ -150,7 +166,9 @@ public class ScoutOrchestrator {
         log.info("========== 定时采集启动 ==========");
         try {
             UserProfile profile = contextService.buildProfile();
-            List<SearchTask> tasks = planner.plan(profile);
+            ScoutExecutionContext executionContext = scheduledKnowledgeContext();
+            List<SearchTask> tasks = planner.plan(
+                    profile, "", executionContext.planningKnowledge());
             List<InformationItem> rawItems = collectorRegistry.collectAll(tasks);
 
             if (rawItems.isEmpty()) {
@@ -193,7 +211,9 @@ public class ScoutOrchestrator {
             }
 
             // LLM 判断
-            List<Recommendation> recommendations = decisionMaker.judge(profile, candidates);
+            ScoutExecutionContext executionContext = scheduledKnowledgeContext();
+            List<Recommendation> recommendations = decisionMaker.judge(
+                    profile, candidates, executionContext.decisionKnowledge());
 
             // 推送
             notifier.notifyWithSummary(recommendations);
@@ -228,6 +248,12 @@ public class ScoutOrchestrator {
     }
 
     // ==================== 定时任务 4：过期清理（每天凌晨 3 点） ====================
+
+    private ScoutExecutionContext scheduledKnowledgeContext() {
+        return knowledgeProvider == null
+                ? ScoutExecutionContext.withoutKnowledge("")
+                : knowledgeProvider.forScheduledRun();
+    }
 
     /**
      * 定时清理：删除过期信息

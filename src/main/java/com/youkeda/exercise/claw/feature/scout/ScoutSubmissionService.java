@@ -35,6 +35,10 @@ public class ScoutSubmissionService {
     }
 
     public ScoutSubmissionResult submit(String query, String workflowName) {
+        return submit(ScoutExecutionContext.withoutKnowledge(query), workflowName);
+    }
+
+    public ScoutSubmissionResult submit(ScoutExecutionContext context, String workflowName) {
         try {
             Optional<WorkflowDefinition> definition = workflowRegistry.find(workflowName);
             Optional<WorkflowWorker> worker = workflowRegistry.getWorker(workflowName);
@@ -42,14 +46,16 @@ public class ScoutSubmissionService {
                 return ScoutSubmissionResult.unavailable("信息猎手工作流不可用");
             }
 
-            String normalizedQuery = query == null ? "" : query.trim();
+            ScoutExecutionContext normalizedContext = context == null
+                    ? ScoutExecutionContext.withoutKnowledge("") : context;
+            String normalizedQuery = normalizedContext.explicitQuery();
             String taskId = UUID.randomUUID().toString();
             if (!taskManager.createTaskIfNoActive(taskId, normalizedQuery)) {
                 return ScoutSubmissionResult.duplicate();
             }
             try {
                 CompletableFuture.runAsync(() -> executeWorkflow(
-                        worker.get(), definition.get(), taskId, workflowName, normalizedQuery));
+                        worker.get(), definition.get(), taskId, workflowName, normalizedContext));
             } catch (RuntimeException schedulingError) {
                 log.error("调度信息猎手工作流失败 | taskId={}", taskId, schedulingError);
                 taskManager.updateStatus(taskId, ScoutTaskStatus.FAILED);
@@ -64,10 +70,10 @@ public class ScoutSubmissionService {
     }
 
     private void executeWorkflow(WorkflowWorker worker, WorkflowDefinition definition, String taskId,
-                                 String workflowName, String query) {
+                                 String workflowName, ScoutExecutionContext context) {
         try {
             WorkflowResult result = worker.execute(new WorkflowRequest(
-                    taskId, workflowName, query, Instant.now(),
+                    taskId, workflowName, ScoutWorkflowPayload.encode(context), Instant.now(),
                     definition.timeout(), definition.retryMax()));
             if (result == null
                     || result.status() == WorkflowResult.WorkflowStatus.FAILED

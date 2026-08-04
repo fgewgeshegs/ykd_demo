@@ -9,6 +9,7 @@ import com.youkeda.exercise.claw.agent.model.EvaluationState;
 import com.youkeda.exercise.claw.agent.model.ExecutionStatus;
 import com.youkeda.exercise.claw.agent.model.PlanState;
 import com.youkeda.exercise.claw.agent.model.PlanTask;
+import com.youkeda.exercise.claw.agent.model.ResultStatus;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
 import com.youkeda.exercise.claw.agent.plan.PlanValidator;
 import com.youkeda.exercise.claw.agent.plan.ValidationResult;
@@ -25,8 +26,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -63,8 +67,8 @@ public class ExecutionLoop {
     private final ObjectMapper objectMapper;
     /** 工具批次执行后的静默策略（业务方注入，如信息猎手后台受理） */
     private final List<LoopSuspensionPolicy> suspensionPolicies;
-    /** 文本回复防幻觉 guard（业务方注入，如定时提醒创建） */
-    private final List<TextReplyGuard> replyGuards;
+    /** Skill 文本回复结束条件校验注册表（业务方注入，如定时提醒防幻觉） */
+    private final SkillReplyGuardRegistry replyGuardRegistry;
 
     public ExecutionLoop(LLMClient llmClient,
                          ToolExecutor toolExecutor,
@@ -72,14 +76,15 @@ public class ExecutionLoop {
                          PlanValidator planValidator,
                          ObjectMapper objectMapper,
                          List<LoopSuspensionPolicy> suspensionPolicies,
-                         List<TextReplyGuard> replyGuards) {
+                         SkillReplyGuardRegistry replyGuardRegistry) {
         this.llmClient = llmClient;
         this.toolExecutor = toolExecutor;
         this.planStore = planStore;
         this.planValidator = planValidator;
         this.objectMapper = objectMapper;
         this.suspensionPolicies = suspensionPolicies != null ? suspensionPolicies : List.of();
-        this.replyGuards = replyGuards != null ? replyGuards : List.of();
+        this.replyGuardRegistry = replyGuardRegistry != null
+                ? replyGuardRegistry : new SkillReplyGuardRegistry(List.of());
     }
 
     /**
@@ -108,6 +113,7 @@ public class ExecutionLoop {
             String userMessage) {
 
         Set<String> executedCalls = new HashSet<>();
+        Map<String, ResultStatus> toolStatuses = new HashMap<>();
         boolean forceTextResponse = false;
         PlanState planState = initialPlanState;
         int totalToolCalls = 0;
@@ -184,18 +190,15 @@ public class ExecutionLoop {
             if (!response.isToolCall()) {
                 String reply = response.getContent();
 
-                // 防幻觉 guard（批次 2 外移，业务方注入）：命中则注入提示重试
-                // 注意：guard 内循环命中需 break 后再 continue 外层 round 循环
-                boolean guarded = false;
-                for (TextReplyGuard guard : replyGuards) {
-                    String hint = guard.inspectBeforeReply(userMessage, reply, executedCalls);
-                    if (hint != null) {
-                        messages.add(new Message("system", hint));
-                        guarded = true;
-                        break;
-                    }
-                }
-                if (guarded) {
+                // Skill 回复守卫（注册表，业务方注入）：命中则注入 correction 提示重试
+                SkillReplyGuard.GuardResult guardResult = replyGuardRegistry.validate(
+                        activeSkillName, userMessage, reply, session, executedCalls, toolStatuses);
+                if (!guardResult.allowed()) {
+                    log.warn("Skill 回复守卫阻止文本结束 | skill={} | correction={}",
+                            activeSkillName, guardResult.correction());
+                    messages.add(new Message("system",
+                            Objects.requireNonNull(guardResult.correction(),
+                                    "guard correction must not be null")));
                     continue;
                 }
 
@@ -245,6 +248,9 @@ public class ExecutionLoop {
             if (!batch.executedInBatch()) {
                 forceTextResponse = true;
             }
+
+            // 记录本轮工具执行状态（供分支 2 文本结束守卫校验交付不变量）
+            toolStatuses.putAll(batch.toolStatuses());
         }
 
         // 达到局部上限

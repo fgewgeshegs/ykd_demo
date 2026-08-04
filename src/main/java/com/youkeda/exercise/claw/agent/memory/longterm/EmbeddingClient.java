@@ -12,35 +12,50 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/** OpenAI-compatible embedding client used by the long-term memory pipeline. */
+/** OpenAI-compatible embedding client with timeout and recoverable circuit breaker. */
 @Component
 public class EmbeddingClient {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddingClient.class);
-    private static final int TIMEOUT_SECONDS = 120;
-    private static final int HEALTH_CHECK_TIMEOUT_SECONDS = 5;
+    private static final Duration HEALTH_CHECK_TIMEOUT = Duration.ofSeconds(5);
+
+    enum CircuitState { CLOSED, OPEN, HALF_OPEN }
 
     private final EmbeddingProperties props;
     private final HttpClient httpClient;
     private final HttpClient healthCheckClient;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
-    /** 服务是否可用（启动时检查，不可用则跳过后续所有调用） */
-    private volatile boolean available = true;
+    private CircuitState circuitState = CircuitState.CLOSED;
+    private int consecutiveFailures;
+    private Instant openUntil = Instant.EPOCH;
+    private boolean halfOpenProbeInFlight;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public EmbeddingClient(EmbeddingProperties props, ObjectMapper objectMapper) {
+        this(props, objectMapper,
+                HttpClient.newBuilder().connectTimeout(props.getRequestTimeout()).build(),
+                HttpClient.newBuilder().connectTimeout(HEALTH_CHECK_TIMEOUT).build(),
+                Clock.systemUTC());
+    }
+
+    EmbeddingClient(EmbeddingProperties props,
+                    ObjectMapper objectMapper,
+                    HttpClient httpClient,
+                    HttpClient healthCheckClient,
+                    Clock clock) {
         this.props = props;
         this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                .build();
-        this.healthCheckClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(HEALTH_CHECK_TIMEOUT_SECONDS))
-                .build();
+        this.httpClient = httpClient;
+        this.healthCheckClient = healthCheckClient;
+        this.clock = clock;
     }
 
     @jakarta.annotation.PostConstruct
@@ -48,41 +63,35 @@ public class EmbeddingClient {
         checkHealth();
     }
 
-    /**
-     * 启动时检查 Embedding 服务是否可用。
-     * 不可用时标记为不可用，避免每次用户消息都发连接失败的错误日志。
-     */
     private void checkHealth() {
+        if (props.getApiKey() != null && !props.getApiKey().isBlank()) return;
         try {
-            // 尝试连接 embedding 服务根路径，看是否能连上
-            String url = props.getBaseUrl().replaceAll("/+$", "") + "/v1/embeddings";
+            String url = endpoint();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(HEALTH_CHECK_TIMEOUT_SECONDS))
+                    .timeout(HEALTH_CHECK_TIMEOUT)
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString("{\"model\":\"" + props.getModel() + "\",\"input\":[\"ping\"]}"))
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            "{\"model\":\"" + props.getModel() + "\",\"input\":[\"ping\"]}"))
                     .build();
-            if (props.getApiKey() != null && !props.getApiKey().isBlank()) {
-                // 需要 API Key 的服务跳过预检查
-                this.available = true;
-                return;
-            }
-
-            HttpResponse<String> response = healthCheckClient.send(request,
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = healthCheckClient.send(
+                    request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                onSuccess();
                 log.info("Embedding 服务连接成功 | url={} | status={}", url, response.statusCode());
-                this.available = true;
             } else {
-                log.warn("Embedding 服务返回异常状态码 | url={} | status={} | body={}",
-                        url, response.statusCode(), truncate(response.body(), 200));
-                this.available = false;
+                openCircuit();
+                log.warn("Embedding 服务预检查失败，熔断器将在冷却后自动探测 | status={}",
+                        response.statusCode());
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            openCircuit();
+            log.warn("Embedding 服务预检查被中断，已暂时打开熔断器");
         } catch (Exception e) {
-            log.warn("Embedding 服务不可用，已禁用向量嵌入。后续将静默跳过 Embedding 调用。"
-                    + " 如需启用请确认 Ollama/Xinference 已运行 | url={} | error={}",
-                    props.getBaseUrl(), e.getMessage());
-            this.available = false;
+            openCircuit();
+            log.warn("Embedding 服务预检查失败，熔断器将在冷却后自动探测 | error={}",
+                    e.getMessage());
         }
     }
 
@@ -90,23 +99,17 @@ public class EmbeddingClient {
         return embedBatch(List.of(text)).get(0);
     }
 
-    /**
-     * Embeds all texts in request order. Failures are explicit so zero vectors can
-     * never be searched or persisted as valid memory data.
-     */
     public List<float[]> embedBatch(List<String> texts) {
         if (texts == null || texts.isEmpty()) return List.of();
         if (texts.stream().anyMatch(text -> text == null || text.isBlank())) {
             throw new IllegalArgumentException("Embedding text must not be blank");
         }
-        if (!available) {
-            throw new IllegalStateException("Embedding service is not available (startup health check failed)");
-        }
+        beforeRequest();
 
         try {
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(props.getBaseUrl() + "/v1/embeddings"))
-                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                    .uri(URI.create(endpoint()))
+                    .timeout(props.getRequestTimeout())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(buildRequest(texts)));
             if (props.getApiKey() != null && !props.getApiKey().isBlank()) {
@@ -121,19 +124,83 @@ public class EmbeddingClient {
             }
 
             List<float[]> vectors = parseResponse(response.body(), texts.size());
+            onSuccess();
             log.debug("Embedding succeeded | count={} | dimension={}",
                     vectors.size(), vectors.get(0).length);
             return vectors;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            onFailure();
             throw new IllegalStateException("Embedding call interrupted", e);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            log.debug("Embedding call skipped: {}", e.getMessage());
+            onFailure();
+            log.debug("Embedding call failed: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.warn("Embedding call failed (embedding service may be unavailable)", e);
+            onFailure();
+            log.warn("Embedding call failed", e);
             throw new IllegalStateException("Embedding call failed", e);
         }
+    }
+
+    synchronized CircuitState circuitState() {
+        refreshOpenState();
+        return circuitState;
+    }
+
+    public synchronized String circuitStateName() {
+        refreshOpenState();
+        return circuitState.name();
+    }
+
+    private synchronized void beforeRequest() {
+        refreshOpenState();
+        if (circuitState == CircuitState.OPEN) {
+            throw new IllegalStateException("Embedding circuit is open until " + openUntil);
+        }
+        if (circuitState == CircuitState.HALF_OPEN) {
+            if (halfOpenProbeInFlight) {
+                throw new IllegalStateException("Embedding circuit half-open probe is in progress");
+            }
+            halfOpenProbeInFlight = true;
+        }
+    }
+
+    private synchronized void refreshOpenState() {
+        if (circuitState == CircuitState.OPEN && !clock.instant().isBefore(openUntil)) {
+            circuitState = CircuitState.HALF_OPEN;
+            halfOpenProbeInFlight = false;
+            log.info("Embedding circuit transitioned to HALF_OPEN");
+        }
+    }
+
+    private synchronized void onSuccess() {
+        circuitState = CircuitState.CLOSED;
+        consecutiveFailures = 0;
+        halfOpenProbeInFlight = false;
+    }
+
+    private synchronized void onFailure() {
+        halfOpenProbeInFlight = false;
+        if (circuitState == CircuitState.HALF_OPEN) {
+            openCircuit();
+            return;
+        }
+        consecutiveFailures++;
+        if (consecutiveFailures >= Math.max(1, props.getCircuit().getFailureThreshold())) {
+            openCircuit();
+        }
+    }
+
+    private synchronized void openCircuit() {
+        circuitState = CircuitState.OPEN;
+        halfOpenProbeInFlight = false;
+        openUntil = clock.instant().plus(props.getCircuit().getOpenDuration());
+        log.warn("Embedding circuit transitioned to OPEN | retryAfter={}", openUntil);
+    }
+
+    private String endpoint() {
+        return props.getBaseUrl().replaceAll("/+$", "") + "/v1/embeddings";
     }
 
     private String buildRequest(List<String> texts) throws Exception {
@@ -157,13 +224,11 @@ public class EmbeddingClient {
             if (embedding == null || !embedding.isArray()) {
                 throw new IllegalStateException("Embedding response contains an invalid vector");
             }
-
             int index = item.has("index") ? item.path("index").asInt(-1) : fallbackIndex;
             fallbackIndex++;
             if (index < 0 || index >= expectedCount || ordered[index] != null) {
                 throw new IllegalStateException("Invalid embedding response index: " + index);
             }
-
             float[] vector = new float[embedding.size()];
             double norm = 0d;
             for (int i = 0; i < embedding.size(); i++) {
@@ -191,10 +256,5 @@ public class EmbeddingClient {
             vectors.add(vector);
         }
         return vectors;
-    }
-
-    private static String truncate(String text, int maxLen) {
-        if (text == null) return "";
-        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
     }
 }

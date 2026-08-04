@@ -15,6 +15,7 @@ import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
 import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
+import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuardRegistry;
 import com.youkeda.exercise.claw.ai.retrieval.SkillKnowledgeService;
 import com.youkeda.exercise.claw.skill.SkillDefinition;
 import com.youkeda.exercise.claw.skill.SkillsProperties;
@@ -198,7 +199,8 @@ class ReActAgentExecutorTest {
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(
                 llmClient, toolExecutor, planStore, planValidator, objectMapper,
-                java.util.List.of(), java.util.List.of());
+                java.util.List.of(),
+                new SkillReplyGuardRegistry(java.util.List.of()));
 
         ReActAgentExecutor executor = new ReActAgentExecutor(
                 llmClient, registry, contextStore, objectMapper,

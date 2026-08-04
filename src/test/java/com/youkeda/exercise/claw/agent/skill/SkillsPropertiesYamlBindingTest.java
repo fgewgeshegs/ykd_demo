@@ -15,10 +15,19 @@ import org.springframework.core.io.ClassPathResource;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SkillsPropertiesYamlBindingTest {
+
+    @Test
+    void bindsKnowledgeGlobalSwitchAsEnabledByDefault() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+
+        assertNotNull(properties.getKnowledge());
+        assertTrue(properties.getKnowledge().isGlobalEnabled());
+    }
 
     @Test
     void bindsBackgroundWorkflowExecutionMetadataFromYaml() throws Exception {
@@ -84,6 +93,15 @@ class SkillsPropertiesYamlBindingTest {
         Set<String> tools = common.allowedTools();
         assertTrue(tools.isEmpty() || !tools.contains("web_search"),
                 "common skill 的 optionalTools 不应再包含 web_search（已提升到 common-capability-tools）");
+    }
+
+    @Test
+    void bindsTravelTriggerPolicyNameFromYaml() throws Exception {
+        SkillsProperties properties = bindSkillsProperties();
+        SkillDefinition travel = properties.getSkills().get("travel");
+        assertNotNull(travel);
+        assertEquals("travelTriggerPolicy", travel.triggerPolicyName(),
+                "travel 必须声明 custom triggerPolicy，否则「去 Bali 玩五天」这类非中文目的地请求无法触发");
     }
 
     @Test

@@ -1,4 +1,4 @@
-claw:
+﻿claw:
   global-tools:
     - memory_manage
     - time_query

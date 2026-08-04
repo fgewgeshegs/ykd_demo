@@ -5,8 +5,11 @@ public record SkillKnowledgeSearchResult(
         String skillName,
         String documentId,
         String content,
+        String contentHash,
         String source,
+        String heading,
         Integer pageNumber,
+        String version,
         double score
 ) {
 }

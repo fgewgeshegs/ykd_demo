@@ -1,4 +1,3 @@
-
 package com.youkeda.exercise.claw.agent.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,7 +11,6 @@ import com.youkeda.exercise.claw.agent.model.PlanTask;
 import com.youkeda.exercise.claw.agent.model.ResultStatus;
 import com.youkeda.exercise.claw.agent.model.TaskResult;
 import com.youkeda.exercise.claw.agent.plan.PlanStore;
-import com.youkeda.exercise.claw.agent.skill.PendingToolCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
@@ -23,7 +21,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -43,7 +43,6 @@ public class ToolExecutor {
     private final ToolRegistry toolRegistry;
     private final SafetyPolicy safetyPolicy;
     private final SkillPendingCoordinator skillPendingCoordinator;
-    private final PendingToolCoordinator pendingToolCoordinator;
     private final AgentActivityRecorder activityRecorder;
     private final ToolResultStatusParser toolResultStatusParser;
     private final PlanStore planStore;
@@ -52,7 +51,6 @@ public class ToolExecutor {
     public ToolExecutor(ToolRegistry toolRegistry,
                         SafetyPolicy safetyPolicy,
                         SkillPendingCoordinator skillPendingCoordinator,
-                        PendingToolCoordinator pendingToolCoordinator,
                         AgentActivityRecorder activityRecorder,
                         ToolResultStatusParser toolResultStatusParser,
                         PlanStore planStore,
@@ -60,7 +58,6 @@ public class ToolExecutor {
         this.toolRegistry = toolRegistry;
         this.safetyPolicy = safetyPolicy;
         this.skillPendingCoordinator = skillPendingCoordinator;
-        this.pendingToolCoordinator = pendingToolCoordinator;
         this.activityRecorder = activityRecorder;
         this.toolResultStatusParser = toolResultStatusParser;
         this.planStore = planStore;
@@ -93,6 +90,7 @@ public class ToolExecutor {
         List<String> results = new ArrayList<>();
         boolean executedInBatch = false;
         int toolCallCount = 0;
+        Map<String, ResultStatus> toolStatuses = new LinkedHashMap<>();
 
         for (LLMResponse.ToolCall tc : toolCalls) {
             String toolName = tc.name();
@@ -100,6 +98,7 @@ public class ToolExecutor {
 
             Tool fn = toolRegistry.find(toolName);
             String result;
+            ResultStatus resultStatus;
             String callSignature = toolName + "|" + tc.arguments();
 
             // Phase 1: 安全检查（CanExecute）
@@ -109,6 +108,7 @@ public class ToolExecutor {
             if (fn == null) {
                 log.warn("未找到工具: {}", toolName);
                 result = "{\"error\":\"未知工具: " + toolName + "\"}";
+                resultStatus = ResultStatus.FAILED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "未知工具");
             }
@@ -117,29 +117,28 @@ public class ToolExecutor {
                 log.warn("工具调用被可用性策略阻止 | name={} | message={}", toolName, userMessage);
                 String reason = fn.getUnavailableReason(execContext);
                 result = policyBlocked(reason);
+                resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, reason);
             }
             // 安全检查阻止
             else if (blockedReason != null) {
                 result = policyBlocked(blockedReason);
+                resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, blockedReason);
-                // Phase 5: 高风险工具创建待确认操作
-                if (blockedReason.contains("CONFIRM_REQUIRED")) {
-                    pendingToolCoordinator.createPending(
-                            execContext.userId(), toolName, tc.arguments());
-                }
             }
             // 工具调用数量上限
             else if (toolCallCount >= MAX_TOOL_CALLS) {
                 result = policyBlocked("本次请求工具调用数量已达上限，请使用已有结果生成答复。");
+                resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "工具调用数量已达上限");
             }
             // 去重（相同工具 + 相同参数）
             else if (!executedCalls.add(callSignature)) {
                 result = policyBlocked("相同工具和参数已经执行过，请使用已有结果，不要重复调用。");
+                resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "重复工具调用");
             }
@@ -153,22 +152,24 @@ public class ToolExecutor {
                 try {
                     result = fn.execute(tc.arguments(), execContext);
                     session = skillPendingCoordinator.afterToolExecution(session, toolName, result);
-                    ResultStatus resultStatus = parseResultStatus(result);
+                    resultStatus = parseResultStatus(result);
+                    if (resultStatus == null) {
+                        // 防御：解析器返回 null 时按失败处理
+                        resultStatus = ResultStatus.FAILED;
+                    }
                     // P0-4 fail-closed：UNKNOWN（解析失败）≠ SUCCESS/PARTIAL，活动统计记为失败
                     boolean succeeded = resultStatus == ResultStatus.SUCCESS
                             || resultStatus == ResultStatus.PARTIAL;
                     activityRecorder.toolFinished(
                             activityRequestId, activeSkillName, toolName, succeeded,
                             System.currentTimeMillis() - toolStartedAt);
-                } catch (Exception e) {
-                    // Phase 3: 消费化异常 —— 不允许异常直接穿透 Agent Loop。
-                    // 转换为标准 ToolResult JSON 使 LLM 下一轮可见并自行恢复。
-                    log.error("工具执行异常 | name={} | args={} | error={}",
-                            toolName, tc.arguments(), e.getMessage(), e);
-                    result = toErrorResult(toolName, e);
+                } catch (RuntimeException e) {
+                    resultStatus = ResultStatus.FAILED;
+                    toolStatuses.put(toolName, resultStatus);
                     activityRecorder.toolFinished(
                             activityRequestId, activeSkillName, toolName, false,
                             System.currentTimeMillis() - toolStartedAt);
+                    throw e;
                 }
                 log.info("工具执行完成 | name={} | result={}", toolName, truncate(result, 200));
 
@@ -185,10 +186,13 @@ public class ToolExecutor {
                     }
                 }
             }
+            toolStatuses.put(toolName, resultStatus);
             results.add(result);
         }
 
-        return new ToolExecutionBatch(results, session, planState, executedInBatch, toolCallCount);
+        return new ToolExecutionBatch(
+                results, session, planState, executedInBatch, toolCallCount,
+                Map.copyOf(toolStatuses));
     }
 
     // ==================== 工具方法 ====================
@@ -198,39 +202,9 @@ public class ToolExecutor {
             SkillSession session,
             PlanState planState,
             boolean executedInBatch,
-            int toolCallCount
+            int toolCallCount,
+            Map<String, ResultStatus> toolStatuses
     ) {}
-
-    /**
-     * 统一 ToolResult 格式：将异常转换为 LLM 可消费的标准 JSON。
-     *
-     * <p>格式：
-     * <pre>{@code
-     * {
-     *   "status": "ERROR",
-     *   "errorCode": "TOOL_EXECUTION_FAILED",
-     *   "message": "工具执行异常: xxx",
-     *   "fallback_required": true
-     * }
-     * }</pre>
-     */
-    static String toErrorResult(String toolName, Exception e) {
-        // 用 ObjectMapper 安全构建（避免手动拼接 JSON）
-        try {
-            com.fasterxml.jackson.databind.node.ObjectNode node =
-                    new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
-            node.put("status", "ERROR");
-            node.put("errorCode", "TOOL_EXECUTION_FAILED");
-            node.put("message", "工具 " + toolName + " 执行异常: "
-                    + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
-            node.put("fallback_required", true);
-            return node.toString();
-        } catch (Exception jsonEx) {
-            // 理论上不可能到这里；兜底返回硬编码 JSON
-            return "{\"status\":\"ERROR\",\"errorCode\":\"TOOL_EXECUTION_FAILED\","
-                    + "\"message\":\"工具执行异常\",\"fallback_required\":true}";
-        }
-    }
 
     private String policyBlocked(String reason) {
         try {
