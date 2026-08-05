@@ -316,7 +316,7 @@ public class CourseImportFlowActions {
         }
 
         // 两遍处理：先全部定位+校验（不 set），全部通过后再统一应用，避免校验失败污染 pending 实体
-        record ModifyOp(CourseEntity target, String weekType, Integer startPeriod, Integer endPeriod,
+        record ModifyOp(CourseEntity target, boolean delete, String weekType, Integer startPeriod, Integer endPeriod,
                         String classroom, String teacher, Integer startWeek, Integer endWeek) {}
         List<ModifyOp> ops = new ArrayList<>();
 
@@ -358,7 +358,14 @@ public class CourseImportFlowActions {
                 target = byName;
             }
             if (target == null) {
-                return errorJson("请提供 course_index（该天第几个）或 course_name 来指定要修改的课程。");
+                return errorJson("请提供 course_index（该天第几个）或 course_name 来指定要修改或删除的课程。");
+            }
+
+            // 删除标记：delete=true 时只定位+移除，不做字段修改
+            boolean delete = item.path("delete").asBoolean(false);
+            if (delete) {
+                ops.add(new ModifyOp(target, true, null, null, null, null, null, null, null));
+                continue;
             }
 
             // 解析待设值（先不 set，全部校验通过后统一应用）
@@ -386,12 +393,24 @@ public class CourseImportFlowActions {
                 return errorJson("week_type 只能为 ALL/ODD/EVEN。");
             }
 
-            ops.add(new ModifyOp(target, weekType, startPeriod, endPeriod, classroom, teacher, startWeek, endWeek));
+            ops.add(new ModifyOp(target, false, weekType, startPeriod, endPeriod, classroom, teacher, startWeek, endWeek));
         }
 
-        // 全部校验通过后统一应用
+        // 全部校验通过后统一应用：先删后改，避免删除影响后续修改的定位
         List<String> applied = new ArrayList<>();
+        List<String> removed = new ArrayList<>();
+        // 先删除（按 pending 中的对象移除）
         for (ModifyOp op : ops) {
+            if (op.delete()) {
+                boolean removedFlag = pending.removeIf(c -> c == op.target());
+                if (removedFlag) {
+                    removed.add(op.target().getCourseName());
+                }
+            }
+        }
+        // 再修改（此时 pending 已删完，剩余对象应用字段）
+        for (ModifyOp op : ops) {
+            if (op.delete()) continue;
             CourseEntity target = op.target();
             if (op.weekType() != null) target.setWeekType(op.weekType());
             if (op.startPeriod() != null) target.setStartPeriod(op.startPeriod());
@@ -418,14 +437,24 @@ public class CourseImportFlowActions {
         }
         int currentWeek = resolveCurrentWeek(userId);
 
+        StringBuilder msg = new StringBuilder();
+        if (!removed.isEmpty()) msg.append("已删除 ").append(removed.size()).append(" 门课（").append(String.join("、", removed)).append("）");
+        if (!applied.isEmpty()) {
+            if (!msg.isEmpty()) msg.append("，");
+            msg.append("已修改 ").append(applied.size()).append(" 门课");
+        }
+        if (msg.isEmpty()) msg.append("未做任何修改");
+        msg.append("。请确认预览后回复「确认」保存。");
+
         ObjectNode result = objectMapper.createObjectNode();
         result.put("action", "modify_pending");
         result.put("status", "preview");
         result.put("count", pending.size());
         result.put("modified", String.join("、", applied));
+        result.put("removed", String.join("、", removed));
         result.put("formatted_preview", messageFormatter.formatPendingImportPreview(
                 pending, semesterInfo, currentWeek, internalConflicts));
-        result.put("message", "已修改 " + applied.size() + " 门课程，请确认预览后回复「确认」保存。");
+        result.put("message", msg.toString());
         return result.toString();
     }
 

@@ -160,6 +160,14 @@ public class LLMClient {
 
         HttpResponse<String> response = httpClient.send(request,
                 HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 400) {
+            log.error("LLM HTTP 400 请求体尾部(最后500字符): {}",
+                    requestBody.length() > 500
+                            ? requestBody.substring(requestBody.length() - 500)
+                            : requestBody);
+            log.error("LLM HTTP 400 响应体(错误原因, 最后1000字符): {}",
+                    truncate(response.body(), 1000));
+        }
         checkHttpStatus(response.statusCode());
 
         String reply = parseResponse(response.body());
@@ -298,6 +306,8 @@ public class LLMClient {
                     requestBody.length() > 500
                             ? requestBody.substring(requestBody.length() - 500)
                             : requestBody);
+            log.error("LLM HTTP 400 响应体(错误原因, 最后1000字符): {}",
+                    truncate(response.body(), 1000));
         }
         checkHttpStatus(response.statusCode());
 
