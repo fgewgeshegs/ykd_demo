@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -225,6 +226,41 @@ public class CourseMessageFormatter {
         }
 
         sb.append("\n\n请确认是否导入以上课程？✅ 确认 / ❌ 取消");
+        return sb.toString();
+    }
+
+    /**
+     * 课表导入预览（按星期分组 + 组内编号）。
+     *
+     * <p>编号为该星期下的第几个（1-based），与 modify_pending 的 course_index 对应。
+     * 供 CourseImportHandler（用户展示 + 写上下文）和 CourseImportFlowActions（modify 后展示）复用。
+     */
+    public String formatPendingImportPreview(List<CourseEntity> courses) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("📋 已识别出以下 ").append(courses.size()).append(" 门课程：\n\n");
+
+        Map<Integer, List<CourseEntity>> byDay = new LinkedHashMap<>();
+        for (CourseEntity c : courses) {
+            byDay.computeIfAbsent(c.getDayOfWeek(), k -> new ArrayList<>()).add(c);
+        }
+        for (int day = 1; day <= 7; day++) {
+            List<CourseEntity> dayCourses = byDay.getOrDefault(day, List.of());
+            if (dayCourses.isEmpty()) continue;
+            sb.append("**").append(dayCourses.get(0).getDayDisplay()).append("**\n");
+            int idx = 1;
+            for (CourseEntity c : dayCourses) {
+                sb.append(idx++).append(". ");
+                sb.append("【").append(c.getCourseName()).append("】");
+                sb.append(" 第").append(c.getPeriodDisplay()).append("节");
+                if (!c.getClassroom().isBlank()) sb.append(" ").append(c.getClassroom());
+                if (!c.getTeacher().isBlank()) sb.append(" ").append(c.getTeacher());
+                sb.append(" (").append(c.getWeekDisplay()).append(")");
+                sb.append("\n");
+            }
+        }
+
+        sb.append("\n✅ 回复「确认」保存课表，回复「取消」丢弃。");
+        sb.append("\n💡 如需修改某门课，请告诉我「星期 + 课程名」或「星期 + 第几个」，例如「周一的英语改成单周」。");
         return sb.toString();
     }
 
