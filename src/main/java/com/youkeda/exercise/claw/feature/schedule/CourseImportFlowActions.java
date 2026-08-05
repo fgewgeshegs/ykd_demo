@@ -188,8 +188,14 @@ public class CourseImportFlowActions {
             result.put("warning", "检测到 " + conflicts.size() + " 个时间冲突，确认后冲突课程将被覆盖");
         }
 
-        result.put("formatted_preview",
-                messageFormatter.formatImportPreview(courses, conflicts, currentWeek));
+        // 与 modify_pending / 文件导入路径统一走带组内编号的预览，确保 course_index 始终有编号可对应
+        String semesterInfo = "";
+        if (detectedSemester != null) {
+            semesterInfo = "【" + detectedSemester.getDisplayName() + "】\n"
+                    + "第1周：" + detectedSemester.getStartDateDisplay() + "\n\n";
+        }
+        result.put("formatted_preview", messageFormatter.formatPendingImportPreview(
+                courses, semesterInfo, currentWeek, conflicts));
 
         String conflictSuffix = conflicts.isEmpty() ? "" : "，" + conflicts.size() + " 个时间冲突";
         result.put("message", "已识别出以下 " + courses.size() + " 门课程" + conflictSuffix
