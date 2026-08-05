@@ -291,6 +291,113 @@ public class CourseImportFlowActions {
     }
 
     /**
+     * 预览确认阶段修改待确认课程（支持一次多门）。
+     *
+     * <p>入参 courses 数组，每项：day_of_week(必填) + course_index(该天第几个,1-based)/course_name 定位
+     * + 可改字段(week_type/start_period/end_period/day_of_week/classroom/teacher/start_week/end_week)。
+     * 只改提供的字段，其余保持。改完重新生成预览，仍需用户确认才落库。
+     */
+    public String handleModifyPending(JsonNode args, String userId) {
+        List<CourseEntity> pending = new ArrayList<>(importStateManager.getPendingCourses(userId));
+        if (pending.isEmpty()) {
+            return errorJson("没有待确认的课程数据，请先上传课表。");
+        }
+
+        JsonNode coursesNode = args.get("courses");
+        if (coursesNode == null || !coursesNode.isArray() || coursesNode.isEmpty()) {
+            return errorJson("请提供要修改的课程（courses 数组，每项含 day_of_week 和 course_index/course_name）。");
+        }
+
+        List<String> applied = new ArrayList<>();
+        for (JsonNode item : coursesNode) {
+            int dayOfWeek = item.path("day_of_week").asInt(0);
+            if (dayOfWeek < 1 || dayOfWeek > 7) {
+                return errorJson("day_of_week 必须为 1-7（1=周一 ~ 7=周日）。");
+            }
+
+            // 定位该天的课程
+            List<CourseEntity> dayCourses = new ArrayList<>();
+            for (CourseEntity c : pending) {
+                if (c.getDayOfWeek() == dayOfWeek) dayCourses.add(c);
+            }
+            if (dayCourses.isEmpty()) {
+                return errorJson("第 " + dayOfWeek + " 天没有待确认课程。");
+            }
+
+            int index = item.path("course_index").asInt(0);
+            CourseEntity target = null;
+            if (index > 0) {
+                if (index > dayCourses.size()) {
+                    return errorJson("第 " + dayOfWeek + " 天只有 " + dayCourses.size() + " 门课，无法定位第 " + index + " 门。");
+                }
+                target = dayCourses.get(index - 1);
+            }
+            String nameHint = item.path("course_name").asText("");
+            if (!nameHint.isBlank()) {
+                CourseEntity byName = dayCourses.stream()
+                        .filter(c -> nameHint.equals(c.getCourseName()))
+                        .findFirst().orElse(null);
+                if (byName == null) {
+                    return errorJson("第 " + dayOfWeek + " 天没有名为「" + nameHint + "」的课程。");
+                }
+                if (target != null && !target.getCourseName().equals(nameHint)) {
+                    return errorJson("course_index=" + index + " 指向「" + target.getCourseName()
+                            + "」，与 course_name「" + nameHint + "」不一致，请确认指代。");
+                }
+                target = byName;
+            }
+            if (target == null) {
+                return errorJson("请提供 course_index（该天第几个）或 course_name 来指定要修改的课程。");
+            }
+
+            // 应用修改字段
+            if (item.has("week_type")) target.setWeekType(item.get("week_type").asText());
+            if (item.has("start_period")) target.setStartPeriod(item.get("start_period").asInt());
+            if (item.has("end_period")) target.setEndPeriod(item.get("end_period").asInt());
+            if (item.has("day_of_week")) target.setDayOfWeek(item.get("day_of_week").asInt());
+            if (item.has("classroom")) target.setClassroom(item.get("classroom").asText());
+            if (item.has("teacher")) target.setTeacher(item.get("teacher").asText());
+            if (item.has("start_week")) target.setStartWeek(item.get("start_week").asInt());
+            if (item.has("end_week")) target.setEndWeek(item.get("end_week").asInt());
+
+            applied.add(target.getCourseName());
+        }
+
+        importStateManager.setPendingCourses(userId, pending);
+
+        List<String> internalConflicts = detectInternalDayConflicts(pending);
+        for (String conflict : internalConflicts) {
+            log.warn("modify_pending 后存在同天同时段冲突 | userId={} | {}", userId, conflict);
+        }
+
+        SemesterEntity pendingSemester = importStateManager.getPendingSemester(userId);
+        String semesterInfo = "";
+        if (pendingSemester != null) {
+            semesterInfo = "【" + pendingSemester.getDisplayName() + "】\n"
+                    + "第1周：" + pendingSemester.getStartDateDisplay() + "\n\n";
+        }
+        int currentWeek = resolveCurrentWeek(userId);
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("action", "modify_pending");
+        result.put("status", "preview");
+        result.put("count", pending.size());
+        result.put("modified", String.join("、", applied));
+        result.put("formatted_preview", messageFormatter.formatPendingImportPreview(
+                pending, semesterInfo, currentWeek, internalConflicts));
+        result.put("message", "已修改 " + applied.size() + " 门课程，请确认预览后回复「确认」保存。");
+        return result.toString();
+    }
+
+    private String errorJson(String message) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("action", "modify_pending");
+        node.put("status", "error");
+        node.put("message", message);
+        return node.toString();
+    }
+
+    /**
      * 用户确认系统自动检测的学期
      *
      * <p>学期信息已通过 handleParse 或 handler 保存为 pendingSemester，
