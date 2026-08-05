@@ -568,7 +568,22 @@ public class CourseImportHandler {
     // ==================== 预览构建 ====================
 
     private String buildPreview(String userId, List<CourseEntity> courses) {
-        return messageFormatter.formatPendingImportPreview(courses);
+        int currentWeek = resolveCurrentWeek(userId);
+
+        SemesterEntity pendingSemester = importStateManager.getPendingSemester(userId);
+        String semesterInfo = "";
+        if (pendingSemester != null) {
+            semesterInfo = "【" + pendingSemester.getDisplayName() + "】\n"
+                    + "第1周：" + pendingSemester.getStartDateDisplay() + "\n\n";
+        }
+
+        List<String> internalConflicts = detectInternalDayConflicts(courses);
+        if (!internalConflicts.isEmpty()) {
+            log.warn("课表导入：识别结果存在同天同时段冲突 | userId={} | conflicts={}",
+                    userId, internalConflicts);
+        }
+
+        return messageFormatter.formatPendingImportPreview(courses, semesterInfo, currentWeek, internalConflicts);
     }
 
     /**

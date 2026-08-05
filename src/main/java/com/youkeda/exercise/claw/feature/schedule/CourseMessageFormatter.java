@@ -230,14 +230,32 @@ public class CourseMessageFormatter {
     }
 
     /**
-     * 课表导入预览（按星期分组 + 组内编号）。
+     * 课表导入预览（按星期分组 + 组内编号 + 上下文信息）。
      *
      * <p>编号为该星期下的第几个（1-based），与 modify_pending 的 course_index 对应。
+     * 学期信息、当前周次、冲突告警统一由本方法生成，调用方只负责组装参数，
+     * 保证用户展示与 Agent 上下文看到的预览完全一致。
      * 供 CourseImportHandler（用户展示 + 写上下文）和 CourseImportFlowActions（modify 后展示）复用。
+     *
+     * @param courses     待确认课程列表
+     * @param semesterInfo 学期信息文本（形如 "【2026秋】\n第1周：2026-09-07\n\n"，可为空字符串）
+     * @param currentWeek  当前教学周（&lt;=0 表示无，不显示）
+     * @param conflicts    冲突描述列表（可为 null/空）
      */
-    public String formatPendingImportPreview(List<CourseEntity> courses) {
+    public String formatPendingImportPreview(List<CourseEntity> courses,
+                                             String semesterInfo,
+                                             int currentWeek,
+                                             List<String> conflicts) {
         StringBuilder sb = new StringBuilder();
-        sb.append("📋 已识别出以下 ").append(courses.size()).append(" 门课程：\n\n");
+        sb.append("📋 已识别出以下 ").append(courses.size()).append(" 门课程");
+        if (currentWeek > 0) {
+            sb.append("（当前第 ").append(currentWeek).append(" 周）");
+        }
+        sb.append("：\n\n");
+
+        if (semesterInfo != null && !semesterInfo.isBlank()) {
+            sb.append(semesterInfo);
+        }
 
         Map<Integer, List<CourseEntity>> byDay = new LinkedHashMap<>();
         for (CourseEntity c : courses) {
@@ -249,13 +267,20 @@ public class CourseMessageFormatter {
             sb.append("**").append(dayCourses.get(0).getDayDisplay()).append("**\n");
             int idx = 1;
             for (CourseEntity c : dayCourses) {
-                sb.append(idx++).append(". ");
+                sb.append("  ").append(idx++).append(". ");
                 sb.append("【").append(c.getCourseName()).append("】");
                 sb.append(" 第").append(c.getPeriodDisplay()).append("节");
                 if (!c.getClassroom().isBlank()) sb.append(" ").append(c.getClassroom());
                 if (!c.getTeacher().isBlank()) sb.append(" ").append(c.getTeacher());
                 sb.append(" (").append(c.getWeekDisplay()).append(")");
                 sb.append("\n");
+            }
+        }
+
+        if (conflicts != null && !conflicts.isEmpty()) {
+            sb.append("\n⚠️ 检测到 ").append(conflicts.size()).append(" 处时间冲突，可能是识别错误：\n");
+            for (String conflict : conflicts) {
+                sb.append("   · ").append(conflict).append("\n");
             }
         }
 
