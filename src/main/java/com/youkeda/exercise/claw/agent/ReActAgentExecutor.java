@@ -149,7 +149,7 @@ public class ReActAgentExecutor implements AgentExecutor {
         this.skillSessionUpdater = new SkillSessionUpdater(skillRouter, skillSessionStore);
         this.contextBuilder = new DefaultContextBuilder(
                 contextStore, longTermMemoryService, conversationSummaryService,
-                new HeuristicTokenEstimator(), 0, contextUsageTracker);
+                new HeuristicTokenEstimator(), 32768, contextUsageTracker);
         if (conversationSummaryService != null) {
             conversationSummaryService.setUsageTracker(contextUsageTracker);
         }

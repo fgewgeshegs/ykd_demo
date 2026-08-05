@@ -35,8 +35,9 @@ class EmbeddingClientCircuitBreakerTest {
                 + "{\"index\":0,\"embedding\":[1.0]}]}");
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(response);
+        EmbeddingCacheStore l2Cache = mock(EmbeddingCacheStore.class);
         EmbeddingClient client = new EmbeddingClient(
-                props, new ObjectMapper(), httpClient, httpClient,
+                props, new ObjectMapper(), l2Cache, httpClient, httpClient,
                 Clock.fixed(Instant.parse("2026-08-03T00:00:00Z"), ZoneId.of("UTC")));
 
         java.util.List<float[]> vectors = client.embedBatch(java.util.List.of("a", "b"));
@@ -62,8 +63,9 @@ class EmbeddingClientCircuitBreakerTest {
         when(response.statusCode()).thenReturn(500);
         when(response.body()).thenReturn(
                 "{\"data\":[{\"index\":0,\"embedding\":[1.0,2.0]}]}");
+        EmbeddingCacheStore l2Cache = mock(EmbeddingCacheStore.class);
         EmbeddingClient client = new EmbeddingClient(
-                props, new ObjectMapper(), http, health, clock);
+                props, new ObjectMapper(), l2Cache, http, health, clock);
 
         assertThrows(IllegalStateException.class, () -> client.embed("first"));
         assertThrows(IllegalStateException.class, () -> client.embed("second"));

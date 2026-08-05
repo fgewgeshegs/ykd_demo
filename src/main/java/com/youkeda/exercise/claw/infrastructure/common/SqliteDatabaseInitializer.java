@@ -269,6 +269,19 @@ public class SqliteDatabaseInitializer {
             ON anime_reminder_task(status, remind_time)
         """);
 
+        // === Embedding 向量持久化缓存（L2 层）===
+        // 每条文本嵌入后永久缓存，进程重启后无需重新调 Embedding API。
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS embedding_cache (
+                text_hash TEXT PRIMARY KEY,
+                text TEXT NOT NULL,
+                vector_blob BLOB NOT NULL,
+                model TEXT NOT NULL DEFAULT 'bge-m3',
+                dimension INTEGER NOT NULL DEFAULT 1024,
+                created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+        """);
+
         log.debug("数据库表结构创建完成");
     }
 
