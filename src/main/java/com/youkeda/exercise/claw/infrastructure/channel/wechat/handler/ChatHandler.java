@@ -85,11 +85,34 @@ public class ChatHandler implements WechatMessageHandler {
         String userId = wechatUserManager.getOwnerUserId();
         String userText = message.getText();
 
-        // 取消命令检测：同步处理，设置取消标记并立即回复
+        // 取消命令检测：同步处理，设置取消标记并立即回复。
+        // 若消息中包含后续任务内容（如"算了，生成一张人物图"），
+        // 提取取消关键词后的部分作为新任务提交执行。
         if (isCancelCommand(userText)) {
             cancellationManager.cancel(userId);
             log.info("收到取消命令 | userId={} | text={}", userId, userText);
             wechatClient.sendTextMessage(userId, CANCELLED_REPLY);
+
+            String remaining = extractRemainingAfterCancelKeyword(userText);
+            if (remaining != null && !remaining.isBlank()) {
+                log.info("取消命令中包含后续任务 | userId={} | remaining={}", userId, remaining);
+                com.youkeda.exercise.claw.agent.AgentContext newContext =
+                        new com.youkeda.exercise.claw.agent.AgentContext()
+                        .setUserId(userId)
+                        .setContextToken(message.getContextToken())
+                        .setRawMessage(message)
+                        .setMessage(remaining)
+                        .setMessageType(MessageType.TEXT)
+                        .setRoundId(message.getRoundId());
+                try {
+                    agentExecutionPool.execute(userId,
+                            () -> executeAndSendReply(newContext, userId));
+                } catch (RejectedExecutionException e) {
+                    log.error("取消后新任务提交失败 | userId={}", userId, e);
+                    wechatClient.sendTextMessage(userId, "系统繁忙，请稍后再试。");
+                }
+            }
+
             return WechatReply.silent();
         }
 
@@ -208,5 +231,32 @@ public class ChatHandler implements WechatMessageHandler {
             }
         }
         return false;
+    }
+
+    /**
+     * 从取消命令消息中提取关键词之后的剩余任务内容。
+     *
+     * <p>例如：
+     * <ul>
+     *   <li>"算了，生成一张人物图" → "生成一张人物图"</li>
+     *   <li>"算了"                   → null（纯取消，无后续任务）</li>
+     *   <li>"取消 帮我查天气"         → "帮我查天气"</li>
+     * </ul>
+     *
+     * @param text 原始消息文本
+     * @return 剩余内容，无实质内容时返回 null
+     */
+    private String extractRemainingAfterCancelKeyword(String text) {
+        if (text == null) return null;
+        String trimmed = text.trim();
+        String lower = trimmed.toLowerCase();
+        for (String keyword : CANCEL_KEYWORDS) {
+            if (lower.startsWith(keyword)) {
+                String remaining = trimmed.substring(keyword.length());
+                remaining = remaining.replaceFirst("^[，,。.!！\\s]+", "").trim();
+                return remaining.isEmpty() ? null : remaining;
+            }
+        }
+        return null;
     }
 }
