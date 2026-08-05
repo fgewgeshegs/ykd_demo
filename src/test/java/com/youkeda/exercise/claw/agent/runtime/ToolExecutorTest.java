@@ -39,6 +39,7 @@ class ToolExecutorTest {
     private final ToolResultStatusParser statusParser = mock(ToolResultStatusParser.class);
     private final ToolExecutor executor = new ToolExecutor(
             registry, safetyPolicy, mock(SkillPendingCoordinator.class),
+            mock(PendingToolCoordinator.class),
             mock(AgentActivityRecorder.class), statusParser, planStore, new ObjectMapper());
 
     private final ToolExecutionBatchRunner runner = new ToolExecutionBatchRunner();

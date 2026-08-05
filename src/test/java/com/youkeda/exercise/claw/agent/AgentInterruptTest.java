@@ -10,6 +10,7 @@ import com.youkeda.exercise.claw.agent.runtime.ExecutionLoop;
 import com.youkeda.exercise.claw.agent.runtime.SkillReplyGuardRegistry;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutor;
+import com.youkeda.exercise.claw.agent.skill.PendingToolCoordinator;
 import com.youkeda.exercise.claw.agent.skill.SkillSession;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.llm.LLMResponse;
@@ -186,6 +187,7 @@ class AgentInterruptTest {
         ToolExecutor toolExecutor = new ToolExecutor(
                 registry, new SafetyPolicy(),
                 mock(com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder.class),
                 mock(com.youkeda.exercise.claw.agent.ToolResultStatusParser.class),
                 new DefaultPlanStore(), objectMapper);
@@ -583,6 +585,7 @@ class AgentInterruptTest {
         ToolExecutor toolExecutor = new ToolExecutor(
                 registry, new SafetyPolicy(),
                 mock(com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder.class),
                 mock(com.youkeda.exercise.claw.agent.ToolResultStatusParser.class),
                 new DefaultPlanStore(), objectMapper);
@@ -616,6 +619,7 @@ class AgentInterruptTest {
         ToolExecutor toolExecutor = new ToolExecutor(
                 registry, new SafetyPolicy(),
                 mock(com.youkeda.exercise.claw.agent.skill.SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(com.youkeda.exercise.claw.agent.activity.AgentActivityRecorder.class),
                 mock(com.youkeda.exercise.claw.agent.ToolResultStatusParser.class),
                 new DefaultPlanStore(), objectMapper);

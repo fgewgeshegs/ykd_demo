@@ -168,6 +168,21 @@ public class SqliteDatabaseInitializer {
             CREATE INDEX IF NOT EXISTS idx_pending_type ON campus_pending_ask(notice_type, status)
         """);
 
+        // === 迁移：skill_sessions 旧结构(context_skill) → active_skill 结构 ===
+        // 旧库表存在且带 context_skill 列时 DROP，让下方 CREATE TABLE IF NOT EXISTS 用新结构重建。
+        // 全新库/新结构库自动跳过，幂等。
+        try {
+            boolean hasOldSkillColumn = !jdbcTemplate.queryForList(
+                "SELECT name FROM pragma_table_info('skill_sessions') WHERE name = 'context_skill'"
+            ).isEmpty();
+            if (hasOldSkillColumn) {
+                jdbcTemplate.execute("DROP TABLE skill_sessions");
+                log.info("DB迁移完成：skill_sessions 旧结构(context_skill)已重建为 active_skill 结构");
+            }
+        } catch (Exception e) {
+            log.debug("skill_sessions 迁移检测跳过：{}", e.getMessage());
+        }
+
         // 创建技能会话表
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS skill_sessions (

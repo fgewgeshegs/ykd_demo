@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -248,5 +249,21 @@ class DefaultContextBuilderTest {
         // coveredUntilSeq=0 表示摘要未启用 → 不注入
         assertEquals(0, result.coveredUntilTurn());
         assertFalse(result.messages().stream().anyMatch(m -> m.role() == MessageRole.SYSTEM));
+    }
+
+    @Test
+    void usageTrackerReceivesUsedTokens() {
+        // L1 埋点：每次 build 把实际发送 token 记入 tracker
+        when(contextStore.getTurns(anyInt())).thenReturn(List.of(
+                turn("r2", 2, new Message("user", "今天天气怎么样")),
+                turn("r1", 1, new Message("user", "你好"), new Message("assistant", "你好，有什么可以帮你？"))));
+        ContextUsageTracker tracker = mock(ContextUsageTracker.class);
+        DefaultContextBuilder builder = new DefaultContextBuilder(
+                contextStore, longTermMemoryService, null,
+                new HeuristicTokenEstimator(), 0, tracker);
+
+        builder.build(ctx("今天天气怎么样"));
+
+        verify(tracker).recordBuild(anyInt());
     }
 }

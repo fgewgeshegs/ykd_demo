@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -181,50 +182,95 @@ public class CourseMessageFormatter {
     }
 
     /**
-     * 格式化导入预览（包含冲突信息）
+     * 课表导入预览（兼容签名，委托 {@link #formatPendingImportPreview} 生成带组内编号的预览）。
      *
-     * @param courses     解析出的课程列表
-     * @param conflicts   冲突检测结果（可为 null 或空）
+     * @param courses     待预览课程列表
+     * @param conflicts   冲突检测结果（元素可为 {@link CourseService.ConflictInfo} 或描述字符串，可为 null/空）
      * @param currentWeek 当前教学周
      * @return 格式化后的预览文本
      */
     public String formatImportPreview(List<CourseEntity> courses,
                                        List<?> conflicts,
                                        int currentWeek) {
+        // 委托带编号版：保证任何调用路径的预览均带组内编号，与 modify_pending 的 course_index 对应
+        return formatPendingImportPreview(courses, "", currentWeek, conflicts);
+    }
+
+    /**
+     * 课表导入预览（按星期分组 + 组内编号 + 上下文信息）。
+     *
+     * <p>编号为该星期下的第几个（1-based），与 modify_pending 的 course_index 对应。
+     * 学期信息、当前周次、冲突告警统一由本方法生成，调用方只负责组装参数，
+     * 保证用户展示与 Agent 上下文看到的预览完全一致。
+     * 供 CourseImportHandler（用户展示 + 写上下文）和 CourseImportFlowActions（modify 后展示）复用。
+     *
+     * @param courses     待确认课程列表
+     * @param semesterInfo 学期信息文本（形如 "【2026秋】\n第1周：2026-09-07\n\n"，可为空字符串）
+     * @param currentWeek  当前教学周（&lt;=0 表示无，不显示）
+     * @param conflicts    冲突列表（元素可为 {@link CourseService.ConflictInfo} 或描述字符串，可为 null/空）；
+     *                     含 ConflictInfo 时按「时间冲突告警 + 确认后覆盖」展示，全为字符串时按「识别错误」展示
+     */
+    public String formatPendingImportPreview(List<CourseEntity> courses,
+                                             String semesterInfo,
+                                             int currentWeek,
+                                             List<?> conflicts) {
         StringBuilder sb = new StringBuilder();
-        sb.append("📋 **课表预览**\n");
-        sb.append("共解析到 ").append(courses.size()).append(" 门课程\n\n");
+        sb.append("📋 已识别出以下 ").append(courses.size()).append(" 门课程");
+        if (currentWeek > 0) {
+            sb.append("（当前第 ").append(currentWeek).append(" 周）");
+        }
+        sb.append("：\n\n");
 
-        // 按星期几分组展示
-        Map<Integer, List<CourseEntity>> grouped = courses.stream()
-                .collect(Collectors.groupingBy(CourseEntity::getDayOfWeek));
+        if (semesterInfo != null && !semesterInfo.isBlank()) {
+            sb.append(semesterInfo);
+        }
 
+        Map<Integer, List<CourseEntity>> byDay = new LinkedHashMap<>();
+        for (CourseEntity c : courses) {
+            byDay.computeIfAbsent(c.getDayOfWeek(), k -> new ArrayList<>()).add(c);
+        }
         for (int day = 1; day <= 7; day++) {
-            List<CourseEntity> dayCourses = grouped.getOrDefault(day, List.of());
+            List<CourseEntity> dayCourses = byDay.getOrDefault(day, List.of());
             if (dayCourses.isEmpty()) continue;
-
-            sb.append("**").append(DAY_LABELS[day]).append("**\n");
+            sb.append("**").append(dayCourses.get(0).getDayDisplay()).append("**\n");
+            int idx = 1;
             for (CourseEntity c : dayCourses) {
-                sb.append("  📖 ").append(c.getCourseName());
-                sb.append("  🕐第").append(c.getPeriodDisplay()).append("节");
-                if (c.getClassroom() != null && !c.getClassroom().isBlank()) {
-                    sb.append(" 🏫").append(c.getClassroom());
-                }
+                sb.append("  ").append(idx++).append(". ");
+                sb.append("【").append(c.getCourseName()).append("】");
+                sb.append(" 第").append(c.getPeriodDisplay()).append("节");
+                if (!c.getClassroom().isBlank()) sb.append(" ").append(c.getClassroom());
+                if (!c.getTeacher().isBlank()) sb.append(" ").append(c.getTeacher());
+                sb.append(" (").append(c.getWeekDisplay()).append(")");
                 sb.append("\n");
             }
         }
 
         if (conflicts != null && !conflicts.isEmpty()) {
-            sb.append("\n⚠️ **时间冲突告警**\n");
-            for (Object cf : conflicts) {
-                if (cf instanceof CourseService.ConflictInfo ci) {
-                    sb.append("  ❌ ").append(ci.description()).append("\n");
+            boolean hasDbConflict = false;
+            for (Object c : conflicts) {
+                if (c instanceof CourseService.ConflictInfo) {
+                    hasDbConflict = true;
+                    break;
                 }
             }
-            sb.append("\n确认后冲突课程将被覆盖。");
+            if (hasDbConflict) {
+                sb.append("\n⚠️ **时间冲突告警**\n");
+            } else {
+                sb.append("\n⚠️ 检测到 ").append(conflicts.size()).append(" 处时间冲突，可能是识别错误：\n");
+            }
+            for (Object conflict : conflicts) {
+                String desc = conflict instanceof CourseService.ConflictInfo ci
+                        ? ci.description()
+                        : String.valueOf(conflict);
+                sb.append("   · ").append(desc).append("\n");
+            }
+            if (hasDbConflict) {
+                sb.append("确认后冲突课程将被覆盖。\n");
+            }
         }
 
-        sb.append("\n\n请确认是否导入以上课程？✅ 确认 / ❌ 取消");
+        sb.append("\n✅ 回复「确认」保存课表，回复「取消」丢弃。");
+        sb.append("\n💡 如需修改某门课，请告诉我「星期 + 课程名」或「星期 + 第几个」，例如「周一的英语改成单周」。");
         return sb.toString();
     }
 

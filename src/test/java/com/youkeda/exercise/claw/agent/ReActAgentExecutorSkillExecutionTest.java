@@ -63,6 +63,7 @@ class ReActAgentExecutorSkillExecutionTest {
         PlanStore planStore = mock(PlanStore.class);
         ToolExecutor toolExecutor = new ToolExecutor(
                 toolRegistry, mock(SafetyPolicy.class), mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(

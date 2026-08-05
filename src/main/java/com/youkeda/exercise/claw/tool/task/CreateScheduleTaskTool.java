@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>注册名称：{@code create_schedule_task}
  *
- * <p>底层复用 {@link TaskCreator} 实现，确保与 {@code execute_plan_tasks} 行为一致。
+ * <p>底层复用 {@link TaskCreator} 实现。
  * 支持相对时间（delay_minutes）和绝对时间（execute_time），以及周期任务（repeat_type）。
  */
 @Component

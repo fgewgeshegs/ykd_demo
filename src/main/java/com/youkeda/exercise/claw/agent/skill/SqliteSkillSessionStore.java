@@ -26,25 +26,10 @@ public class SqliteSkillSessionStore implements SkillSessionStore {
     public SqliteSkillSessionStore(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-        ensureTable();
     }
 
     private Object lockFor(String userId) {
         return locks.computeIfAbsent(userId, k -> new Object());
-    }
-
-    private void ensureTable() {
-        jdbcTemplate.execute("""
-            CREATE TABLE IF NOT EXISTS skill_sessions (
-                user_id TEXT PRIMARY KEY,
-                active_skill TEXT NOT NULL,
-                previous_skill TEXT,
-                context_json TEXT NOT NULL DEFAULT '{}',
-                activated_at INTEGER NOT NULL,
-                last_activity_at INTEGER NOT NULL,
-                inactivity_count INTEGER NOT NULL DEFAULT 0
-            )
-        """);
     }
 
     @Override

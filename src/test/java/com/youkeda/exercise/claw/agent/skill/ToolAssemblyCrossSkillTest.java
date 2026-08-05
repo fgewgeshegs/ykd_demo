@@ -20,6 +20,7 @@ import com.youkeda.exercise.claw.agent.memory.longterm.LongTermMemoryService;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import com.youkeda.exercise.claw.skill.*;
 import com.youkeda.exercise.claw.agent.AgentContext;
+import com.youkeda.exercise.claw.agent.skill.PendingToolCoordinator;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -318,6 +319,7 @@ class ToolAssemblyCrossSkillTest {
         PlanStore planStore = new DefaultPlanStore();
         ToolExecutor toolExecutor = new ToolExecutor(
                 registry, mock(SafetyPolicy.class), mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), new ToolResultStatusParser(objectMapper),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(

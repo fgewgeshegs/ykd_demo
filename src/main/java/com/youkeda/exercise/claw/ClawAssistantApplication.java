@@ -1,4 +1,4 @@
-package com.youkeda.exercise.claw.application;
+package com.youkeda.exercise.claw;
 
 import com.youkeda.exercise.claw.core.InstanceLockManager;
 import org.slf4j.Logger;

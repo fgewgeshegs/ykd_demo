@@ -195,6 +195,7 @@ class ReActAgentExecutorTest {
 
         ToolExecutor toolExecutor = new ToolExecutor(
                 registry, safetyPolicy, mock(SkillPendingCoordinator.class),
+                mock(PendingToolCoordinator.class),
                 mock(AgentActivityRecorder.class), mock(ToolResultStatusParser.class),
                 planStore, objectMapper);
         ExecutionLoop executionLoop = new ExecutionLoop(

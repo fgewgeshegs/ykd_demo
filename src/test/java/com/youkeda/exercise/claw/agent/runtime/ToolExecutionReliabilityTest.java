@@ -34,6 +34,7 @@ class ToolExecutionReliabilityTest {
     private final ToolResultStatusParser statusParser = mock(ToolResultStatusParser.class);
     private final ToolExecutor executor = new ToolExecutor(
             registry, safetyPolicy, pendingCoordinator,
+            mock(PendingToolCoordinator.class),
             activityRecorder, statusParser, mock(com.youkeda.exercise.claw.agent.plan.PlanStore.class),
             objectMapper);
 

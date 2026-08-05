@@ -197,6 +197,7 @@ public class CourseImportHandler {
     private final PdfTableExtractor pdfTableExtractor;
     private final SemesterDetector semesterDetector;
     private final SemesterService semesterService;
+    private final CourseMessageFormatter messageFormatter;
 
     public CourseImportHandler(WechatILinkClient wechatClient,
                                VisionService visionService,
@@ -210,7 +211,8 @@ public class CourseImportHandler {
                                ObjectMapper objectMapper,
                                PdfTableExtractor pdfTableExtractor,
                                SemesterDetector semesterDetector,
-                               SemesterService semesterService) {
+                               SemesterService semesterService,
+                               CourseMessageFormatter messageFormatter) {
         this.wechatClient = wechatClient;
         this.visionService = visionService;
         this.courseParser = courseParser;
@@ -224,6 +226,7 @@ public class CourseImportHandler {
         this.pdfTableExtractor = pdfTableExtractor;
         this.semesterDetector = semesterDetector;
         this.semesterService = semesterService;
+        this.messageFormatter = messageFormatter;
     }
 
     // ==================== IMAGE 处理 ====================
@@ -566,9 +569,7 @@ public class CourseImportHandler {
 
     private String buildPreview(String userId, List<CourseEntity> courses) {
         int currentWeek = resolveCurrentWeek(userId);
-        String weekInfo = currentWeek > 0 ? "（当前第 " + currentWeek + " 周）" : "";
 
-        // 获取学期信息
         SemesterEntity pendingSemester = importStateManager.getPendingSemester(userId);
         String semesterInfo = "";
         if (pendingSemester != null) {
@@ -576,42 +577,13 @@ public class CourseImportHandler {
                     + "第1周：" + pendingSemester.getStartDateDisplay() + "\n\n";
         }
 
-        // 内部冲突检测（同天同时段多课 → 图片/文件识别可能拆错/幻觉）
         List<String> internalConflicts = detectInternalDayConflicts(courses);
         if (!internalConflicts.isEmpty()) {
             log.warn("课表导入：识别结果存在同天同时段冲突 | userId={} | conflicts={}",
                     userId, internalConflicts);
         }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("📋 已识别出以下 ").append(courses.size()).append(" 门课程").append(weekInfo).append("：\n\n");
-        if (!semesterInfo.isEmpty()) {
-            sb.append(semesterInfo);
-        }
-
-        for (int i = 0; i < courses.size(); i++) {
-            CourseEntity c = courses.get(i);
-            sb.append(i + 1).append(". ");
-            sb.append("【").append(c.getCourseName()).append("】");
-            sb.append(c.getDayDisplay()).append(" ");
-            sb.append(c.getPeriodDisplay()).append("节");
-            if (!c.getClassroom().isBlank()) sb.append(" ").append(c.getClassroom());
-            if (!c.getTeacher().isBlank()) sb.append(" ").append(c.getTeacher());
-            sb.append(" (").append(c.getWeekDisplay()).append(")");
-            sb.append("\n");
-        }
-
-        if (!internalConflicts.isEmpty()) {
-            sb.append("\n⚠️ 检测到 ").append(internalConflicts.size()).append(" 处时间冲突，可能是识别错误：\n");
-            for (String conflict : internalConflicts) {
-                sb.append("   · ").append(conflict).append("\n");
-            }
-            sb.append("建议仔细核对后再「确认」，或告诉我需要修正的课程。\n");
-        }
-
-        sb.append("\n✅ 回复「确认」保存课表，回复「取消」丢弃。");
-        sb.append("\n💡 也可以告诉我需要修改的地方，如「把高数改成周一1-2节」。");
-        return sb.toString();
+        return messageFormatter.formatPendingImportPreview(courses, semesterInfo, currentWeek, internalConflicts);
     }
 
     /**
@@ -629,8 +601,7 @@ public class CourseImportHandler {
     }
 
     private String buildPreviewText(String userId, List<CourseEntity> courses) {
-        return "已识别 " + courses.size() + " 门课程等待确认导入："
-                + courses.stream().map(CourseEntity::getCourseName).reduce((a, b) -> a + "、" + b).orElse("");
+        return buildPreview(userId, courses);
     }
 
     /**

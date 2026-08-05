@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.agent.memory;
 
+import com.youkeda.exercise.claw.agent.context.ContextUsageTracker;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -85,6 +86,21 @@ class ConversationSummaryServiceTest {
         verify(summaryStore).save(captor.capture());
         assertEquals("合并后的摘要", captor.getValue().text());
         assertEquals(5, captor.getValue().coveredUntilSeq());
+    }
+
+    @Test
+    void usageTrackerReceivesCompressionMetrics() {
+        // L1 埋点：归档成功后把「原文 token / 摘要 token」记入 tracker
+        when(contextStore.getTurns(anyInt())).thenReturn(turnsNewestFirst(15));
+        when(summaryStore.get()).thenReturn(null);
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString()))
+                .thenReturn("合并后的摘要");
+        ContextUsageTracker tracker = mock(ContextUsageTracker.class);
+        service.setUsageTracker(tracker);
+
+        service.archiveIfNeeded();
+
+        verify(tracker).recordSummary(anyInt(), anyInt());
     }
 
     @Test
