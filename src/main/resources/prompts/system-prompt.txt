@@ -33,6 +33,7 @@
   - 用 day_of_week + course_index（该星期第几个）或 course_name 定位
   - 一次可传多门课（courses 数组）各自修改，每门可改多个字段
   - 若要删除某门预览中的课（如"周五的第3门课删了"、"英语和高等数学重复了，删掉重复的"）-> modify_pending，定位后传 delete=true
+  - 若要新增一门预览里没有的课（如"周一还有气排球，6-7节"）-> modify_pending，传 add=true 并提供完整课程信息（course_name/day_of_week/start_period/end_period 必填）
   - 改完会重新出预览，仍需用户回复「确认」才保存
 - 用户说"删除XX课"、"修改XX课的时间" -> 调用 course_schedule(delete 或 update)
 - 用户问"我有哪些课"、"全部课表" -> 调用 course_schedule(query_all)

@@ -316,11 +316,48 @@ public class CourseImportFlowActions {
         }
 
         // 两遍处理：先全部定位+校验（不 set），全部通过后再统一应用，避免校验失败污染 pending 实体
-        record ModifyOp(CourseEntity target, boolean delete, String weekType, Integer startPeriod, Integer endPeriod,
+        // add=true 表示新增一门课（newCourse 非空，无需定位）；delete=true 表示删除；否则为修改字段
+        record ModifyOp(CourseEntity target, CourseEntity newCourse, boolean add, boolean delete,
+                        String weekType, Integer startPeriod, Integer endPeriod,
                         String classroom, String teacher, Integer startWeek, Integer endWeek) {}
         List<ModifyOp> ops = new ArrayList<>();
 
         for (JsonNode item : coursesNode) {
+            // 新增标记：add=true 时构建新课（需完整课程信息），跳过对已存在课程的定位
+            boolean add = item.path("add").asBoolean(false);
+            if (add) {
+                String newName = item.path("course_name").asText("");
+                int newDay = item.path("day_of_week").asInt(0);
+                int newStartPeriod = item.path("start_period").asInt(0);
+                int newEndPeriod = item.path("end_period").asInt(0);
+                if (newName.isBlank()) {
+                    return errorJson("新增课程缺少 course_name。");
+                }
+                if (newDay < 1 || newDay > 7) {
+                    return errorJson("新增课程 day_of_week 必须为 1-7（1=周一 ~ 7=周日）。");
+                }
+                if (newStartPeriod < 1 || newEndPeriod < newStartPeriod) {
+                    return errorJson("新增课程「" + newName + "」节次非法：start_period 须 >=1 且 end_period 须 >= start_period。");
+                }
+                int newStartWeek = item.has("start_week") ? item.path("start_week").asInt(1) : 1;
+                int newEndWeek = item.has("end_week") ? item.path("end_week").asInt(20) : 20;
+                if (newStartWeek < 1 || newEndWeek < newStartWeek) {
+                    return errorJson("新增课程「" + newName + "」周次非法：start_week 须 >=1 且 end_week 须 >= start_week。");
+                }
+                String newWeekType = item.path("week_type").asText("ALL");
+                if (!"ALL".equals(newWeekType) && !"ODD".equals(newWeekType) && !"EVEN".equals(newWeekType)) {
+                    return errorJson("新增课程「" + newName + "」week_type 只能为 ALL/ODD/EVEN。");
+                }
+                CourseEntity newCourse = new CourseEntity(
+                        userId, newName,
+                        item.path("teacher").asText(""),
+                        newDay, newStartPeriod, newEndPeriod,
+                        item.path("classroom").asText(""),
+                        newStartWeek, newEndWeek, newWeekType);
+                ops.add(new ModifyOp(null, newCourse, true, false, null, null, null, null, null, null, null));
+                continue;
+            }
+
             int dayOfWeek = item.path("day_of_week").asInt(0);
             if (dayOfWeek < 1 || dayOfWeek > 7) {
                 return errorJson("day_of_week 必须为 1-7（1=周一 ~ 7=周日）。");
@@ -364,7 +401,7 @@ public class CourseImportFlowActions {
             // 删除标记：delete=true 时只定位+移除，不做字段修改
             boolean delete = item.path("delete").asBoolean(false);
             if (delete) {
-                ops.add(new ModifyOp(target, true, null, null, null, null, null, null, null));
+                ops.add(new ModifyOp(target, null, false, true, null, null, null, null, null, null, null));
                 continue;
             }
 
@@ -393,13 +430,21 @@ public class CourseImportFlowActions {
                 return errorJson("week_type 只能为 ALL/ODD/EVEN。");
             }
 
-            ops.add(new ModifyOp(target, false, weekType, startPeriod, endPeriod, classroom, teacher, startWeek, endWeek));
+            ops.add(new ModifyOp(target, null, false, false, weekType, startPeriod, endPeriod, classroom, teacher, startWeek, endWeek));
         }
 
-        // 全部校验通过后统一应用：先删后改，避免删除影响后续修改的定位
+        // 全部校验通过后统一应用：先新增、再删除、最后修改，避免删除/新增影响后续定位
         List<String> applied = new ArrayList<>();
         List<String> removed = new ArrayList<>();
-        // 先删除（按 pending 中的对象移除）
+        List<String> added = new ArrayList<>();
+        // 先新增（追加到 pending，新课不参与删除/修改的定位）
+        for (ModifyOp op : ops) {
+            if (op.add()) {
+                pending.add(op.newCourse());
+                added.add(op.newCourse().getCourseName());
+            }
+        }
+        // 再删除（按 pending 中的对象移除）
         for (ModifyOp op : ops) {
             if (op.delete()) {
                 boolean removedFlag = pending.removeIf(c -> c == op.target());
@@ -408,9 +453,9 @@ public class CourseImportFlowActions {
                 }
             }
         }
-        // 再修改（此时 pending 已删完，剩余对象应用字段）
+        // 最后修改（此时 pending 已增/删完，剩余对象应用字段）
         for (ModifyOp op : ops) {
-            if (op.delete()) continue;
+            if (op.delete() || op.add()) continue;
             CourseEntity target = op.target();
             if (op.weekType() != null) target.setWeekType(op.weekType());
             if (op.startPeriod() != null) target.setStartPeriod(op.startPeriod());
@@ -438,7 +483,11 @@ public class CourseImportFlowActions {
         int currentWeek = resolveCurrentWeek(userId);
 
         StringBuilder msg = new StringBuilder();
-        if (!removed.isEmpty()) msg.append("已删除 ").append(removed.size()).append(" 门课（").append(String.join("、", removed)).append("）");
+        if (!added.isEmpty()) msg.append("已新增 ").append(added.size()).append(" 门课（").append(String.join("、", added)).append("）");
+        if (!removed.isEmpty()) {
+            if (!msg.isEmpty()) msg.append("，");
+            msg.append("已删除 ").append(removed.size()).append(" 门课（").append(String.join("、", removed)).append("）");
+        }
         if (!applied.isEmpty()) {
             if (!msg.isEmpty()) msg.append("，");
             msg.append("已修改 ").append(applied.size()).append(" 门课");
@@ -450,6 +499,7 @@ public class CourseImportFlowActions {
         result.put("action", "modify_pending");
         result.put("status", "preview");
         result.put("count", pending.size());
+        result.put("added", String.join("、", added));
         result.put("modified", String.join("、", applied));
         result.put("removed", String.join("、", removed));
         result.put("formatted_preview", messageFormatter.formatPendingImportPreview(

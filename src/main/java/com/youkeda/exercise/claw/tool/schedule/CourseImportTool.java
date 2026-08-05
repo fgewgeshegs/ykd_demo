@@ -109,16 +109,19 @@ public class CourseImportTool extends AbstractTool {
 
         return schema()
                 .raw("action", action, true)
-                .array("courses", "课程列表（parse 时必填，update 时可选，modify_pending 时定位+改字段/删除）。"
+                .array("courses", "课程列表（parse 时必填，update 时可选，modify_pending 时定位+改字段/删除/新增）。"
                         + "每门课包含以下字段；modify_pending 时用 day_of_week+course_index（该星期下第几个，从1开始）"
                         + "或 course_name 定位课程，再传要修改的字段：week_type/start_period/end_period/"
                         + "classroom/teacher/start_week/end_week，一次可改多门；"
-                        + "若要删除该课，传 delete=true（只定位+移除，不需传修改字段）。"
+                        + "若要删除该课，传 delete=true（只定位+移除，不需传修改字段）；"
+                        + "若要新增一门课，传 add=true 并提供完整课程信息（course_name/day_of_week/start_period/end_period 必填，"
+                        + "classroom/teacher/start_week/end_week/week_type 可选，无需 course_index）。"
                         + "注意：modify_pending 不支持改天，day_of_week 仅用于定位、不可修改（如需挪天请删课重加）。", false)
-                    .string("course_name", "课程名称，如「高等数学」；modify_pending 时也用于定位课程", false)
+                    .string("course_name", "课程名称，如「高等数学」；modify_pending 时也用于定位课程（add=true 时为新课程名）", false)
                     .string("teacher", "授课教师姓名", false)
-                    .integer("day_of_week", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日；modify_pending 时定位该课所在星期", false)
-                    .integer("course_index", "该星期下的第几个（从1开始），如周一第1门课=1。modify_pending 定位用，与 course_name 二选一或同时提供做校验", false)
+                    .integer("day_of_week", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日；modify_pending 时定位该课所在星期（add=true 时为新课程所在星期）", false)
+                    .integer("course_index", "该星期下的第几个（从1开始），如周一第1门课=1。modify_pending 定位用，与 course_name 二选一或同时提供做校验（add=true 时无需）", false)
+                    .bool("add", "modify_pending 时传 true 表示新增一门课程（需完整课程信息，无需 course_index 定位）", false)
                     .bool("delete", "modify_pending 时传 true 表示删除该门待确认课程（仅定位+移除，不需其他字段）", false)
                     .integer("start_period", "开始节次（第几节课开始，从1开始）", false)
                     .integer("end_period", "结束节次（第几节课结束，>= start_period）", false)
