@@ -112,7 +112,8 @@ public class CourseImportTool extends AbstractTool {
                 .array("courses", "课程列表（parse 时必填，update 时可选，modify_pending 时定位+改字段）。"
                         + "每门课包含以下字段；modify_pending 时用 day_of_week+course_index（该星期下第几个，从1开始）"
                         + "或 course_name 定位课程，再传要修改的字段：week_type/start_period/end_period/"
-                        + "day_of_week/classroom/teacher/start_week/end_week，一次可改多门。", false)
+                        + "classroom/teacher/start_week/end_week，一次可改多门。"
+                        + "注意：modify_pending 不支持改天，day_of_week 仅用于定位、不可修改（如需挪天请删课重加）。", false)
                     .string("course_name", "课程名称，如「高等数学」；modify_pending 时也用于定位课程", false)
                     .string("teacher", "授课教师姓名", false)
                     .integer("day_of_week", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日；modify_pending 时定位该课所在星期", false)
