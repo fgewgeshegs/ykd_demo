@@ -41,8 +41,14 @@ public class ChatHandler implements WechatMessageHandler {
     private static final String FALLBACK_REPLY = "抱歉，我现在暂时无法回复，请稍后再试。";
     private static final String CANCELLED_REPLY = "👌 已取消当前任务。";
 
-    /** 取消命令关键词集合 */
-    private static final Set<String> CANCEL_KEYWORDS = Set.of("取消", "停止", "算了", "cancel", "stop");
+    /** 前缀匹配关键词：消息必须以这些词开头才触发取消（防误判，如"如何取消订单"） */
+    private static final Set<String> PREFIX_CANCEL_KEYWORDS = Set.of(
+            "取消", "停止", "算了", "cancel", "stop");
+
+    /** 包含匹配关键词：短消息中任意位置出现即触发取消（这些短语几乎只在取消语境使用） */
+    private static final Set<String> CONTAINS_CANCEL_KEYWORDS = Set.of(
+            "不要了", "别画了", "不用了", "别生成", "停下",
+            "不画了", "别做了", "不想等了", "不做了", "别查了");
 
     private final ReActAgentExecutor agentExecutor;
     private final com.youkeda.exercise.claw.tool.voice.VoiceTool voiceTool;
@@ -218,18 +224,37 @@ public class ChatHandler implements WechatMessageHandler {
     /**
      * 判断用户消息是否为取消命令。
      *
-     * <p>匹配规则：trim 后以取消关键词开头（忽略大小写）。
-     * 例如 "算了，太慢了" 命中 "算了"，"停止生成" 命中 "停止"，
-     * 而 "如何取消订单" 不命中（关键词不在开头）。
+     * <p>两层匹配（忽略大小写）：
+     * <ol>
+     *   <li><b>前缀匹配</b>：消息以"取消/停止/算了/cancel/stop"开头 → 触发取消。
+     *       例如 "算了，太慢了"、"取消 帮我查天气"。</li>
+     *   <li><b>包含匹配</b>（仅短消息≤15字符）：消息任意位置含自然取消短语 → 触发取消。
+     *       例如 "太慢了我不要了" 命中 "不要了"。
+     *       限制长度是防止长消息中偶然出现这些短语导致误判。</li>
+     * </ol>
+     *
+     * <p>"如何取消订单"不命中：不以关键词开头，也不含自然取消短语。
      */
     private boolean isCancelCommand(String text) {
         if (text == null) return false;
         String trimmed = text.trim().toLowerCase();
-        for (String keyword : CANCEL_KEYWORDS) {
+
+        // 第1层：前缀匹配
+        for (String keyword : PREFIX_CANCEL_KEYWORDS) {
             if (trimmed.startsWith(keyword)) {
                 return true;
             }
         }
+
+        // 第2层：包含匹配（仅短消息）
+        if (trimmed.length() <= 15) {
+            for (String keyword : CONTAINS_CANCEL_KEYWORDS) {
+                if (trimmed.contains(keyword)) {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 
@@ -250,7 +275,7 @@ public class ChatHandler implements WechatMessageHandler {
         if (text == null) return null;
         String trimmed = text.trim();
         String lower = trimmed.toLowerCase();
-        for (String keyword : CANCEL_KEYWORDS) {
+        for (String keyword : PREFIX_CANCEL_KEYWORDS) {
             if (lower.startsWith(keyword)) {
                 String remaining = trimmed.substring(keyword.length());
                 remaining = remaining.replaceFirst("^[，,。.!！\\s]+", "").trim();
