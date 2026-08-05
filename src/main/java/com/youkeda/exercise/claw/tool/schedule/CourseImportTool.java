@@ -65,6 +65,7 @@ public class CourseImportTool extends AbstractTool {
         return "课程表管理。管理用户的个人课程表数据（以userId隔离持久化到SQLite）。\n"
                 + "支持操作：\n"
                 + "- 导入：使用 import -> parse -> confirm 三步流程导入课表（图片/PDF/Excel/直接JSON）\n"
+                + "- 修改预览：使用 modify_pending 修改预览确认阶段的课程（按 星期+第几个/课程名 定位），一次可改多门\n"
                 + "- 学校：query_school（查询当前学校信息），set_school（绑定学校，需school_name），\n"
                 + "         list_schools（查看可用的学校模板列表）\n"
                 + "- 查询：query_today（今日课程，自动过滤学期周次和单双周）\n"
@@ -80,12 +81,14 @@ public class CourseImportTool extends AbstractTool {
         ObjectNode action = objectMapper.createObjectNode();
         action.put("type", "string");
         action.put("description", "操作类型：import(开始导入), parse(解析并预览), confirm(确认保存), "
-                + "cancel(取消), query_today(今日课程), query_free_time(空闲时间), "
+                + "cancel(取消), modify_pending(修改预览中未确认的课程), "
+                + "query_today(今日课程), query_free_time(空闲时间), "
                 + "query_all(全部课程), query_weekday(指定星期), delete(删除), update(修改), clear(清空), "
                 + "confirm_semester(确认学期), set_semester(设置学期), "
                 + "query_school(查询当前学校), set_school(绑定学校需school_name), "
                 + "list_schools(查看可用学校列表)");
         action.putArray("enum").add("import").add("parse").add("confirm").add("cancel")
+                .add("modify_pending")
                 .add("query_today").add("query_free_time").add("query_all").add("query_weekday")
                 .add("delete").add("update").add("clear")
                 .add("confirm_semester").add("set_semester")
@@ -106,10 +109,14 @@ public class CourseImportTool extends AbstractTool {
 
         return schema()
                 .raw("action", action, true)
-                .array("courses", "课程列表（parse 时必填，update 时可选）。每门课包含以下字段：", false)
-                    .string("course_name", "课程名称，如「高等数学」", false)
+                .array("courses", "课程列表（parse 时必填，update 时可选，modify_pending 时定位+改字段）。"
+                        + "每门课包含以下字段；modify_pending 时用 day_of_week+course_index（该星期下第几个，从1开始）"
+                        + "或 course_name 定位课程，再传要修改的字段：week_type/start_period/end_period/"
+                        + "day_of_week/classroom/teacher/start_week/end_week，一次可改多门。", false)
+                    .string("course_name", "课程名称，如「高等数学」；modify_pending 时也用于定位课程", false)
                     .string("teacher", "授课教师姓名", false)
-                    .integer("day_of_week", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日", false)
+                    .integer("day_of_week", "星期几：1=周一 2=周二 3=周三 4=周四 5=周五 6=周六 7=周日；modify_pending 时定位该课所在星期", false)
+                    .integer("course_index", "该星期下的第几个（从1开始），如周一第1门课=1。modify_pending 定位用，与 course_name 二选一或同时提供做校验", false)
                     .integer("start_period", "开始节次（第几节课开始，从1开始）", false)
                     .integer("end_period", "结束节次（第几节课结束，>= start_period）", false)
                     .string("classroom", "上课教室/地点", false)
@@ -149,6 +156,7 @@ public class CourseImportTool extends AbstractTool {
                 case "parse" -> importFlow.handleParse(args, userId);
                 case "confirm" -> importFlow.handleConfirm(userId);
                 case "cancel" -> importFlow.handleCancel(userId);
+                case "modify_pending" -> importFlow.handleModifyPending(args, userId);
                 case "confirm_semester" -> importFlow.handleConfirmSemester(userId);
                 case "set_semester" -> importFlow.handleSetSemester(args, userId);
                 case "delete" -> queryActions.handleDelete(args, userId);
