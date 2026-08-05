@@ -293,9 +293,10 @@ public class CourseImportFlowActions {
     /**
      * 预览确认阶段修改待确认课程（支持一次多门）。
      *
-     * <p>入参 courses 数组，每项：day_of_week(必填) + course_index(该天第几个,1-based)/course_name 定位
-     * + 可改字段(week_type/start_period/end_period/day_of_week/classroom/teacher/start_week/end_week)。
+     * <p>入参 courses 数组，每项：day_of_week(必填，仅用于定位该课当前所在星期) + course_index(该天第几个,1-based)/course_name 定位
+     * + 可改字段(week_type/start_period/end_period/classroom/teacher/start_week/end_week)。
      * 只改提供的字段，其余保持。改完重新生成预览，仍需用户确认才落库。
+     * day_of_week 仅用于定位（该课当前所在星期），不支持跨天移动；如需挪天请删课重加。
      */
     public String handleModifyPending(JsonNode args, String userId) {
         List<CourseEntity> pending = new ArrayList<>(importStateManager.getPendingCourses(userId));
@@ -308,14 +309,18 @@ public class CourseImportFlowActions {
             return errorJson("请提供要修改的课程（courses 数组，每项含 day_of_week 和 course_index/course_name）。");
         }
 
-        List<String> applied = new ArrayList<>();
+        // 两遍处理：先全部定位+校验（不 set），全部通过后再统一应用，避免校验失败污染 pending 实体
+        record ModifyOp(CourseEntity target, String weekType, Integer startPeriod, Integer endPeriod,
+                        String classroom, String teacher, Integer startWeek, Integer endWeek) {}
+        List<ModifyOp> ops = new ArrayList<>();
+
         for (JsonNode item : coursesNode) {
             int dayOfWeek = item.path("day_of_week").asInt(0);
             if (dayOfWeek < 1 || dayOfWeek > 7) {
                 return errorJson("day_of_week 必须为 1-7（1=周一 ~ 7=周日）。");
             }
 
-            // 定位该天的课程
+            // 定位该天的课程（day_of_week 仅用于定位过滤，不可修改）
             List<CourseEntity> dayCourses = new ArrayList<>();
             for (CourseEntity c : pending) {
                 if (c.getDayOfWeek() == dayOfWeek) dayCourses.add(c);
@@ -340,9 +345,9 @@ public class CourseImportFlowActions {
                 if (byName == null) {
                     return errorJson("第 " + dayOfWeek + " 天没有名为「" + nameHint + "」的课程。");
                 }
-                if (target != null && !target.getCourseName().equals(nameHint)) {
-                    return errorJson("course_index=" + index + " 指向「" + target.getCourseName()
-                            + "」，与 course_name「" + nameHint + "」不一致，请确认指代。");
+                // 引用比较：双定位符（index + name）必须指向同一门课，否则报错，避免同名课程静默改错
+                if (target != null && byName != target) {
+                    return errorJson("存在同名课程，course_index=" + index + " 与 course_name「" + nameHint + "」定位不一致，请只用 course_index 精确指定。");
                 }
                 target = byName;
             }
@@ -350,16 +355,45 @@ public class CourseImportFlowActions {
                 return errorJson("请提供 course_index（该天第几个）或 course_name 来指定要修改的课程。");
             }
 
-            // 应用修改字段
-            if (item.has("week_type")) target.setWeekType(item.get("week_type").asText());
-            if (item.has("start_period")) target.setStartPeriod(item.get("start_period").asInt());
-            if (item.has("end_period")) target.setEndPeriod(item.get("end_period").asInt());
-            if (item.has("day_of_week")) target.setDayOfWeek(item.get("day_of_week").asInt());
-            if (item.has("classroom")) target.setClassroom(item.get("classroom").asText());
-            if (item.has("teacher")) target.setTeacher(item.get("teacher").asText());
-            if (item.has("start_week")) target.setStartWeek(item.get("start_week").asInt());
-            if (item.has("end_week")) target.setEndWeek(item.get("end_week").asInt());
+            // 解析待设值（先不 set，全部校验通过后统一应用）
+            String weekType = item.has("week_type") ? item.get("week_type").asText() : null;
+            Integer startPeriod = item.has("start_period") ? item.get("start_period").asInt() : null;
+            Integer endPeriod = item.has("end_period") ? item.get("end_period").asInt() : null;
+            String classroom = item.has("classroom") ? item.get("classroom").asText() : null;
+            String teacher = item.has("teacher") ? item.get("teacher").asText() : null;
+            Integer startWeek = item.has("start_week") ? item.get("start_week").asInt() : null;
+            Integer endWeek = item.has("end_week") ? item.get("end_week").asInt() : null;
 
+            // 数值字段校验：节次/周次须为正且区间不反转（用应用后的有效值判断）
+            int newStartPeriod = startPeriod != null ? startPeriod : target.getStartPeriod();
+            int newEndPeriod = endPeriod != null ? endPeriod : target.getEndPeriod();
+            if (newStartPeriod < 1 || newEndPeriod < newStartPeriod) {
+                return errorJson("课程「" + target.getCourseName() + "」节次非法：start_period 须 >=1 且 end_period 须 >= start_period。");
+            }
+            int newStartWeek = startWeek != null ? startWeek : target.getStartWeek();
+            int newEndWeek = endWeek != null ? endWeek : target.getEndWeek();
+            if (newStartWeek < 1 || newEndWeek < newStartWeek) {
+                return errorJson("课程「" + target.getCourseName() + "」周次非法：start_week 须 >=1 且 end_week 须 >= start_week。");
+            }
+            // week_type 取值校验
+            if (weekType != null && !"ALL".equals(weekType) && !"ODD".equals(weekType) && !"EVEN".equals(weekType)) {
+                return errorJson("week_type 只能为 ALL/ODD/EVEN。");
+            }
+
+            ops.add(new ModifyOp(target, weekType, startPeriod, endPeriod, classroom, teacher, startWeek, endWeek));
+        }
+
+        // 全部校验通过后统一应用
+        List<String> applied = new ArrayList<>();
+        for (ModifyOp op : ops) {
+            CourseEntity target = op.target();
+            if (op.weekType() != null) target.setWeekType(op.weekType());
+            if (op.startPeriod() != null) target.setStartPeriod(op.startPeriod());
+            if (op.endPeriod() != null) target.setEndPeriod(op.endPeriod());
+            if (op.classroom() != null) target.setClassroom(op.classroom());
+            if (op.teacher() != null) target.setTeacher(op.teacher());
+            if (op.startWeek() != null) target.setStartWeek(op.startWeek());
+            if (op.endWeek() != null) target.setEndWeek(op.endWeek());
             applied.add(target.getCourseName());
         }
 
