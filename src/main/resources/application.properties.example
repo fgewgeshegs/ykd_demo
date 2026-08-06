@@ -105,6 +105,8 @@ spring.datasource.driver-class-name=org.sqlite.JDBC
 # Campus Exam Reminder（考试提醒）
 # ============================================
 campus.enabled=true
+# 每日通知检查 cron（默认每天 08:00，可覆盖，如测试改 0 0 20 * * *）
+campus.cron=0 0 8 * * *
 
 storage.enabled=true
 

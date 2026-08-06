@@ -22,8 +22,8 @@ public class CampusScheduler {
         this.configStore = configStore;
     }
 
-    /** 每天 08:00 执行各类通知检查 */
-    @Scheduled(cron = "0 0 8 * * *")
+    /** 每天按 campus.cron（默认 08:00）执行各类通知检查 */
+    @Scheduled(cron = "${campus.cron:0 0 8 * * *}")
     public void dailyCheck() {
         CampusConfig config = configStore.get();
         if (config == null || !config.isEnabled()) {
