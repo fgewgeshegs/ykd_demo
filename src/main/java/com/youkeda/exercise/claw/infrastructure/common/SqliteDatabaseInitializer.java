@@ -249,6 +249,7 @@ public class SqliteDatabaseInitializer {
                 anilist_id  INTEGER NOT NULL UNIQUE,
                 title       TEXT NOT NULL,
                 title_ja    TEXT DEFAULT '',
+                title_zh    TEXT DEFAULT '',
                 cover_url   TEXT DEFAULT '',
                 status      TEXT DEFAULT 'RELEASING',
                 genres      TEXT DEFAULT '[]',
@@ -281,6 +282,7 @@ public class SqliteDatabaseInitializer {
         """);
 
         migrateLegacyAnimeReminderTable();
+        migrateAnimeSubscriptionTitleZh();
 
         log.debug("数据库表结构创建完成");
     }
@@ -314,6 +316,21 @@ public class SqliteDatabaseInitializer {
             ON anime_reminder_task(status, remind_time)
             """);
         log.info("DB迁移完成：anime_reminder_task 重建（加 airing_at + 唯一约束）");
+    }
+
+    /**
+     * 幂等迁移：为 anime_subscription 添加 title_zh 列。
+     *
+     * <p>该表有真实订阅数据（不可 DROP），旧库缺列时通过 ALTER 补列。
+     * SQLite 不支持 ADD COLUMN IF NOT EXISTS，用 try-catch 幂等（列已存在时报错则跳过）。
+     */
+    private void migrateAnimeSubscriptionTitleZh() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE anime_subscription ADD COLUMN title_zh TEXT DEFAULT ''");
+            log.info("DB迁移完成：anime_subscription 添加 title_zh 列");
+        } catch (Exception e) {
+            log.debug("anime_subscription.title_zh 列已存在，跳过迁移");
+        }
     }
 
     private void cleanExpiredRecords() {

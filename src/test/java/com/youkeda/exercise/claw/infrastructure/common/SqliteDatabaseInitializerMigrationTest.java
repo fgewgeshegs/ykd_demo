@@ -111,4 +111,57 @@ class SqliteDatabaseInitializerMigrationTest {
         assertTrue(reminderSql != null && reminderSql.contains("UNIQUE(anilist_id, episode)"),
                 "全新库 anime_reminder_task 应有唯一约束，实际=" + reminderSql);
     }
+
+    @Test
+    void legacySubscriptionTableGetsTitleZhColumn() throws Exception {
+        SQLiteDataSource ds = new SQLiteDataSource();
+        String url = "jdbc:sqlite:" + tempDir.resolve("sub-migration.db");
+        ds.setUrl(url);
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+
+        // 预置旧版 anime_subscription（缺 title_zh 列），并插入一行真实数据模拟
+        jdbc.execute("""
+            CREATE TABLE anime_subscription (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                anilist_id  INTEGER NOT NULL UNIQUE,
+                title       TEXT NOT NULL,
+                title_ja    TEXT DEFAULT '',
+                cover_url   TEXT DEFAULT '',
+                status      TEXT DEFAULT 'RELEASING',
+                genres      TEXT DEFAULT '[]',
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )
+            """);
+        jdbc.update("""
+            INSERT INTO anime_subscription (anilist_id, title, title_ja, cover_url, status, genres)
+            VALUES (?, ?, ?, ?, 'RELEASING', '[]')
+            """, 210031, "Grand Blue Season 3", "ぐらんぶる", "");
+
+        SqliteDatabaseInitializer initializer = new SqliteDatabaseInitializer(jdbc);
+        setField(initializer, "datasourceUrl", url);
+        initializer.init();
+
+        var cols = jdbc.queryForList("PRAGMA table_info(anime_subscription)");
+        assertTrue(cols.stream().anyMatch(row -> "title_zh".equals(row.get("name"))),
+                "旧版表迁移后应含 title_zh 列");
+        // 原数据保留（未 DROP）
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM anime_subscription", Integer.class);
+        assertTrue(count != null && count == 1, "迁移不得丢数据，实际=" + count);
+    }
+
+    @Test
+    void freshDatabaseGetsTitleZhColumn() throws Exception {
+        SQLiteDataSource ds = new SQLiteDataSource();
+        String url = "jdbc:sqlite:" + tempDir.resolve("sub-fresh.db");
+        ds.setUrl(url);
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+
+        SqliteDatabaseInitializer initializer = new SqliteDatabaseInitializer(jdbc);
+        setField(initializer, "datasourceUrl", url);
+        initializer.init();
+
+        var cols = jdbc.queryForList("PRAGMA table_info(anime_subscription)");
+        assertTrue(cols.stream().anyMatch(row -> "title_zh".equals(row.get("name"))),
+                "全新库 anime_subscription 应含 title_zh 列");
+    }
 }
