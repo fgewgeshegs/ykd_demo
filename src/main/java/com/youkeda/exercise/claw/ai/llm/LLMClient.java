@@ -30,12 +30,15 @@ import java.util.function.Supplier;
 @Component
 public class LLMClient {
 
-    private static final int TIMEOUT_SECONDS = 60;
+    /** 单次 LLM HTTP 请求超时（秒）。DeepSeek 正常响应 <5s，30s 已留足余量。 */
+    private static final int TIMEOUT_SECONDS = 30;
+    /** TCP 连接建立超时（秒）。连接本身应在 1-2s 内完成。 */
+    private static final int CONNECT_TIMEOUT_SECONDS = 10;
     private static final String SYSTEM_PROMPT_PATH = "prompts/system-prompt.txt";
     private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手，一个智能AI助手。";
 
     /** LLM 调用最大重试次数（指数退避） */
-    private static final int MAX_RETRIES = 3;
+    private static final int MAX_RETRIES = 2;
     /** 重试初始退避延迟（毫秒） */
     private static final long RETRY_BASE_DELAY_MS = 300;
 
@@ -55,7 +58,8 @@ public class LLMClient {
         this.objectMapper = objectMapper;
         this.promptLoader = promptLoader;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .version(HttpClient.Version.HTTP_2)
+                .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
                 .build();
         this.llmAdapter = new LLMAdapter(objectMapper);
     }

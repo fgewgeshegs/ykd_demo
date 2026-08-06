@@ -14,7 +14,7 @@ public class EmbeddingProperties {
     private String apiKey = "";
     private String model = "bge-m3";
     private int dimension = 1024;
-    private Duration requestTimeout = Duration.ofSeconds(30);
+    private Duration requestTimeout = Duration.ofSeconds(10);
     private Circuit circuit = new Circuit();
 
     public String getBaseUrl() { return baseUrl; }
