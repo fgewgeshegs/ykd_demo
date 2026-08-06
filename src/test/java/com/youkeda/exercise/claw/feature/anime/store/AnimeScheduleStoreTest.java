@@ -84,4 +84,18 @@ class AnimeScheduleStoreTest {
 
         assertTrue(store.getPendingReminders(1500L).isEmpty(), "SENT 后不应再出现在待执行列表");
     }
+
+    @Test
+    void getPendingRemindersOrdersByRemindTimeAscending() {
+        store.createReminderTask(210031, 5, 9000L, 10000L); // remind_time 较晚
+        store.createReminderTask(210031, 6, 1000L, 2000L);  // remind_time 较早（插入顺序打乱）
+
+        List<AnimeScheduleStore.ReminderTask> pending = store.getPendingReminders(20000L);
+
+        assertEquals(2, pending.size());
+        assertEquals(1000L, pending.get(0).getRemindTime(), "应按 remind_time ASC 排序");
+        assertEquals(9000L, pending.get(1).getRemindTime());
+        assertEquals(6, pending.get(0).getEpisode());
+        assertEquals(5, pending.get(1).getEpisode());
+    }
 }

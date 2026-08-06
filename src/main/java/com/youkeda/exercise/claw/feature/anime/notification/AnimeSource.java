@@ -63,11 +63,17 @@ public class AnimeSource implements NotificationSource {
             long future24h = now + 24 * 3600;
             List<AnimeEpisode> upcoming = scheduleStore.getUpcomingEpisodes(now, future24h);
             for (AnimeEpisode episode : upcoming) {
-                long remindTime = episode.getAiringAt() - 15 * 60; // 提前 15 分钟
-                scheduleStore.createReminderTask(
-                        episode.getAnilistId(), episode.getEpisode(), remindTime, episode.getAiringAt());
-                log.info("已生成提醒任务 | id={} | episode={} | remindTime={}",
-                        episode.getAnilistId(), episode.getEpisode(), remindTime);
+                try {
+                    long remindTime = episode.getAiringAt() - 15 * 60; // 提前 15 分钟
+                    scheduleStore.createReminderTask(
+                            episode.getAnilistId(), episode.getEpisode(), remindTime, episode.getAiringAt());
+                    log.info("已生成提醒任务 | id={} | episode={} | remindTime={}",
+                            episode.getAnilistId(), episode.getEpisode(), remindTime);
+                } catch (Exception e) {
+                    // 单集失败不中断其余集（与阶段 1 逐番剧 try/catch 对齐）
+                    log.warn("生成提醒任务失败 | id={} | episode={}",
+                            episode.getAnilistId(), episode.getEpisode(), e);
+                }
             }
             log.info("AnimeSource 检查完成 | airingCount={} | planned={}", airingAnime.size(), upcoming.size());
         } catch (Exception e) {

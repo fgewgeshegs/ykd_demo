@@ -52,6 +52,9 @@ class SqliteDatabaseInitializerMigrationTest {
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='anime_reminder_task'", String.class);
         assertTrue(reminderSql != null && reminderSql.contains("UNIQUE(anilist_id, episode)"),
                 "anime_reminder_task 应有唯一约束，实际=" + reminderSql);
+        var reminderIndexes = jdbc.queryForList("PRAGMA index_list(anime_reminder_task)");
+        assertTrue(reminderIndexes.stream().anyMatch(row -> "idx_reminder_status_time".equals(row.get("name"))),
+                "重建后 anime_reminder_task 应含 idx_reminder_status_time 索引");
     }
 
     @Test
@@ -103,5 +106,9 @@ class SqliteDatabaseInitializerMigrationTest {
         var reminderCols = jdbc.queryForList("PRAGMA table_info(anime_reminder_task)");
         assertTrue(reminderCols.stream().anyMatch(row -> "airing_at".equals(row.get("name"))));
         assertFalse(reminderCols.isEmpty());
+        String reminderSql = jdbc.queryForObject(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='anime_reminder_task'", String.class);
+        assertTrue(reminderSql != null && reminderSql.contains("UNIQUE(anilist_id, episode)"),
+                "全新库 anime_reminder_task 应有唯一约束，实际=" + reminderSql);
     }
 }

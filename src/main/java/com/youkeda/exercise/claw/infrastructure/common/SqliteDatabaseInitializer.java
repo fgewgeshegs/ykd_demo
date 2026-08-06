@@ -22,6 +22,24 @@ public class SqliteDatabaseInitializer {
 
     private static final Logger log = LoggerFactory.getLogger(SqliteDatabaseInitializer.class);
 
+    /**
+     * anime_reminder_task 建表 DDL 单一事实源（新结构：airing_at + UNIQUE(anilist_id, episode)）。
+     * createTables() 以 IF NOT EXISTS 包裹使用；migrateLegacy 在 DROP 后用裸 CREATE 重建，
+     * 保证全新库与迁移库 schema 永不漂移。
+     */
+    private static final String ANIME_REMINDER_TABLE_DDL = """
+        CREATE TABLE anime_reminder_task (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            anilist_id  INTEGER NOT NULL,
+            episode     INTEGER NOT NULL,
+            remind_time INTEGER NOT NULL,
+            airing_at   INTEGER NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'PENDING',
+            created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            UNIQUE(anilist_id, episode)
+        )
+        """;
+
     private final JdbcTemplate jdbcTemplate;
 
     @Value("${spring.datasource.url}")
@@ -254,18 +272,9 @@ public class SqliteDatabaseInitializer {
             ON anime_schedule(airing_at, notified)
         """);
 
-        jdbcTemplate.execute("""
-            CREATE TABLE IF NOT EXISTS anime_reminder_task (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                anilist_id  INTEGER NOT NULL,
-                episode     INTEGER NOT NULL,
-                remind_time INTEGER NOT NULL,
-                airing_at   INTEGER NOT NULL,
-                status      TEXT NOT NULL DEFAULT 'PENDING',
-                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-                UNIQUE(anilist_id, episode)
-            )
-        """);
+        // 建表 DDL 单一事实源：常量（裸 CREATE）+ 此处 IF NOT EXISTS 包裹
+        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS "
+            + ANIME_REMINDER_TABLE_DDL.substring("CREATE TABLE ".length()));
         jdbcTemplate.execute("""
             CREATE INDEX IF NOT EXISTS idx_reminder_status_time
             ON anime_reminder_task(status, remind_time)
@@ -277,11 +286,12 @@ public class SqliteDatabaseInitializer {
     }
 
     /**
-     * 幂等迁移旧版 anime_reminder_task 表（沿用项目既有 try/catch + 条件重建约定）。
+     * 幂等迁移旧版 anime_reminder_task 表。
      *
      * <p>旧版表缺 airing_at 列且无唯一约束，导致 createReminderTask 每次 INSERT 失败。
-     * 仅当表为空时才 DROP 重建（避免未来有数据时丢失提醒任务）；非空则告警跳过，
-     * 因为旧表从未写入 airing_at 值，ALTER 无从保留。
+     * 流程：先 PRAGMA 预检 airing_at 列，缺列才继续；再判空——仅当表为空时才 DROP 重建
+     * （避免未来有数据时丢失提醒任务）；非空则告警跳过，因为旧表从未写入 airing_at 值，
+     * ALTER 无从保留。表结构统一引用 {@link #ANIME_REMINDER_TABLE_DDL} 单一事实源。
      */
     private void migrateLegacyAnimeReminderTable() {
         boolean hasAiringAt = jdbcTemplate.queryForList("PRAGMA table_info(anime_reminder_task)")
@@ -298,18 +308,7 @@ public class SqliteDatabaseInitializer {
         }
         log.warn("DB迁移：anime_reminder_task 缺 airing_at 列且为空，重建表");
         jdbcTemplate.execute("DROP TABLE anime_reminder_task");
-        jdbcTemplate.execute("""
-            CREATE TABLE anime_reminder_task (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                anilist_id  INTEGER NOT NULL,
-                episode     INTEGER NOT NULL,
-                remind_time INTEGER NOT NULL,
-                airing_at   INTEGER NOT NULL,
-                status      TEXT NOT NULL DEFAULT 'PENDING',
-                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-                UNIQUE(anilist_id, episode)
-            )
-            """);
+        jdbcTemplate.execute(ANIME_REMINDER_TABLE_DDL);
         jdbcTemplate.execute("""
             CREATE INDEX IF NOT EXISTS idx_reminder_status_time
             ON anime_reminder_task(status, remind_time)

@@ -43,6 +43,15 @@ public class ReminderScheduler {
 
             for (AnimeScheduleStore.ReminderTask task : pending) {
                 try {
+                    // 守卫：任务已到提醒时间但播出时间已过（如应用宕机跨过 15 分钟提醒窗口，
+                    // 或任务迟到），不再推送“即将播出”，直接标记已发送避免下次重复处理。
+                    if (task.getAiringAt() <= now) {
+                        scheduleStore.markReminderSent(task.getId());
+                        log.info("提醒跳过：已播出 | taskId={} | episode={} | airingAt={}",
+                            task.getId(), task.getEpisode(), task.getAiringAt());
+                        continue;
+                    }
+
                     Anime anime = subscriptionStore.findByAnilistId(task.getAnilistId());
                     if (anime == null) continue;
 
