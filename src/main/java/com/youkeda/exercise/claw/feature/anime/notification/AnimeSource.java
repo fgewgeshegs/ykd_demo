@@ -44,32 +44,32 @@ public class AnimeSource implements NotificationSource {
                 return;
             }
 
-            long now = System.currentTimeMillis() / 1000;
-            long future24h = now + 24 * 3600;
-
+            // 阶段 1：记录每部连载番的下一集播出信息（幂等 upsert）
             for (Anime anime : airingAnime) {
                 try {
                     AnimeEpisode episode = aniListClient.getAiringSchedule(anime.getAnilistId());
-                    if (episode == null || episode.getEpisode() <= 0) continue;
-
-                    // 插入播出记录（已存在则忽略）
-                    boolean isNew = scheduleStore.insertOrIgnoreEpisode(
-                        anime.getAnilistId(), episode.getEpisode(), episode.getAiringAt());
-                    if (!isNew) continue;
-
-                    // 如果未来 24h 内播出，生成提醒任务
-                    if (episode.getAiringAt() <= future24h) {
-                        long remindTime = episode.getAiringAt() - 15 * 60; // 提前 15 分钟
-                        scheduleStore.createReminderTask(
-                            anime.getAnilistId(), episode.getEpisode(), remindTime, episode.getAiringAt());
-                        log.info("已生成提醒任务 | title={} | episode={} | remindTime={}",
-                            anime.getTitle(), episode.getEpisode(), remindTime);
+                    if (episode == null || episode.getEpisode() <= 0) {
+                        continue;
                     }
+                    scheduleStore.insertOrIgnoreEpisode(
+                            anime.getAnilistId(), episode.getEpisode(), episode.getAiringAt());
                 } catch (Exception e) {
                     log.warn("检查番剧失败 | id={} | title={}", anime.getAnilistId(), anime.getTitle(), e);
                 }
             }
-            log.info("AnimeSource 检查完成 | airingCount={}", airingAnime.size());
+
+            // 阶段 2：对未来 24h 内播出且未通知的集，生成提醒任务（幂等，重复调用不重建）
+            long now = System.currentTimeMillis() / 1000;
+            long future24h = now + 24 * 3600;
+            List<AnimeEpisode> upcoming = scheduleStore.getUpcomingEpisodes(now, future24h);
+            for (AnimeEpisode episode : upcoming) {
+                long remindTime = episode.getAiringAt() - 15 * 60; // 提前 15 分钟
+                scheduleStore.createReminderTask(
+                        episode.getAnilistId(), episode.getEpisode(), remindTime, episode.getAiringAt());
+                log.info("已生成提醒任务 | id={} | episode={} | remindTime={}",
+                        episode.getAnilistId(), episode.getEpisode(), remindTime);
+            }
+            log.info("AnimeSource 检查完成 | airingCount={} | planned={}", airingAnime.size(), upcoming.size());
         } catch (Exception e) {
             log.error("AnimeSource 检查异常", e);
         }
