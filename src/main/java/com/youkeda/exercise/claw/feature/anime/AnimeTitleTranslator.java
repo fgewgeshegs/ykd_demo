@@ -62,6 +62,10 @@ public class AnimeTitleTranslator {
             if (cleaned.equalsIgnoreCase(anime.getTitle())) {
                 return null;
             }
+            // 回显日文名 = 同样无法确认中文译名（prompt 允许回显日文名），视为失败
+            if (!titleJa.isBlank() && cleaned.equalsIgnoreCase(titleJa)) {
+                return null;
+            }
             return cleaned;
         } catch (Exception e) {
             log.warn("译名 LLM 调用失败 | title={} | error={}", anime.getTitle(), e.getMessage());

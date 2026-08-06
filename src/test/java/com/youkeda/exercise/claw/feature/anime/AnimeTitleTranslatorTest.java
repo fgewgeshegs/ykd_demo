@@ -62,4 +62,13 @@ class AnimeTitleTranslatorTest {
         assertNull(translator.translate(anime("Grand Blue Season 3", "ぐらんぶる")),
                 "回显原片名视为无法翻译");
     }
+
+    @Test
+    @DisplayName("LLM 回显日文名 titleJa 时返回 null（无法确认中文译名）")
+    void returnsNullWhenLlmEchoesJapaneseTitle() {
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("ぐらんぶる");
+        assertNull(translator.translate(anime("Grand Blue Season 3", "ぐらんぶる")),
+                "回显日文名视为无法翻译");
+    }
 }
