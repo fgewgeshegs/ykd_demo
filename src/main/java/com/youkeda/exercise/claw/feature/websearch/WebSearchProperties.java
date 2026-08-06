@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 @Data
 @Component
 @ConfigurationProperties(prefix = "websearch.api")
-public class WebSearchConfig {
+public class WebSearchProperties {
 
     /** API 密钥（https://app.tavily.com 获取） */
     private String key;

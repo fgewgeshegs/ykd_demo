@@ -616,16 +616,16 @@ class CourseScheduleTest {
         }
     }
 
-    // ==================== SemesterConfig 测试 ====================
+    // ==================== SemesterProperties 测试 ====================
 
     @Nested
-    @DisplayName("SemesterConfig - 学期周次计算")
-    class SemesterConfigTest {
+    @DisplayName("SemesterProperties - 学期周次计算")
+    class SemesterPropertiesTest {
 
         @Test
         @DisplayName("未设置学期起始日返回默认 1")
         void defaultWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             // 没有调用 setSemesterStart，getCurrentWeek 返回 1
             assertTrue(config.getCurrentWeek() >= 1);
         }
@@ -633,7 +633,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("学期第一天为第 1 周")
         void firstWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             // 假设学期从今天开始（手工 mock 做不到固定日期，但可以验证逻辑）
             LocalDate start = LocalDate.now();
             config.setSemesterStart(start);
@@ -643,7 +643,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("学期前返回 -1")
         void beforeSemester() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             config.setSemesterStart(LocalDate.now().plusDays(7)); // 一周后才开始
             assertEquals(-1, config.getCurrentWeek());
         }
@@ -651,7 +651,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("isOddWeek / isEvenWeek 正确")
         void oddEvenWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             config.setSemesterStart(LocalDate.now().minusDays(7)); // 第 2 周
             int week = config.getCurrentWeek();
             if (week % 2 == 1) {
@@ -666,7 +666,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("学期前 isOddWeek 返回 false")
         void beforeSemesterOddWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             config.setSemesterStart(LocalDate.now().plusDays(365)); // 一年后
             assertFalse(config.isOddWeek());
         }
@@ -932,18 +932,18 @@ class CourseScheduleTest {
     @DisplayName("查询场景 - 今日课程与周次过滤")
     class CourseQueryTest {
 
-        private SemesterConfig semesterConfig;
+        private SemesterProperties semesterProperties;
 
         @BeforeEach
         void setUp() {
-            semesterConfig = new SemesterConfig();
+            semesterProperties = new SemesterProperties();
         }
 
         @Test
         @DisplayName("当天有课且在当前周范围内返回 true")
         void todayCourseActiveInWeek() {
             // 假设当前是第 1 周
-            CourseEntity c = new CourseEntity("u1", "高数", null, semesterConfig.getCurrentDayOfWeek(), 1, 2,
+            CourseEntity c = new CourseEntity("u1", "高数", null, semesterProperties.getCurrentDayOfWeek(), 1, 2,
                     null, 1, 16, CourseEntity.WEEK_ALL);
             assertTrue(c.isActiveInWeek(1));
         }
@@ -951,7 +951,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("当天有课但超出周次范围返回 false")
         void todayCourseOutOfWeekRange() {
-            CourseEntity c = new CourseEntity("u1", "选修", null, semesterConfig.getCurrentDayOfWeek(), 7, 8,
+            CourseEntity c = new CourseEntity("u1", "选修", null, semesterProperties.getCurrentDayOfWeek(), 7, 8,
                     null, 10, 16, CourseEntity.WEEK_ALL);
             assertFalse(c.isActiveInWeek(1)); // 第 1 周不在 10-16 周范围内
         }
@@ -959,7 +959,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("单周课程在双周不可见")
         void oddCourseInEvenWeek() {
-            int currentDay = semesterConfig.getCurrentDayOfWeek();
+            int currentDay = semesterProperties.getCurrentDayOfWeek();
             CourseEntity c = new CourseEntity("u1", "单周体育", null, currentDay, 3, 4,
                     null, 1, 18, CourseEntity.WEEK_ODD);
 
@@ -970,7 +970,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("双周课程在单周不可见")
         void evenCourseInOddWeek() {
-            int currentDay = semesterConfig.getCurrentDayOfWeek();
+            int currentDay = semesterProperties.getCurrentDayOfWeek();
             CourseEntity c = new CourseEntity("u1", "双周实验", null, currentDay, 5, 6,
                     null, 2, 16, CourseEntity.WEEK_EVEN);
 
@@ -983,7 +983,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("query_today 返回课程列表过滤正确")
         void queryTodayFiltering() {
-            int today = semesterConfig.getCurrentDayOfWeek();
+            int today = semesterProperties.getCurrentDayOfWeek();
             int currentWeek = 3; // 假设当前第 3 周
 
             // 所有课程都是今天，但周次不同

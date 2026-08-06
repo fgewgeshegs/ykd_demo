@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -25,16 +24,16 @@ public class CourseService {
 
     private final CourseRepository courseRepository;
     private final CourseParser courseParser;
-    private final SemesterConfig semesterConfig;
+    private final SemesterProperties semesterProperties;
     private final SemesterService semesterService;
 
     public CourseService(CourseRepository courseRepository,
                          CourseParser courseParser,
-                         SemesterConfig semesterConfig,
+                         SemesterProperties semesterProperties,
                          SemesterService semesterService) {
         this.courseRepository = courseRepository;
         this.courseParser = courseParser;
-        this.semesterConfig = semesterConfig;
+        this.semesterProperties = semesterProperties;
         this.semesterService = semesterService;
     }
 
@@ -111,7 +110,7 @@ public class CourseService {
      * 获取用户今日课程（已过滤当前教学周和单双周）
      *
      * <p>优先使用用户自身 {@link SemesterService} 计算的周次，
-     * 仅当用户无学期记录时回退 {@link SemesterConfig}。
+     * 仅当用户无学期记录时回退 {@link SemesterProperties}。
      * 查询课程时按当前学期（{@code semester_id}）隔离。</p>
      */
     public List<CourseEntity> getTodayCourses(String userId) {
@@ -231,7 +230,7 @@ public class CourseService {
      * 解析用户当前教学周
      *
      * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
-     * 当用户无学期记录或学期未开始时，回退到 {@link SemesterConfig#getCurrentWeek()}。
+     * 当用户无学期记录或学期未开始时，回退到 {@link SemesterProperties#getCurrentWeek()}。
      *
      * @param userId 用户标识
      * @return 当前教学周（>0 表示学期进行中）
@@ -242,7 +241,7 @@ public class CourseService {
             return week;
         }
         // Fallback: 系统默认配置
-        return semesterConfig.getCurrentWeek();
+        return semesterProperties.getCurrentWeek();
     }
 
     /**

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.infrastructure.common.ClawException;
 import com.youkeda.exercise.claw.infrastructure.common.HttpClientUtil;
-import com.youkeda.exercise.claw.feature.weather.WeatherConfig;
+import com.youkeda.exercise.claw.feature.weather.WeatherProperties;
 import com.youkeda.exercise.claw.feature.weather.WeatherResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,12 +24,12 @@ public class WeatherService {
 
     private static final Logger log = LoggerFactory.getLogger(WeatherService.class);
 
-    private final WeatherConfig config;
+    private final WeatherProperties weatherProperties;
     private final HttpClientUtil httpClient;
     private final ObjectMapper objectMapper;
 
-    public WeatherService(WeatherConfig config, ObjectMapper objectMapper) {
-        this.config = config;
+    public WeatherService(WeatherProperties weatherProperties, ObjectMapper objectMapper) {
+        this.weatherProperties = weatherProperties;
         this.objectMapper = objectMapper;
         this.httpClient = new HttpClientUtil();
     }
@@ -45,9 +45,9 @@ public class WeatherService {
         try {
             // 1. 构建请求 URL（替换占位符）
             String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
-            String url = config.getUrl()
+            String url = weatherProperties.getUrl()
                     .replace("{city}", encodedCity)
-                    .replace("{key}", config.getKey());
+                    .replace("{key}", weatherProperties.getKey());
 
             // 2. 发送 HTTP GET 请求
             String responseBody = httpClient.doGet(url);
@@ -68,10 +68,10 @@ public class WeatherService {
             long daysFromToday = ChronoUnit.DAYS.between(LocalDate.now(), date);
             int days = (int) Math.max(1, daysFromToday + 1);
             String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
-            String url = config.getUrl()
+            String url = weatherProperties.getUrl()
                     .replace("/current.json", "/forecast.json")
                     .replace("{city}", encodedCity)
-                    .replace("{key}", config.getKey());
+                    .replace("{key}", weatherProperties.getKey());
             url += "&days=" + days;
             return parseForecastResponse(httpClient.doGet(url), city, date);
         } catch (Exception e) {

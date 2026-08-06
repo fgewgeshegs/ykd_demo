@@ -17,9 +17,9 @@ import java.time.temporal.ChronoUnit;
  */
 @Component
 @ConfigurationProperties(prefix = "schedule")
-public class SemesterConfig {
+public class SemesterProperties {
 
-    private static final Logger log = LoggerFactory.getLogger(SemesterConfig.class);
+    private static final Logger log = LoggerFactory.getLogger(SemesterProperties.class);
 
     /** 学期第一周的周一日期 */
     private LocalDate semesterStart;

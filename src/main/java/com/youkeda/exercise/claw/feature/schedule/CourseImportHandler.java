@@ -2,8 +2,6 @@ package com.youkeda.exercise.claw.feature.schedule;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.infrastructure.document.FileParseService;
 import com.youkeda.exercise.claw.ai.llm.LLMClient;
 import com.youkeda.exercise.claw.ai.vision.VisionService;
@@ -189,7 +187,7 @@ public class CourseImportHandler {
     private final CourseParser courseParser;
     private final CourseImportStateManager importStateManager;
     private final CourseRepository courseRepository;
-    private final SemesterConfig semesterConfig;
+    private final SemesterProperties semesterProperties;
     private final FileParseService fileParseService;
     private final LLMClient llmClient;
     private final ContextStore contextStore;
@@ -204,7 +202,7 @@ public class CourseImportHandler {
                                CourseParser courseParser,
                                CourseImportStateManager importStateManager,
                                CourseRepository courseRepository,
-                               SemesterConfig semesterConfig,
+                               SemesterProperties semesterProperties,
                                FileParseService fileParseService,
                                LLMClient llmClient,
                                ContextStore contextStore,
@@ -218,7 +216,7 @@ public class CourseImportHandler {
         this.courseParser = courseParser;
         this.importStateManager = importStateManager;
         this.courseRepository = courseRepository;
-        this.semesterConfig = semesterConfig;
+        this.semesterProperties = semesterProperties;
         this.fileParseService = fileParseService;
         this.llmClient = llmClient;
         this.contextStore = contextStore;
@@ -590,14 +588,14 @@ public class CourseImportHandler {
      * 解析用户当前教学周
      *
      * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
-     * 无学期记录时回退 {@link SemesterConfig#getCurrentWeek()}。
+     * 无学期记录时回退 {@link SemesterProperties#getCurrentWeek()}。
      */
     private int resolveCurrentWeek(String userId) {
         int week = semesterService.getCurrentWeek(userId);
         if (week > 0) {
             return week;
         }
-        return semesterConfig.getCurrentWeek();
+        return semesterProperties.getCurrentWeek();
     }
 
     private String buildPreviewText(String userId, List<CourseEntity> courses) {
