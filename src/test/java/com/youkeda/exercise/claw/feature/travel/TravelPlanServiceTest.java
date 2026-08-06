@@ -116,6 +116,51 @@ class TravelPlanServiceTest {
     }
 
     @Test
+    void partialCostYieldsIncompleteCredentialWithMissingItems() {
+        collectRequirements();
+        saveTwoOptions();
+
+        // PARTIAL 核算：plan_a 缺小七孔门票价格
+        PlanCostResult cost = new PlanCostResult();
+        cost.setStatus("PARTIAL");
+        OptionCostResult optionA = new OptionCostResult();
+        optionA.setPlanId("plan_a");
+        optionA.setCostStatus(OptionCostStatus.PARTIAL);
+        optionA.getMissingPriceItems().add("荔波小七孔门票");
+        cost.getPlans().add(optionA);
+        service.recordCostCalculation(OWNER, cost);
+
+        TravelDeliveryCredentialSource.DeliveryCredential credential =
+                service.getCredential(OWNER).orElseThrow();
+        assertTrue(credential.costCalculated(), "PARTIAL 也算已核算（有 costResult）");
+        assertEquals(false, credential.costComplete(),
+                "PARTIAL 核算必须暴露 costComplete=false（守卫据此要求披露缺失项）");
+        assertTrue(credential.costMissingItems().contains("荔波小七孔门票"),
+                "缺失项必须带进凭证，供守卫纠正消息点名");
+    }
+
+    @Test
+    void completeCostYieldsCompleteCredential() {
+        collectRequirements();
+        saveTwoOptions();
+
+        PlanCostResult cost = new PlanCostResult();
+        cost.setStatus("SUCCESS");
+        OptionCostResult optionA = new OptionCostResult();
+        optionA.setPlanId("plan_a");
+        optionA.setCostStatus(OptionCostStatus.SUCCESS);
+        optionA.setEstimatedTotalMin(new BigDecimal("1000"));
+        cost.getPlans().add(optionA);
+        service.recordCostCalculation(OWNER, cost);
+
+        TravelDeliveryCredentialSource.DeliveryCredential credential =
+                service.getCredential(OWNER).orElseThrow();
+        assertTrue(credential.costCalculated());
+        assertTrue(credential.costComplete(), "SUCCESS 核算必须授予完整凭证");
+        assertTrue(credential.costMissingItems().isEmpty());
+    }
+
+    @Test
     void noPlanStateYieldsEmptyCredential() {
         assertTrue(service.getCredential(OWNER).isEmpty(),
                 "无方案状态时凭证应为空（守卫据此判定从未核算/未收集）");

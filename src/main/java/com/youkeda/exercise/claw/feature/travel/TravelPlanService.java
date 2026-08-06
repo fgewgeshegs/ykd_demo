@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.TravelDeliveryCredentialSource;
 import com.youkeda.exercise.claw.feature.budget.OptionCostResult;
+import com.youkeda.exercise.claw.feature.budget.OptionCostStatus;
 import com.youkeda.exercise.claw.feature.budget.PlanCostResult;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.springframework.stereotype.Service;
@@ -103,10 +104,12 @@ public class TravelPlanService implements TravelDeliveryCredentialSource {
     }
 
     /**
-     * 交付凭证：需求已收集齐（collect 凭证）+ 存在有效核算结果（cost 凭证）。
+     * 交付凭证：需求已收集齐（collect 凭证）+ 存在有效核算结果（cost 凭证）+ 核算完整度。
      *
      * <p>供 {@code TravelReplyGuard} 做跨轮校验。cost 凭证判定用 {@code costResult != null}——
      * 数据变更时 {@link #invalidateAllOptions} 会把 costResult 清 null 并置 STALE，故非 null 即核算有效。
+     * costComplete 区分「核算完整」与「PARTIAL（存在缺失价格）」：PARTIAL 时守卫要求回复如实披露缺失项，
+     * 防止 LLM 把未确认价格的结果当作确定总费用交付。
      */
     @Override
     public Optional<TravelDeliveryCredentialSource.DeliveryCredential> getCredential(String userId) {
@@ -114,10 +117,39 @@ public class TravelPlanService implements TravelDeliveryCredentialSource {
         TravelPlanDraft draft = stateStore.get(userId);
         if (draft == null) return Optional.empty();
         boolean requirementsComplete = findMissing(draft).isEmpty();
-        boolean costCalculated = draft.getOptions().stream()
-                .anyMatch(option -> option.getCostResult() != null);
+        List<TravelPlanOption> costed = draft.getOptions().stream()
+                .filter(option -> option.getCostResult() != null)
+                .toList();
+        boolean costCalculated = !costed.isEmpty();
+        boolean costComplete = !costed.isEmpty() && costed.stream().allMatch(this::isCostComplete);
+        List<String> costMissingItems = costed.stream()
+                .flatMap(option -> costResultMissingItems(option).stream())
+                .distinct()
+                .toList();
         return Optional.of(new TravelDeliveryCredentialSource.DeliveryCredential(
-                requirementsComplete, costCalculated));
+                requirementsComplete, costCalculated, costComplete, costMissingItems));
+    }
+
+    /** 核算结果是否完整：costStatus=SUCCESS 且无缺失价格项。 */
+    private boolean isCostComplete(TravelPlanOption option) {
+        try {
+            OptionCostResult cost = objectMapper.treeToValue(option.getCostResult(), OptionCostResult.class);
+            return cost.getCostStatus() == OptionCostStatus.SUCCESS
+                    && (cost.getMissingPriceItems() == null || cost.getMissingPriceItems().isEmpty());
+        } catch (Exception e) {
+            // 反序列化失败按不完整处理（fail-closed：不授予「完整核算」凭证）
+            return false;
+        }
+    }
+
+    /** 核算结果中的缺失价格项列表。 */
+    private List<String> costResultMissingItems(TravelPlanOption option) {
+        try {
+            OptionCostResult cost = objectMapper.treeToValue(option.getCostResult(), OptionCostResult.class);
+            return cost.getMissingPriceItems() != null ? cost.getMissingPriceItems() : List.of();
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     /**

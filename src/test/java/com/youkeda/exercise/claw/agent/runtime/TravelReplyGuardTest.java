@@ -129,4 +129,56 @@ class TravelReplyGuardTest {
                 statuses);
         assertTrue(r.allowed());
     }
+
+    // ==================== PARTIAL 核算披露不变量（3B 缺口） ====================
+
+    @Test
+    void blocksPartialBudgetConclusionWithoutDisclosure() {
+        // PARTIAL 凭证：核算不完整，小七孔门票价格缺失。
+        // 回复给出确定总费用却未披露缺失项 → 拦截（防 LLM 把未确认价格当确定结果交付）
+        when(source.getCredential("u")).thenReturn(Optional.of(
+                new TravelDeliveryCredentialSource.DeliveryCredential(
+                        true, true, false, java.util.List.of("小七孔门票"))));
+
+        GuardResult r = validate("看看方案A", "方案A总费用4135元，在预算内", Map.of());
+        assertFalse(r.allowed(), "PARTIAL 未披露缺失项时必须拦截确定金额");
+    }
+
+    @Test
+    void allowsPartialBudgetConclusionWithDisclosure() {
+        // PARTIAL + 如实披露缺失项 → 放行（合法交付，不会死锁）
+        when(source.getCredential("u")).thenReturn(Optional.of(
+                new TravelDeliveryCredentialSource.DeliveryCredential(
+                        true, true, false, java.util.List.of("小七孔门票"))));
+
+        GuardResult r = validate("看看方案A",
+                "方案A总费用约4135元，其中小七孔门票价格待确认，其余已核算", Map.of());
+        assertTrue(r.allowed(), "PARTIAL 已披露缺失项应放行，避免重试死锁");
+    }
+
+    @Test
+    void allowsPartialReplyWithoutAssertingTotal() {
+        // PARTIAL + 不给出确定总费用（只披露缺失）→ 放行
+        when(source.getCredential("u")).thenReturn(Optional.of(
+                new TravelDeliveryCredentialSource.DeliveryCredential(
+                        true, true, false, java.util.List.of("小七孔门票"))));
+
+        GuardResult r = validate("看看方案A",
+                "方案A已核算，但小七孔门票价格待确认，暂无法给出确定总费用", Map.of());
+        assertTrue(r.allowed(), "未断言确定金额时 PARTIAL 可交付");
+    }
+
+    @Test
+    void correctionNamesMissingItemsForPartial() {
+        // 纠正消息必须点名缺失项，让 LLM 有明确出路（修复「纠正指令不可执行」）
+        when(source.getCredential("u")).thenReturn(Optional.of(
+                new TravelDeliveryCredentialSource.DeliveryCredential(
+                        true, true, false, java.util.List.of("小七孔门票"))));
+
+        GuardResult r = validate("看看方案A", "方案A总费用4135元", Map.of());
+        assertFalse(r.allowed());
+        assertNotNull(r.correction());
+        assertTrue(r.correction().contains("小七孔门票"),
+                "纠正消息应点名缺失项，LLM 才知道披露什么");
+    }
 }

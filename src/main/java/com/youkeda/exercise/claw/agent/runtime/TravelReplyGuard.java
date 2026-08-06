@@ -33,6 +33,10 @@ public class TravelReplyGuard implements SkillReplyGuard {
     private static final Pattern BUDGET_SUMMARY = Pattern.compile(
             "总费用|总价|人均费用|人均价|预算内|超预算|合计.*元|共.*元");
 
+    /** 缺失价格披露信号：核算不完整时，回复必须包含此类措辞才能给出金额结论。 */
+    private static final Pattern PRICE_DISCLOSURE = Pattern.compile(
+            "待确认|未确认|待定|暂估|估算|预估|待核实|价格未知|待补充|未包含|不含|仅供参考");
+
     private final TravelDeliveryCredentialSource credentialSource;
 
     public TravelReplyGuard(TravelDeliveryCredentialSource credentialSource) {
@@ -63,6 +67,9 @@ public class TravelReplyGuard implements SkillReplyGuard {
                 || (credential != null && credential.requirementsComplete());
         boolean costCalculated = costThisRound
                 || (credential != null && credential.costCalculated());
+        // 完整度：本轮工具返回 SUCCESS 即完整核算；否则看跨轮凭证的完整度
+        boolean costComplete = costThisRound
+                || (credential != null && credential.costComplete());
 
         // 不变量 1：旅行请求 + 声称完成行程 + 需求未收集齐 → 拦截
         boolean claimsCompleted = COMPLETED_PLAN.matcher(context.reply()).find();
@@ -74,10 +81,24 @@ public class TravelReplyGuard implements SkillReplyGuard {
         }
 
         // 不变量 2：预算结论必须有核算凭证（本轮调用，或跨轮已有有效核算结果）
-        if (BUDGET_SUMMARY.matcher(context.reply()).find() && !costCalculated) {
+        boolean claimsBudget = BUDGET_SUMMARY.matcher(context.reply()).find();
+        if (claimsBudget && !costCalculated) {
             return GuardResult.reject(
                     "你的回复包含总费用/人均费用/预算结论，但尚未有对应的 travel_calculate_cost 核算凭证。"
                             + "请先调用 travel_calculate_cost 核算后再给出金额结论。");
+        }
+
+        // 不变量 2b：核算不完整（PARTIAL，存在缺失价格项）时，金额结论必须如实披露缺失项
+        if (claimsBudget && costCalculated && !costComplete) {
+            if (!PRICE_DISCLOSURE.matcher(context.reply()).find()) {
+                String missing = (credential != null && !credential.costMissingItems().isEmpty())
+                        ? String.join("、", credential.costMissingItems())
+                        : "部分费用项";
+                return GuardResult.reject(
+                        "你的回复给出总费用/人均费用/预算结论，但核算结果不完整，以下费用项价格未确认："
+                                + missing + "。请在回复中如实标注这些项为「待确认/估算」，"
+                                + "不得给出确定的总费用结论；或补充缺失价格后重新调用 travel_calculate_cost 核算。");
+            }
         }
 
         return GuardResult.allow();
