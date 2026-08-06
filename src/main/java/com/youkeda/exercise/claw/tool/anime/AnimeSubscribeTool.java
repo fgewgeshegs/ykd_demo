@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youkeda.exercise.claw.agent.runtime.AbstractTool;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
+import com.youkeda.exercise.claw.feature.anime.AnimeTitleTranslator;
 import com.youkeda.exercise.claw.feature.anime.client.AniListClient;
 import com.youkeda.exercise.claw.domain.anime.Anime;
 import com.youkeda.exercise.claw.domain.anime.AnimeEpisode;
@@ -30,14 +31,17 @@ public class AnimeSubscribeTool extends AbstractTool {
 
     private final AniListClient aniListClient;
     private final AnimeSubscriptionStore subscriptionStore;
+    private final AnimeTitleTranslator translator;
 
     public AnimeSubscribeTool(AniListClient aniListClient,
                                   AnimeSubscriptionStore subscriptionStore,
+                                  AnimeTitleTranslator translator,
                                   ToolRegistry functionRegistry,
                                   ObjectMapper objectMapper) {
         super(functionRegistry, objectMapper);
         this.aniListClient = aniListClient;
         this.subscriptionStore = subscriptionStore;
+        this.translator = translator;
     }
 
     @Override
@@ -129,9 +133,30 @@ public class AnimeSubscribeTool extends AbstractTool {
             return "{\"status\":\"ERROR\",\"message\":\"请提供番剧 ID 或名称\"}";
         }
 
+        // 翻译中文译名并落库；LLM 无法翻译（失败/空/回显罗马音或日文名）时回退罗马音
+        String titleZh = translator.translate(target);
+        if (isUsableTitleZh(titleZh, target)) {
+            target.setTitleZh(titleZh);
+        }
         subscriptionStore.subscribe(target);
-        log.info("用户订阅了番剧 | title={} | id={}", target.getTitle(), target.getAnilistId());
-        return "{\"status\":\"SUCCESS\",\"message\":\"已订阅《" + target.getTitle() + "》！播出前会提醒你。\"}";
+        log.info("用户订阅了番剧 | title={} | titleZh={} | id={}", target.getTitle(), target.getTitleZh(), target.getAnilistId());
+        return "{\"status\":\"SUCCESS\",\"message\":\"已订阅《" + target.getDisplayTitle() + "》！播出前会提醒你。\"}";
+    }
+
+    /**
+     * 校验 LLM 返回的译名是否可作为中文译名落库。
+     * LLM 无法翻译时的失败标记（空白、回显罗马音 title、回显日文名 titleJa）一律不落库，
+     * 由调用方回退罗马音显示（每日回填会重试）。
+     */
+    private static boolean isUsableTitleZh(String titleZh, Anime target) {
+        if (titleZh == null || titleZh.isBlank()) {
+            return false;
+        }
+        if (titleZh.equalsIgnoreCase(target.getTitle())) {
+            return false;
+        }
+        String titleJa = target.getTitleJa();
+        return titleJa == null || titleJa.isBlank() || !titleZh.equalsIgnoreCase(titleJa);
     }
 
     private String handleUnsubscribe(JsonNode args) throws Exception {
@@ -161,6 +186,7 @@ public class AnimeSubscribeTool extends AbstractTool {
             "status", "SUCCESS",
             "subscriptions", list.stream().map(a -> Map.of(
                 "title", a.getTitle(),
+                "title_zh", a.getTitleZh() != null ? a.getTitleZh() : "",
                 "status", a.getStatus(),
                 "id", a.getAnilistId()
             )).toList()
@@ -193,9 +219,15 @@ public class AnimeSubscribeTool extends AbstractTool {
             return "{\"status\":\"ERROR\",\"message\":\"请提供番剧 ID 或名称\"}";
         }
 
+        // 若已订阅，优先用库内中文译名（避免额外 LLM 调用）
+        Anime subscribed = subscriptionStore.findByAnilistId(target.getAnilistId());
+        if (subscribed != null) {
+            target.setTitleZh(subscribed.getTitleZh());
+        }
+
         AnimeEpisode episode = aniListClient.getAiringSchedule(target.getAnilistId());
         if (episode == null) {
-            return "{\"status\":\"SUCCESS\",\"message\":\"《" + target.getTitle() + "》暂无排期信息（可能已完结或未定档）\"}";
+            return "{\"status\":\"SUCCESS\",\"message\":\"《" + target.getDisplayTitle() + "》暂无排期信息（可能已完结或未定档）\"}";
         }
 
         // Unix 秒 → 北京时间
@@ -203,7 +235,7 @@ public class AnimeSubscribeTool extends AbstractTool {
             Instant.ofEpochSecond(episode.getAiringAt()), ZoneId.of("Asia/Shanghai"));
         String formatted = airTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
 
-        return "{\"status\":\"SUCCESS\",\"message\":\"《" + target.getTitle() + "》第 "
+        return "{\"status\":\"SUCCESS\",\"message\":\"《" + target.getDisplayTitle() + "》第 "
             + episode.getEpisode() + " 集将于 " + formatted + "（北京时间）播出\"}";
     }
 }
