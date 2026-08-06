@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.agent.activity;
 
-public enum ActivityEventType {
+public enum
+ActivityEventType {
     REQUEST_RECEIVED,
     SKILL_SELECTED,
     TOOL_STARTED,

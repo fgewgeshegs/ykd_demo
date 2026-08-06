@@ -1,5 +1,6 @@
 package com.youkeda.exercise.claw.agent.skill;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.SafetyPolicy;
 import com.youkeda.exercise.claw.agent.runtime.Tool;
@@ -146,6 +147,12 @@ public class PendingToolCoordinator {
             log.info("已确认工具执行完成 | id={} | tool={} | result={}",
                     action.id(), action.toolName(), truncate(result, 200));
 
+            // 检测业务级错误（工具执行成功但返回 error 状态，如"估价已过期"）
+            if (isBusinessError(result)) {
+                return new Result(Result.Type.FAILED, executed, result,
+                        extractErrorDetail(action.toolName(), result));
+            }
+
             return new Result(Result.Type.EXECUTED, executed, result,
                     formatConfirmationResult(action.toolName(), result));
 
@@ -202,7 +209,8 @@ public class PendingToolCoordinator {
         }
 
         public boolean handled() {
-            return type != Type.NOT_HANDLED;
+            // FAILED 不短路——错误信息需交由 LLM 生成用户友好的回复
+            return type != Type.NOT_HANDLED && type != Type.FAILED;
         }
 
         public static Result notHandled() {
@@ -224,10 +232,32 @@ public class PendingToolCoordinator {
         };
     }
 
+    /** 检测工具返回是否为业务级错误（status=error/failed） */
+    private boolean isBusinessError(String result) {
+        if (result == null) return true;
+        try {
+            JsonNode node = objectMapper.readTree(result);
+            String status = node.path("status").asText("SUCCESS").toUpperCase();
+            return "ERROR".equals(status) || "FAILED".equals(status);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 从工具返回 JSON 中提取错误详情 */
+    private String extractErrorDetail(String toolName, String result) {
+        try {
+            JsonNode node = objectMapper.readTree(result);
+            if (node.has("error")) return node.get("error").asText();
+            if (node.has("message")) return node.get("message").asText();
+        } catch (Exception ignored) {}
+        return "未知错误";
+    }
+
     private String formatConfirmationResult(String toolName, String rawResult) {
         String display = toolDisplayName(toolName);
-        if (rawResult != null && rawResult.contains("\"status\":\"SUCCESS\"")
-                || rawResult != null && rawResult.contains("\"status\":\"success\"")) {
+        // 非业务错误（即 status ≠ ERROR/FAILED）即为成功
+        if (!isBusinessError(rawResult)) {
             return display + "操作已完成。" + extractSummary(rawResult);
         }
         return display + "操作已执行。";
@@ -236,6 +266,16 @@ public class PendingToolCoordinator {
     private String extractSummary(String raw) {
         try {
             var node = objectMapper.readTree(raw);
+            // 优先提取订单信息（确认短路后直接展示给用户，不经过 LLM）
+            if (node.has("order_id")) {
+                String orderId = node.get("order_id").asText();
+                String orderStatus = node.path("order_status").asText("");
+                StringBuilder sb = new StringBuilder(" 订单号：").append(orderId);
+                if (!orderStatus.isBlank()) {
+                    sb.append("，状态：").append(orderStatus);
+                }
+                return sb.toString();
+            }
             if (node.has("message")) return " " + node.get("message").asText();
             if (node.has("file_id")) return " 文件 ID: " + node.get("file_id").asText();
         } catch (Exception ignored) {

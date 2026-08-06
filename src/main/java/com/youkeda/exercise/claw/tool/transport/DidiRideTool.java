@@ -60,6 +60,7 @@ public class DidiRideTool extends AbstractTool {
                 + "2. create_order — 创建订单。注意：创建订单前必须先调用 estimate，"
                 + "并将估价结果展示给用户，获得用户明确确认后才能创建订单。不得在用户确认前自动创建。\n"
                 + "3. query_order — 查询订单状态和司机信息。\n"
+                + "3a. list_orders — 与 query_order 相同，当用户说「我的订单」「历史订单」「订单列表」时使用。\n"
                 + "4. cancel_order — 取消已有订单。\n"
                 + "5. generate_link — 生成跳转滴滴 App/小程序的链接。\n"
                 + "坐标由系统自动处理，传入地址名称即可，用户无需提供经纬度。\n"
@@ -76,7 +77,7 @@ public class DidiRideTool extends AbstractTool {
         action.putArray("enum")
                 .add("estimate").add("create_order")
                 .add("query_order").add("cancel_order")
-                .add("generate_link");
+                .add("generate_link").add("list_orders");
 
         return schema()
                 .raw("action", action, true)
@@ -108,7 +109,7 @@ public class DidiRideTool extends AbstractTool {
             return switch (action) {
                 case "estimate" -> rideService.estimate(args, userId);
                 case "create_order" -> rideService.createOrder(args, userId);
-                case "query_order" -> rideService.queryOrder(args, userId);
+                case "query_order", "list_orders" -> rideService.queryOrder(args, userId);
                 case "cancel_order" -> rideService.cancelOrder(args, userId);
                 case "generate_link" -> rideService.generateLink(args, userId);
                 default ->

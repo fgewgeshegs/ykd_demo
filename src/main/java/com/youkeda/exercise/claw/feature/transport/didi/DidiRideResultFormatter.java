@@ -96,7 +96,7 @@ public class DidiRideResultFormatter {
             root.put("order_status", response.getStatus());
             root.put("from", response.getFromName());
             root.put("to", response.getToName());
-            root.put("message", "订单已创建，请告知用户订单号和预计等待时间");
+            root.put("message", "订单 " + response.getOrderId() + " 已创建，正在匹配司机，请耐心等待");
             return objectMapper.writeValueAsString(root);
 
         } catch (Exception e) {
@@ -106,10 +106,20 @@ public class DidiRideResultFormatter {
     }
 
     /**
-     * 格式化查询订单结果
+     * 格式化查询订单结果。
+     *
+     * <p>当 MCP 返回非 JSON 纯文本（如"系统正在为您匹配最近的司机..."）时，
+     * 从文本关键词推断订单状态，原始文本保留到 message 字段供 LLM 展示。
      */
     public String formatQueryResult(JsonNode data, String orderId) {
         try {
+            // 检测 MCP 返回纯文本包装（非 JSON）→ 关键词推断状态
+            String rawText = data.path("text").asText(null);
+            if (rawText != null && !rawText.isBlank()
+                    && data.path("status").asText(null) == null) {
+                return formatTextQueryResult(orderId, rawText);
+            }
+
             ObjectNode root = objectMapper.createObjectNode();
             root.put("order_id", orderId);
             root.put("status", data.path("status").asText("unknown"));
@@ -134,6 +144,53 @@ public class DidiRideResultFormatter {
             log.error("格式化查询结果失败", e);
             return "{\"order_id\":\"" + orderId + "\",\"status\":\"queried\"}";
         }
+    }
+
+    /**
+     * 从 MCP 返回的非 JSON 纯文本中推断订单状态。
+     * 关键词按优先级匹配，命中即返回。
+     */
+    private String formatTextQueryResult(String orderId, String text) {
+        String status = inferStatus(text);
+
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("order_id", orderId);
+        root.put("status", status);
+        root.put("message", text);
+
+        log.info("MCP 文本订单状态推断 | orderId={} | status={} | text={}",
+                orderId, status, text.length() > 60 ? text.substring(0, 60) + "..." : text);
+        return root.toString();
+    }
+
+    /** 关键词 → 订单状态映射，按匹配优先级排列 */
+    static String inferStatus(String text) {
+        if (text == null || text.isBlank()) return "unknown";
+
+        // 行程已完成（"到达目的地"优先于单独的"到达"）
+        if (containsAny(text, "完成", "到达目的地", "finished", "completed")) return "completed";
+        // 司机已到达上车点（"已到达""到达"在 didi 语境中表示到达上车点而非目的地）
+        if (containsAny(text, "已到达", "到达", "等待上车", "arrived", "waiting")) return "arrived";
+        // 进行中（行程中）
+        if (containsAny(text, "进行中", "in progress", "started")) return "in_progress";
+        // 司机已接单/已接驾
+        if (containsAny(text, "已接单", "已接驾", "accepted")) return "accepted";
+        // 司机正在赶来
+        if (containsAny(text, "前往", "赶来", "en route", "coming")) return "en_route";
+        // 正在匹配/寻找司机（在 cancelled 之前检查，避免"可随时取消订单"提示语误判）
+        if (containsAny(text, "匹配", "寻找", "等待司机", "searching")) return "searching";
+        // 订单已取消（精确匹配，避免匹配"可取消""随时取消"等提示语）
+        if (containsAny(text, "已取消", "订单取消", "cancelled")) return "cancelled";
+
+        // 无法识别
+        return "unknown";
+    }
+
+    private static boolean containsAny(String text, String... keywords) {
+        for (String kw : keywords) {
+            if (text.contains(kw)) return true;
+        }
+        return false;
     }
 
     /**

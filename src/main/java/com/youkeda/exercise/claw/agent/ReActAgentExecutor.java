@@ -209,6 +209,23 @@ public class ReActAgentExecutor implements AgentExecutor {
             return reply;
         }
 
+        // Phase 5b: 确认执行但工具返回业务错误（如"估价已过期"）
+        // → 不短路，注入错误上下文让 LLM 生成用户友好的回复
+        if (pendingResult.type() == PendingToolCoordinator.Result.Type.FAILED) {
+            String toolDisplay = pendingResult.action() != null
+                    ? pendingResult.action().toolName() : "未知操作";
+            String errorDetail = pendingResult.userReply();
+            String rawResult = pendingResult.rawToolResult();
+            contextStore.appendToTurn(roundId, new Message("system",
+                    "用户确认了「" + toolDisplay + "」操作，但执行返回了业务级错误。"
+                    + "错误详情：" + errorDetail
+                    + (rawResult != null ? " 原始结果：" + rawResult : "")
+                    + "。请向用户友好地说明失败原因，不要编造细节，并引导用户重新操作或提供替代方案。"
+                    + "注意：用户消息「" + userMessage + "」是对确认流程的回复，"
+                    + "不要将其当作新的独立请求。"));
+            // 继续走正常 LLM 流程（不 return）
+        }
+
         // Skill dispatch (short-circuit)
         SkillExecutionResult skillExecution = skillExecutionDispatcher.dispatch(
                 activeSkill, userMessage, session);

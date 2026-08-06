@@ -64,7 +64,7 @@ public class SafetyPolicy {
      * 即使工具整体为 HIGH 风险，这些 action 因只读/非破坏性而降级放行。
      */
     private static final Map<String, Set<String>> HIGH_RISK_READ_ONLY_ACTIONS = Map.of(
-            "didi_ride", Set.of("estimate", "query_order", "generate_link")
+            "didi_ride", Set.of("estimate", "query_order", "generate_link", "list_orders")
     );
 
     /**
