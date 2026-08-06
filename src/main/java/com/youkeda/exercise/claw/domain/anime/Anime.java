@@ -11,6 +11,7 @@ public class Anime {
     private int anilistId;
     private String title;
     private String titleJa;       // 日文名（可选）
+    private String titleZh;       // 中文译名（可选，LLM 翻译，空时显示回退罗马音）
     private String coverUrl;      // 封面 URL
     private String status;        // RELEASING / FINISHED / NOT_YET_RELEASED
     private int episodeCount;
@@ -22,9 +23,15 @@ public class Anime {
 
     public Anime(int anilistId, String title, String titleJa, String coverUrl, String status,
                  int episodeCount, List<String> genres, int averageScore, int popularity) {
+        this(anilistId, title, titleJa, null, coverUrl, status, episodeCount, genres, averageScore, popularity);
+    }
+
+    public Anime(int anilistId, String title, String titleJa, String titleZh, String coverUrl, String status,
+                 int episodeCount, List<String> genres, int averageScore, int popularity) {
         this.anilistId = anilistId;
         this.title = title;
         this.titleJa = titleJa;
+        this.titleZh = titleZh;
         this.coverUrl = coverUrl;
         this.status = status;
         this.episodeCount = episodeCount;
@@ -41,6 +48,14 @@ public class Anime {
 
     public String getTitleJa() { return titleJa; }
     public void setTitleJa(String titleJa) { this.titleJa = titleJa; }
+
+    public String getTitleZh() { return titleZh; }
+    public void setTitleZh(String titleZh) { this.titleZh = titleZh; }
+
+    /** 显示名：中文译名优先，无译名回退罗马音 */
+    public String getDisplayTitle() {
+        return (titleZh != null && !titleZh.isBlank()) ? titleZh : title;
+    }
 
     public String getCoverUrl() { return coverUrl; }
     public void setCoverUrl(String coverUrl) { this.coverUrl = coverUrl; }
