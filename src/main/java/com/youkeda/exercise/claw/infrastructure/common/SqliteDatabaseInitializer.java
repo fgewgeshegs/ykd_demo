@@ -260,8 +260,10 @@ public class SqliteDatabaseInitializer {
                 anilist_id  INTEGER NOT NULL,
                 episode     INTEGER NOT NULL,
                 remind_time INTEGER NOT NULL,
+                airing_at   INTEGER NOT NULL,
                 status      TEXT NOT NULL DEFAULT 'PENDING',
-                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                UNIQUE(anilist_id, episode)
             )
         """);
         jdbcTemplate.execute("""
@@ -269,7 +271,50 @@ public class SqliteDatabaseInitializer {
             ON anime_reminder_task(status, remind_time)
         """);
 
+        migrateLegacyAnimeReminderTable();
+
         log.debug("数据库表结构创建完成");
+    }
+
+    /**
+     * 幂等迁移旧版 anime_reminder_task 表（沿用项目既有 try/catch + 条件重建约定）。
+     *
+     * <p>旧版表缺 airing_at 列且无唯一约束，导致 createReminderTask 每次 INSERT 失败。
+     * 仅当表为空时才 DROP 重建（避免未来有数据时丢失提醒任务）；非空则告警跳过，
+     * 因为旧表从未写入 airing_at 值，ALTER 无从保留。
+     */
+    private void migrateLegacyAnimeReminderTable() {
+        boolean hasAiringAt = jdbcTemplate.queryForList("PRAGMA table_info(anime_reminder_task)")
+                .stream().anyMatch(row -> "airing_at".equals(row.get("name")));
+        if (hasAiringAt) {
+            return;
+        }
+        Integer rowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM anime_reminder_task", Integer.class);
+        if (rowCount != null && rowCount > 0) {
+            log.error("DB迁移跳过：anime_reminder_task 缺 airing_at 列且非空（{} 行），拒绝重建以免丢失提醒任务",
+                    rowCount);
+            return;
+        }
+        log.warn("DB迁移：anime_reminder_task 缺 airing_at 列且为空，重建表");
+        jdbcTemplate.execute("DROP TABLE anime_reminder_task");
+        jdbcTemplate.execute("""
+            CREATE TABLE anime_reminder_task (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                anilist_id  INTEGER NOT NULL,
+                episode     INTEGER NOT NULL,
+                remind_time INTEGER NOT NULL,
+                airing_at   INTEGER NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'PENDING',
+                created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                UNIQUE(anilist_id, episode)
+            )
+            """);
+        jdbcTemplate.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reminder_status_time
+            ON anime_reminder_task(status, remind_time)
+            """);
+        log.info("DB迁移完成：anime_reminder_task 重建（加 airing_at + 唯一约束）");
     }
 
     private void cleanExpiredRecords() {
