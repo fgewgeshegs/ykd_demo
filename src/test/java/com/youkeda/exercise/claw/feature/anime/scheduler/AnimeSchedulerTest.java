@@ -44,14 +44,16 @@ class AnimeSchedulerTest {
     @Test
     void dailyCheckBackfillsEmptyTitleZh() {
         when(subscriptionStore.listAll()).thenReturn(List.of(
-                anime(1, ""),                // 空 → 需回填
-                anime(2, "碧蓝之海 第三季")  // 已填 → 跳过
+                anime(1, ""),                // 空串 → 需回填
+                anime(2, "碧蓝之海 第三季"),  // 已填 → 跳过
+                anime(3, null)               // null → 需回填
         ));
         when(translator.translate(any())).thenReturn("中文名");
 
         scheduler.dailyCheck();
 
         verify(subscriptionStore).updateTitleZh(1, "中文名");
+        verify(subscriptionStore).updateTitleZh(3, "中文名");
         verify(subscriptionStore, never()).updateTitleZh(eq(2), anyString());
     }
 

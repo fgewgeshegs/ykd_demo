@@ -36,9 +36,11 @@ public class AnimeSubscriptionStore {
         }
         long now = System.currentTimeMillis() / 1000;
         jdbc.update("""
-            INSERT OR IGNORE INTO anime_subscription
+            INSERT INTO anime_subscription
             (anilist_id, title, title_ja, title_zh, cover_url, status, genres, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(anilist_id) DO UPDATE SET
+                title_zh = COALESCE(excluded.title_zh, anime_subscription.title_zh)
             """, anime.getAnilistId(), anime.getTitle(), anime.getTitleJa(), anime.getTitleZh(),
             anime.getCoverUrl(), anime.getStatus(), genresJson, now);
     }

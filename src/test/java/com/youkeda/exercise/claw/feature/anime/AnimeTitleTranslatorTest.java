@@ -55,6 +55,42 @@ class AnimeTitleTranslatorTest {
     }
 
     @Test
+    @DisplayName("LLM 返回《碧蓝之海》时剥离书名号返回碧蓝之海")
+    void stripsSurroundingBookTitleMarks() {
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("《碧蓝之海》");
+        assertEquals("碧蓝之海", translator.translate(anime("Grand Blue Season 3", "ぐらんぶる")),
+                "应剥离首尾书名号，原样返回内部译名");
+    }
+
+    @Test
+    @DisplayName("LLM 返回多层包围符号时逐层剥离")
+    void stripsNestedSurroundingWrappers() {
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("「《碧蓝之海》」");
+        assertEquals("碧蓝之海", translator.translate(anime("Grand Blue Season 3", "ぐらんぶる")),
+                "应逐层剥离「」与《》");
+    }
+
+    @Test
+    @DisplayName("LLM 返回带书名号的原片名时剥离后回显仍视为无法翻译")
+    void stripsWrapperThenEchoStillReturnsNull() {
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("《Grand Blue Season 3》");
+        assertNull(translator.translate(anime("Grand Blue Season 3", "ぐらんぶる")),
+                "剥离书名号后仍回显原片名，应返回 null");
+    }
+
+    @Test
+    @DisplayName("LLM 返回空白书名号时返回 null")
+    void stripsWrapperDownToBlankReturnsNull() {
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("《》");
+        assertNull(translator.translate(anime("Grand Blue Season 3", "ぐらんぶる")),
+                "剥离后为空白应返回 null");
+    }
+
+    @Test
     @DisplayName("LLM 回显罗马音原文时返回 null（无法确认中文译名）")
     void returnsNullWhenLlmEchoesOriginal() {
         when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))

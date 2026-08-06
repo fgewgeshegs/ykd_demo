@@ -39,10 +39,7 @@ public class AnimeScheduler {
     public void dailyCheck() {
         log.info("===== AnimeScheduler 每日检查 =====");
 
-        // 0. 回填空缺的中文译名（失败不阻塞，次日重试）
-        backfillTitleZh();
-
-        // 1. 检查播出更新
+        // 1. 检查播出更新（核心提醒链路，不依赖回填结果）
         animeSource.check();
 
         // 2. 每季第一天触发新番推荐
@@ -52,6 +49,9 @@ public class AnimeScheduler {
                 || today.getMonthValue() == 7 || today.getMonthValue() == 10)) {
             animeSeasonSource.check();
         }
+
+        // 3. 回填空缺的中文译名（LLM 故障不拖延核心链路；失败留空，次日重试）
+        backfillTitleZh();
     }
 
     /** 为 title_zh 为空的订阅回填中文译名（LLM 失败则留空，次日重试） */

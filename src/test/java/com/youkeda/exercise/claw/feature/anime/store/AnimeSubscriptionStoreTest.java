@@ -69,6 +69,38 @@ class AnimeSubscriptionStoreTest {
     }
 
     @Test
+    void resubscribeRefreshesTitleZhOnConflict() {
+        store.subscribe(new Anime(210031, "Grand Blue Season 3", "ぐらんぶる", "",
+                "RELEASING", 12, List.of("Comedy"), 80, 100000));
+
+        // 重新订阅：本次翻译成功 → 刷新 title_zh，其余列不变
+        Anime resub = new Anime(210031, "Grand Blue Season 3", "ぐらんぶる", "",
+                "RELEASING", 12, List.of("Comedy"), 80, 100000);
+        resub.setTitleZh("碧蓝之海 第三季");
+        store.subscribe(resub);
+
+        Anime loaded = store.findByAnilistId(210031);
+        assertNotNull(loaded);
+        assertEquals("碧蓝之海 第三季", loaded.getTitleZh(), "重复订阅成功后应刷新 title_zh");
+        assertEquals(1, store.listAll().size(), "重复订阅不应新增行");
+    }
+
+    @Test
+    void resubscribeWithNullTitleZhKeepsExistingTranslation() {
+        Anime first = new Anime(210031, "Grand Blue Season 3", "ぐらんぶる", "",
+                "RELEASING", 12, List.of("Comedy"), 80, 100000);
+        first.setTitleZh("碧蓝之海 第三季");
+        store.subscribe(first);
+
+        // 再次订阅：本次翻译失败（title_zh=null）→ 不得清空已有译名
+        store.subscribe(new Anime(210031, "Grand Blue Season 3", "ぐらんぶる", "",
+                "RELEASING", 12, List.of("Comedy"), 80, 100000));
+
+        assertEquals("碧蓝之海 第三季", store.findByAnilistId(210031).getTitleZh(),
+                "翻译失败的重复订阅不应清空已有译名");
+    }
+
+    @Test
     void updateTitleZhOnlyFillsMatchingRow() {
         store.subscribe(new Anime(1, "A", "あ", "", "RELEASING", 12, List.of(), 70, 100000));
         store.subscribe(new Anime(2, "B", "い", "", "RELEASING", 12, List.of(), 70, 100000));

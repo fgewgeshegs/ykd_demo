@@ -34,6 +34,9 @@ public class AnimeTitleTranslator {
             番剧日文名：%s
             """;
 
+    /** 首尾成对包围符号（开符号在偶数位，闭符号紧跟其后），用于剥离 LLM 违规输出的书名号/引号 */
+    private static final String WRAPPER_PAIRS = "《》「」『』【】\"\"''“”‘’";
+
     private final LLMClient llmClient;
 
     public AnimeTitleTranslator(LLMClient llmClient) {
@@ -58,6 +61,12 @@ public class AnimeTitleTranslator {
                 return null;
             }
             String cleaned = result.trim();
+            // LLM 常违反「不要书名号/引号」约束：剥离首尾包围符号，避免《碧蓝之海》式污染落库
+            cleaned = stripSurroundingWrapper(cleaned);
+            if (cleaned.isBlank()) {
+                log.warn("译名 LLM 返回空（剥离包围符号后为空白）| title={}", anime.getTitle());
+                return null;
+            }
             // 回显原片名 = 无法确认中文译名，视为失败
             if (cleaned.equalsIgnoreCase(anime.getTitle())) {
                 return null;
@@ -71,5 +80,24 @@ public class AnimeTitleTranslator {
             log.warn("译名 LLM 调用失败 | title={} | error={}", anime.getTitle(), e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 循环剥离首尾成对的包围符号（书名号/引号/括号），直到首尾不再成对。
+     * 例：{@code 《碧蓝之海》} → {@code 碧蓝之海}；{@code 「《碧蓝之海》」} → {@code 碧蓝之海}。
+     * 仅剥除包围在首尾的符号，绝不改动名称内部内容。
+     */
+    private static String stripSurroundingWrapper(String s) {
+        int start = 0;
+        int end = s.length();
+        while (end - start >= 2) {
+            int openIdx = WRAPPER_PAIRS.indexOf(s.charAt(start));
+            if (openIdx < 0 || openIdx % 2 != 0 || s.charAt(end - 1) != WRAPPER_PAIRS.charAt(openIdx + 1)) {
+                break;
+            }
+            start++;
+            end--;
+        }
+        return s.substring(start, end);
     }
 }

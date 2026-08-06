@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.domain.anime.Anime;
+import com.youkeda.exercise.claw.domain.anime.AnimeEpisode;
 import com.youkeda.exercise.claw.feature.anime.AnimeTitleTranslator;
 import com.youkeda.exercise.claw.feature.anime.client.AniListClient;
 import com.youkeda.exercise.claw.feature.anime.store.AnimeSubscriptionStore;
@@ -113,5 +114,24 @@ class AnimeSubscribeToolTest {
         String result = execute("{\"action\":\"schedule\",\"animeId\":210031}");
 
         assertTrue(result.contains("碧蓝之海 第三季"), "排期回复应使用已订阅中文译名，实际=" + result);
+    }
+
+    @Test
+    @DisplayName("schedule：有排期时回复含中文译名与集数")
+    void handleScheduleWithAiringScheduleShowsChineseTitleAndEpisode() throws Exception {
+        Anime subscribed = anime(210031);
+        subscribed.setTitleZh("碧蓝之海 第三季");
+        when(aniListClient.getAnimeById(210031)).thenReturn(anime(210031));
+        when(subscriptionStore.findByAnilistId(210031)).thenReturn(subscribed);
+        // 有排期：未来 24h 播出第 5 集
+        long future = System.currentTimeMillis() / 1000 + 86400;
+        when(aniListClient.getAiringSchedule(210031))
+                .thenReturn(new AnimeEpisode(210031, 5, future));
+
+        String result = execute("{\"action\":\"schedule\",\"animeId\":210031}");
+
+        assertTrue(result.contains("碧蓝之海 第三季"), "排期回复应含已订阅中文译名，实际=" + result);
+        assertTrue(result.contains("第 5 集"), "排期回复应含集数，实际=" + result);
+        assertTrue(result.contains("（北京时间）"), "排期回复应含播出时间，实际=" + result);
     }
 }

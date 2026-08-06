@@ -322,14 +322,20 @@ public class SqliteDatabaseInitializer {
      * 幂等迁移：为 anime_subscription 添加 title_zh 列。
      *
      * <p>该表有真实订阅数据（不可 DROP），旧库缺列时通过 ALTER 补列。
-     * SQLite 不支持 ADD COLUMN IF NOT EXISTS，用 try-catch 幂等（列已存在时报错则跳过）。
+     * 用 PRAGMA table_info 预检缺列才 ALTER（仿 {@link #migrateLegacyAnimeReminderTable()}），
+     * 区分「列已存在」与「真实失败」——前者静默跳过，后者告警暴露。
      */
     private void migrateAnimeSubscriptionTitleZh() {
         try {
+            boolean hasTitleZh = jdbcTemplate.queryForList("PRAGMA table_info(anime_subscription)")
+                    .stream().anyMatch(row -> "title_zh".equals(row.get("name")));
+            if (hasTitleZh) {
+                return;
+            }
             jdbcTemplate.execute("ALTER TABLE anime_subscription ADD COLUMN title_zh TEXT DEFAULT ''");
             log.info("DB迁移完成：anime_subscription 添加 title_zh 列");
         } catch (Exception e) {
-            log.debug("anime_subscription.title_zh 列已存在，跳过迁移");
+            log.warn("DB迁移异常：anime_subscription 添加 title_zh 列失败", e);
         }
     }
 
