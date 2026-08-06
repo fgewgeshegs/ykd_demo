@@ -58,7 +58,18 @@ public class BotInstance {
         this.botUserId = lc != null ? lc.getUserId() : "unknown";
     }
 
-    public String getBotId() { return botId; }
+    /**
+     * 优先返回登录后的真实 botId。
+     * 扫码路径下 BotInstance 在登录完成前被创建，构造期捕获的 botId 可能是
+     * "unknown"；登录后从 loginContext 动态取真实值，避免会话以 unknown 落库。
+     */
+    public String getBotId() {
+        LoginContext lc = client.getLoginContext();
+        if (lc != null && lc.getBotId() != null && !lc.getBotId().isBlank()) {
+            return lc.getBotId();
+        }
+        return botId;
+    }
 
     public String getBotUserId() { return botUserId; }
 

@@ -1,15 +1,14 @@
 package com.youkeda.exercise.claw.infrastructure.channel.wechat.login;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wechat.ilink.sdk.core.context.ResumeContext;
-import com.github.wechat.ilink.sdk.core.login.LoginContext;
 import com.youkeda.exercise.claw.agent.activity.AgentActivityStore;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.bot.BotStatusManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -29,16 +28,20 @@ public class BotManager {
 
     private final BotSessionStore botSessionStore;
     private final ObjectMapper objectMapper;
+    private final ResumeContextCodec codec;
     private final BotStatusManager botStatusManager;
     private final AgentActivityStore activityStore;
-    private BotInstance bot;
+    private volatile BotInstance bot;
     private volatile LoginPageServer pageServer;
+    /** 最近一次已落盘的 session JSON，用于周期持久化时判断是否有变化 */
+    private volatile String lastPersistedJson;
 
     public BotManager(BotSessionStore botSessionStore, ObjectMapper objectMapper,
                       BotStatusManager botStatusManager,
                       AgentActivityStore activityStore) {
         this.botSessionStore = botSessionStore;
         this.objectMapper = objectMapper;
+        this.codec = new ResumeContextCodec(objectMapper);
         this.botStatusManager = botStatusManager;
         this.activityStore = activityStore;
     }
@@ -154,13 +157,20 @@ public class BotManager {
         }
     }
 
-    /** 用新扫码的 bot 替换当前 session，旧 bot 关闭并禁用 */
+    /**
+     * 用新扫码的 bot 替换当前 session，旧 bot 关闭并禁用。
+     *
+     * <p>先置空 {@code bot} 再 close：避免 60s 周期持久化线程在旧 bot close 后
+     * 读到它，导出空 context 池并把刚禁用的旧行重新写回 ACTIVE。
+     */
     private void replaceSession(BotInstance newBot) {
         if (bot != null) {
             botSessionStore.disableBotSession(bot.getBotId());
+            bot = null;
             bot.close();
+        } else {
+            bot = null;
         }
-        bot = null;
         saveSession(newBot, null);
     }
 
@@ -189,47 +199,48 @@ public class BotManager {
     /** 登录成功后保存 session */
     public void saveSession(BotInstance instance, String wxNickname) {
         ResumeContext ctx = instance.exportResumeContext();
-        String json = serializeResumeContext(ctx);
+        String json = codec.serialize(ctx);
         botSessionStore.saveBotSession(instance.getBotId(), json, wxNickname);
+        lastPersistedJson = json;
         bot = instance;
+    }
+
+    /**
+     * 周期持久化 session（每 60 秒）。
+     *
+     * <p>仅在当前 session 与上次落盘内容不同时写库（如用户发消息刷新了 context token、
+     * 心跳推进了 updatesCursor），避免每 60 秒无谓的 DB 写入与日志噪音。
+     * 这样重启后无需用户重新发消息即可向已对话过的用户主动推送。
+     */
+    @Scheduled(fixedDelay = 60_000)
+    public void persistSessionPeriodically() {
+        BotInstance current = bot;
+        if (current == null) return;
+        try {
+            ResumeContext ctx = current.exportResumeContext();
+            if (ctx == null || ctx.getLoginContext() == null) return;
+            String json = codec.serialize(ctx);
+            if (json.equals(lastPersistedJson)) return;
+            // 写库前重检：期间可能已换号（replaceSession 置空/替换 bot），避免把旧 bot
+            // 的空 context 池写回、复活刚禁用的行。
+            if (current != bot) return;
+            botSessionStore.saveBotSession(current.getBotId(), json, null);
+            lastPersistedJson = json;
+            log.info("Bot 会话周期持久化完成 | botId={} | contexts={}",
+                    current.getBotId(), ctx.getConversationContexts().size());
+        } catch (Exception e) {
+            log.warn("Bot 会话周期持久化失败", e);
+        }
     }
 
     // ==================== 序列化 / 反序列化 ====================
 
     private String serializeResumeContext(ResumeContext ctx) {
-        try {
-            LoginContext lc = ctx.getLoginContext();
-            var map = new java.util.LinkedHashMap<String, Object>();
-            map.put("botToken", lc.getBotToken());
-            map.put("userId", lc.getUserId());
-            map.put("botId", lc.getBotId());
-            map.put("baseUrl", lc.getBaseUrl());
-            map.put("updatesCursor", ctx.getUpdatesCursor());
-            return objectMapper.writeValueAsString(map);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("序列化 ResumeContext 失败", e);
-        }
+        return codec.serialize(ctx);
     }
 
-    @SuppressWarnings("unchecked")
     private ResumeContext deserializeResumeContext(String json) {
-        try {
-            var map = objectMapper.readValue(json, java.util.Map.class);
-            String botToken = (String) map.get("botToken");
-            String userId = (String) map.get("userId");
-            String botId = (String) map.get("botId");
-            String baseUrl = (String) map.get("baseUrl");
-            String updatesCursor = (String) map.get("updatesCursor");
-
-            LoginContext lc = new LoginContext(botToken, userId, botId, baseUrl);
-            ResumeContext.Builder builder = ResumeContext.builder(lc);
-            if (updatesCursor != null) {
-                builder.updatesCursor(updatesCursor);
-            }
-            return builder.build();
-        } catch (Exception e) {
-            throw new RuntimeException("反序列化 ResumeContext 失败", e);
-        }
+        return codec.deserialize(json);
     }
 
     @PreDestroy

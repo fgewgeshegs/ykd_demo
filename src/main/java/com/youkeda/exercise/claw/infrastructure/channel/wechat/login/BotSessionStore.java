@@ -96,7 +96,7 @@ public class BotSessionStore {
             VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
             ON CONFLICT(bot_id) DO UPDATE SET
                 resume_context  = excluded.resume_context,
-                wx_nickname     = excluded.wx_nickname,
+                wx_nickname     = COALESCE(excluded.wx_nickname, wx_nickname),
                 status          = 'ACTIVE',
                 last_active_at  = excluded.last_active_at,
                 authenticated_at = excluded.authenticated_at,
