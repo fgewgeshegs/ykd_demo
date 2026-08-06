@@ -120,14 +120,14 @@ public class ToolExecutor {
             else if (!fn.isAvailable(execContext)) {
                 log.warn("工具调用被可用性策略阻止 | name={} | message={}", toolName, userMessage);
                 String reason = fn.getUnavailableReason(execContext);
-                result = policyBlocked(reason);
+                result = policyBlocked(reason, toolName);
                 resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, reason);
             }
             // 安全检查阻止
             else if (blockedReason != null) {
-                result = policyBlocked(blockedReason);
+                result = policyBlocked(blockedReason, toolName);
                 resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, blockedReason);
@@ -139,14 +139,14 @@ public class ToolExecutor {
             }
             // 工具调用数量上限
             else if (toolCallCount >= MAX_TOOL_CALLS) {
-                result = policyBlocked("本次请求工具调用数量已达上限，请使用已有结果生成答复。");
+                result = policyBlocked("本次请求工具调用数量已达上限，请使用已有结果生成答复。", toolName);
                 resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "工具调用数量已达上限");
             }
             // 去重（相同工具 + 相同参数）
             else if (!executedCalls.add(callSignature)) {
-                result = policyBlocked("相同工具和参数已经执行过，请使用已有结果，不要重复调用。");
+                result = policyBlocked("相同工具和参数已经执行过，请使用已有结果，不要重复调用。", toolName);
                 resultStatus = ResultStatus.BLOCKED;
                 activityRecorder.toolBlocked(
                         activityRequestId, activeSkillName, toolName, "重复工具调用");
@@ -249,14 +249,48 @@ public class ToolExecutor {
     }
 
     private String policyBlocked(String reason) {
+        return policyBlocked(reason, null);
+    }
+
+    /**
+     * 构造统一的 BLOCKED ToolResult JSON。
+     *
+     * <p>对 CONFIRM_REQUIRED 原因，附加 user_instruction 字段，
+     * 引导 LLM 向用户请求确认，避免 LLM 把 BLOCKED 误解为服务故障。
+     */
+    private String policyBlocked(String reason, String toolName) {
         try {
             var node = objectMapper.createObjectNode();
             node.put("status", "BLOCKED");
             node.put("reason", reason);
+            if (toolName != null) {
+                node.put("tool_display_name", toolDisplayName(toolName));
+            }
+            if (reason != null && reason.contains("CONFIRM_REQUIRED")) {
+                String display = toolDisplayName(toolName);
+                node.put("user_instruction",
+                        "此操作需要用户确认后才能执行。请向用户说明：需要确认执行「" + display
+                        + "」，回复「确认」继续或「取消」放弃。"
+                        + "**重要：不要谎称服务故障或不可用，该功能正常，仅需用户确认。**");
+            }
             return objectMapper.writeValueAsString(node);
         } catch (Exception e) {
             return "{\"status\":\"BLOCKED\"}";
         }
+    }
+
+    /** 工具名 → 用户可读名称映射 */
+    private static String toolDisplayName(String toolName) {
+        if (toolName == null) return "未知操作";
+        return switch (toolName) {
+            case "file_delete" -> "删除文件";
+            case "file_update" -> "修改文件";
+            case "didi_ride" -> "打车下单";
+            case "create_schedule_task" -> "创建提醒";
+            case "update_schedule_task" -> "修改提醒";
+            case "cancel_schedule_task" -> "取消提醒";
+            default -> toolName;
+        };
     }
 
     /**

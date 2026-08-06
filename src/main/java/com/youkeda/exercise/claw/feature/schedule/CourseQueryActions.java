@@ -26,7 +26,7 @@ public class CourseQueryActions {
 
     private final CourseService courseService;
     private final CourseRepository courseRepository;
-    private final SemesterConfig semesterConfig;
+    private final SemesterProperties semesterConfig;
     private final SemesterService semesterService;
     private final CourseMessageFormatter messageFormatter;
     private final ObjectMapper objectMapper;
@@ -34,7 +34,7 @@ public class CourseQueryActions {
 
     public CourseQueryActions(CourseService courseService,
                               CourseRepository courseRepository,
-                              SemesterConfig semesterConfig,
+                              SemesterProperties semesterConfig,
                               SemesterService semesterService,
                               CourseMessageFormatter messageFormatter,
                               ObjectMapper objectMapper,
@@ -236,7 +236,7 @@ public class CourseQueryActions {
      * 解析用户当前教学周
      *
      * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
-     * 无学期记录时回退 {@link SemesterConfig#getCurrentWeek()}。
+     * 无学期记录时回退 {@link SemesterProperties#getCurrentWeek()}。
      */
     private int resolveCurrentWeek(String userId) {
         int week = semesterService.getCurrentWeek(userId);

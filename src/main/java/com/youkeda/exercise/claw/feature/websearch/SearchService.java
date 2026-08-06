@@ -32,10 +32,10 @@ public class SearchService {
 
     private static final Logger log = LoggerFactory.getLogger(SearchService.class);
 
-    private final WebSearchConfig config;
+    private final WebSearchProperties config;
     private final ObjectMapper objectMapper;
 
-    public SearchService(WebSearchConfig config, ObjectMapper objectMapper) {
+    public SearchService(WebSearchProperties config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
     }

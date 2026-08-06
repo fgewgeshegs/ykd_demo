@@ -25,7 +25,7 @@ public class CourseImportFlowActions {
 
     private final CourseService courseService;
     private final CourseRepository courseRepository;
-    private final SemesterConfig semesterConfig;
+    private final SemesterProperties semesterConfig;
     private final CourseImportStateManager importStateManager;
     private final SemesterDetector semesterDetector;
     private final SemesterRepository semesterRepository;
@@ -35,7 +35,7 @@ public class CourseImportFlowActions {
 
     public CourseImportFlowActions(CourseService courseService,
                                    CourseRepository courseRepository,
-                                   SemesterConfig semesterConfig,
+                                   SemesterProperties semesterConfig,
                                    CourseImportStateManager importStateManager,
                                    SemesterDetector semesterDetector,
                                    SemesterRepository semesterRepository,
@@ -624,7 +624,7 @@ public class CourseImportFlowActions {
      * 解析用户当前教学周
      *
      * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
-     * 无学期记录时回退 {@link SemesterConfig#getCurrentWeek()}。
+     * 无学期记录时回退 {@link SemesterProperties#getCurrentWeek()}。
      */
     private int resolveCurrentWeek(String userId) {
         int week = semesterService.getCurrentWeek(userId);

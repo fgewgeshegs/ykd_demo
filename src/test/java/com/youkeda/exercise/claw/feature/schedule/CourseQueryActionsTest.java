@@ -24,7 +24,7 @@ class CourseQueryActionsTest {
         return new CourseQueryActions(
                 courseService,
                 mock(CourseRepository.class),
-                new SemesterConfig(),
+                new SemesterProperties(),
                 mock(SemesterService.class),
                 mock(CourseMessageFormatter.class),
                 new ObjectMapper(),

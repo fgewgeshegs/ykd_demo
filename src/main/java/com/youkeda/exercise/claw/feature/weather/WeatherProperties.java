@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConfigurationProperties(prefix = "weather.api")
-public class WeatherConfig {
+public class WeatherProperties {
 
     /**
      * API 密钥
@@ -24,7 +24,7 @@ public class WeatherConfig {
      */
     private String url;
 
-    private static final Logger log = LoggerFactory.getLogger(WeatherConfig.class);
+    private static final Logger log = LoggerFactory.getLogger(WeatherProperties.class);
 
     @PostConstruct
     public void init() {

@@ -616,16 +616,16 @@ class CourseScheduleTest {
         }
     }
 
-    // ==================== SemesterConfig 测试 ====================
+    // ==================== SemesterProperties 测试 ====================
 
     @Nested
-    @DisplayName("SemesterConfig - 学期周次计算")
-    class SemesterConfigTest {
+    @DisplayName("SemesterProperties - 学期周次计算")
+    class SemesterPropertiesTest {
 
         @Test
         @DisplayName("未设置学期起始日返回默认 1")
         void defaultWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             // 没有调用 setSemesterStart，getCurrentWeek 返回 1
             assertTrue(config.getCurrentWeek() >= 1);
         }
@@ -633,7 +633,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("学期第一天为第 1 周")
         void firstWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             // 假设学期从今天开始（手工 mock 做不到固定日期，但可以验证逻辑）
             LocalDate start = LocalDate.now();
             config.setSemesterStart(start);
@@ -643,7 +643,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("学期前返回 -1")
         void beforeSemester() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             config.setSemesterStart(LocalDate.now().plusDays(7)); // 一周后才开始
             assertEquals(-1, config.getCurrentWeek());
         }
@@ -651,7 +651,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("isOddWeek / isEvenWeek 正确")
         void oddEvenWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             config.setSemesterStart(LocalDate.now().minusDays(7)); // 第 2 周
             int week = config.getCurrentWeek();
             if (week % 2 == 1) {
@@ -666,7 +666,7 @@ class CourseScheduleTest {
         @Test
         @DisplayName("学期前 isOddWeek 返回 false")
         void beforeSemesterOddWeek() {
-            SemesterConfig config = new SemesterConfig();
+            SemesterProperties config = new SemesterProperties();
             config.setSemesterStart(LocalDate.now().plusDays(365)); // 一年后
             assertFalse(config.isOddWeek());
         }
@@ -932,11 +932,11 @@ class CourseScheduleTest {
     @DisplayName("查询场景 - 今日课程与周次过滤")
     class CourseQueryTest {
 
-        private SemesterConfig semesterConfig;
+        private SemesterProperties semesterConfig;
 
         @BeforeEach
         void setUp() {
-            semesterConfig = new SemesterConfig();
+            semesterConfig = new SemesterProperties();
         }
 
         @Test

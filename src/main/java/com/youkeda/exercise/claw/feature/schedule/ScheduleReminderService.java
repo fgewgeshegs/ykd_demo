@@ -49,7 +49,7 @@ public class ScheduleReminderService {
     private int reminderToleranceSeconds;
 
     private final CourseRepository courseRepository;
-    private final SemesterConfig semesterConfig;
+    private final SemesterProperties semesterConfig;
     private final WechatILinkClient wechatClient;
     private final SemesterService semesterService;
     private final ScheduleTimeResolver timeResolver;
@@ -58,7 +58,7 @@ public class ScheduleReminderService {
     private final ConcurrentHashMap<String, Boolean> notifiedCache = new ConcurrentHashMap<>();
 
     public ScheduleReminderService(CourseRepository courseRepository,
-                                   SemesterConfig semesterConfig,
+                                   SemesterProperties semesterConfig,
                                    WechatILinkClient wechatClient,
                                    SemesterService semesterService,
                                    ScheduleTimeResolver timeResolver) {
@@ -128,7 +128,7 @@ public class ScheduleReminderService {
     }
 
     /**
-     * 解析用户当前教学周（优先 SemesterService，回退 SemesterConfig）
+     * 解析用户当前教学周（优先 SemesterService，回退 SemesterProperties）
      */
     private int resolveCurrentWeek(String userId) {
         int week = semesterService.getCurrentWeek(userId);

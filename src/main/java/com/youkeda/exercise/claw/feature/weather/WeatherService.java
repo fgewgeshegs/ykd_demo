@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youkeda.exercise.claw.infrastructure.common.ClawException;
 import com.youkeda.exercise.claw.infrastructure.common.HttpClientUtil;
-import com.youkeda.exercise.claw.feature.weather.WeatherConfig;
+import com.youkeda.exercise.claw.feature.weather.WeatherProperties;
 import com.youkeda.exercise.claw.feature.weather.WeatherResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,11 +24,11 @@ public class WeatherService {
 
     private static final Logger log = LoggerFactory.getLogger(WeatherService.class);
 
-    private final WeatherConfig config;
+    private final WeatherProperties config;
     private final HttpClientUtil httpClient;
     private final ObjectMapper objectMapper;
 
-    public WeatherService(WeatherConfig config, ObjectMapper objectMapper) {
+    public WeatherService(WeatherProperties config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
         this.httpClient = new HttpClientUtil();

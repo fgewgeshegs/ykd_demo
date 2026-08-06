@@ -189,7 +189,7 @@ public class CourseImportHandler {
     private final CourseParser courseParser;
     private final CourseImportStateManager importStateManager;
     private final CourseRepository courseRepository;
-    private final SemesterConfig semesterConfig;
+    private final SemesterProperties semesterConfig;
     private final FileParseService fileParseService;
     private final LLMClient llmClient;
     private final ContextStore contextStore;
@@ -204,7 +204,7 @@ public class CourseImportHandler {
                                CourseParser courseParser,
                                CourseImportStateManager importStateManager,
                                CourseRepository courseRepository,
-                               SemesterConfig semesterConfig,
+                               SemesterProperties semesterConfig,
                                FileParseService fileParseService,
                                LLMClient llmClient,
                                ContextStore contextStore,
@@ -590,7 +590,7 @@ public class CourseImportHandler {
      * 解析用户当前教学周
      *
      * <p>优先使用用户自身的 {@link SemesterService#getCurrentWeek(String)} 计算结果；
-     * 无学期记录时回退 {@link SemesterConfig#getCurrentWeek()}。
+     * 无学期记录时回退 {@link SemesterProperties#getCurrentWeek()}。
      */
     private int resolveCurrentWeek(String userId) {
         int week = semesterService.getCurrentWeek(userId);

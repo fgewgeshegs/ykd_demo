@@ -125,14 +125,14 @@ D:\ykd-project\test\
         │   │   ├── weather/                           # 天气查询模块
         │   │   │   ├── WeatherFunction.java           # 天气查询工具
         │   │   │   ├── WeatherTool.java               # 天气 API 调用层
-        │   │   │   ├── WeatherConfig.java             # 天气 API 配置
+        │   │   │   ├── WeatherProperties.java             # 天气 API 配置
         │   │   │   ├── WeatherResponse.java           # 天气响应模型
         │   │   │   └── WeatherCommand.java            # CLI weather 命令
         │   │   │
         │   │   ├── websearch/                         # 网页搜索模块
         │   │   │   ├── WebSearchFunction.java         # 网页搜索工具
         │   │   │   ├── SearchService.java             # Tavily 搜索服务
-        │   │   │   └── WebSearchConfig.java           # Tavily API 配置
+        │   │   │   └── WebSearchProperties.java           # Tavily API 配置
         │   │   │
         │   │   ├── holiday/                           # 节假日查询模块
         │   │   │   ├── HolidayCheckFunction.java      # 节假日查询工具
@@ -828,9 +828,9 @@ ykd_demo/src/main/java/com/youkeda/exercise/claw/weather/WeatherFunction.java
 
 ---
 
-### 文件：WeatherTool.java / WeatherConfig.java
+### 文件：WeatherTool.java / WeatherProperties.java
 
-**作用：** WeatherTool 调用 WeatherAPI.com，WeatherConfig 绑定 weather.api.* 配置。
+**作用：** WeatherTool 调用 WeatherAPI.com，WeatherProperties 绑定 weather.api.* 配置。
 
 ---
 
@@ -853,9 +853,9 @@ ykd_demo/src/main/java/com/youkeda/exercise/claw/websearch/WebSearchFunction.jav
 
 ---
 
-### 文件：SearchService.java / WebSearchConfig.java
+### 文件：SearchService.java / WebSearchProperties.java
 
-**作用：** SearchService 调用 Tavily API，返回 LLM 友好的结构化结果+AI 摘要。WebSearchConfig 绑定 websearch.api.* 配置。
+**作用：** SearchService 调用 Tavily API，返回 LLM 友好的结构化结果+AI 摘要。WebSearchProperties 绑定 websearch.api.* 配置。
 
 ---
 

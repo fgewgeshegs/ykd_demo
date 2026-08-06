@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -59,6 +60,14 @@ public class SafetyPolicy {
     );
 
     /**
+     * 高风险工具内只读 action 白名单（per-tool）。
+     * 即使工具整体为 HIGH 风险，这些 action 因只读/非破坏性而降级放行。
+     */
+    private static final Map<String, Set<String>> HIGH_RISK_READ_ONLY_ACTIONS = Map.of(
+            "didi_ride", Set.of("estimate", "query_order", "generate_link")
+    );
+
+    /**
      * 低风险工具：自动执行 + 记录 info 日志。
      * 涉及查询类或可逆操作。
      */
@@ -109,6 +118,12 @@ public class SafetyPolicy {
 
         // Phase 4: 风险分级检查
         if (highRiskConfirmationEnabled && HIGH_RISK_TOOLS.contains(toolName)) {
+            // 检查是否命中只读 action 白名单 → 降级放行
+            String action = extractAction(argumentsJson);
+            if (action != null && isReadOnlyAction(toolName, action)) {
+                log.info("高风险工具降级为低风险（只读action）| tool={} | action={}", toolName, action);
+                return null;
+            }
             log.warn("高风险工具需要确认 | tool={} | args={}",
                     toolName, truncateArgs(argumentsJson));
             return "BLOCKED_CONFIRM_REQUIRED";
@@ -157,5 +172,33 @@ public class SafetyPolicy {
 
     private static String truncateArgs(String args) {
         return truncateArgs(args, 120);
+    }
+
+    /**
+     * 从工具调用参数 JSON 中提取 action 字段。
+     * 用于工具内 action 级别的风险判定（如 didi_ride 的 estimate vs create_order）。
+     *
+     * @return action 值，若无法解析则返回 null
+     */
+    static String extractAction(String argumentsJson) {
+        if (argumentsJson == null || argumentsJson.isBlank()) return null;
+        try {
+            // 简单正则提取，避免完整的 JSON 解析开销
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("\"action\"\\s*:\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher m = p.matcher(argumentsJson);
+            if (m.find()) {
+                return m.group(1);
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * 判断某工具的指定 action 是否命中只读白名单。
+     */
+    private static boolean isReadOnlyAction(String toolName, String action) {
+        Set<String> readOnlyActions = HIGH_RISK_READ_ONLY_ACTIONS.get(toolName);
+        return readOnlyActions != null && readOnlyActions.contains(action);
     }
 }

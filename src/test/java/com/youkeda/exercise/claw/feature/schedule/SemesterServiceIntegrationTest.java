@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <ul>
  *   <li>不同用户不同学期 → 周次不同</li>
  *   <li>同一用户两学期课程 → 只返回当前学期课程</li>
- *   <li>无 Semester 用户 → 回退 SemesterConfig</li>
+ *   <li>无 Semester 用户 → 回退 SemesterProperties</li>
  *   <li>按学期隔离的课程查询</li>
  * </ul>
  */
@@ -37,7 +37,7 @@ class SemesterServiceIntegrationTest {
     private SemesterService semesterService;
     private CourseRepository courseRepository;
     private CourseService courseService;
-    private SemesterConfig semesterConfig;
+    private SemesterProperties semesterConfig;
     private String dbPath;
 
     private void setField(Object target, String fieldName, Object value) {
@@ -67,8 +67,8 @@ class SemesterServiceIntegrationTest {
         setField(courseRepository, "dbPath", dbPath);
         courseRepository.init();
 
-        // 初始化 SemesterConfig（不设置 semesterStart，使用默认值）
-        semesterConfig = new SemesterConfig();
+        // 初始化 SemesterProperties（不设置 semesterStart，使用默认值）
+        semesterConfig = new SemesterProperties();
 
         // 初始化 CourseService
         ObjectMapper objectMapper = new ObjectMapper();
@@ -213,7 +213,7 @@ class SemesterServiceIntegrationTest {
     class FallbackTest {
 
         @Test
-        @DisplayName("无 Semester 用户 → CourseService 使用 SemesterConfig 回退")
+        @DisplayName("无 Semester 用户 → CourseService 使用 SemesterProperties 回退")
         void noSemesterFallbackToConfig() {
             // 不创建任何学期记录
             int today = LocalDate.now().getDayOfWeek().getValue();
@@ -223,10 +223,10 @@ class SemesterServiceIntegrationTest {
                     today, 1, 2, null, 1, 16, CourseEntity.WEEK_ALL);
             courseRepository.replaceAll("fallbackUser", List.of(c));
 
-            // 验证 getTodayCourses 仍能返回课程（通过 SemesterConfig 回退）
+            // 验证 getTodayCourses 仍能返回课程（通过 SemesterProperties 回退）
             List<CourseEntity> todayCourses = courseService.getTodayCourses("fallbackUser");
             assertFalse(todayCourses.isEmpty(),
-                    "无学期用户应能通过 SemesterConfig 回退查到课程");
+                    "无学期用户应能通过 SemesterProperties 回退查到课程");
             assertEquals("回退测试课程", todayCourses.get(0).getCourseName());
 
             // semesterService 返回 -1
