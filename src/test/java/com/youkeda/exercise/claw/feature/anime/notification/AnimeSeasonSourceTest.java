@@ -78,6 +78,46 @@ class AnimeSeasonSourceTest {
     }
 
     @Test
+    @DisplayName("调用 LLM 时预留推理安全的 max_tokens，避免 thinking 吃光预算")
+    void callsLlmWithReasoningSafeMaxTokens() {
+        when(aniListClient.getCurrentSeasonAnime(1)).thenReturn(List.of(
+                anime(1, "Grand Blue Season 3", "ぐらんぶる", List.of("Comedy"), 82)
+        ));
+        when(subscriptionStore.listAll()).thenReturn(List.of());
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("• 《碧蓝之海 第三季》Grand Blue Season 3（喜剧）");
+
+        source.check();
+
+        ArgumentCaptor<Integer> maxTokensCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(llmClient).chatWithSystemPrompt(anyString(), anyString(), maxTokensCaptor.capture());
+        assertTrue(maxTokensCaptor.getValue() >= 2000,
+                "推理模型 max_tokens 需为 thinking+正文预留空间，当前=" + maxTokensCaptor.getValue());
+    }
+
+    @Test
+    @DisplayName("LLM 把多条挤成一行时，代码侧按「• 」重拼为换行")
+    void splitsSingleLineBulletOutputIntoLines() {
+        when(aniListClient.getCurrentSeasonAnime(1)).thenReturn(List.of(
+                anime(1, "Grand Blue Season 3", "ぐらんぶる", List.of("Comedy"), 82),
+                anime(2, "Mushoku Tensei III", "無職転生", List.of("Fantasy"), 85)
+        ));
+        when(subscriptionStore.listAll()).thenReturn(List.of());
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("• 《碧蓝之海 第三季》Grand Blue Season 3（喜剧） • 《无职转生 III》Mushoku Tensei III（奇幻）");
+
+        source.check();
+
+        ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(publisher).publish(eq("ANIME_SEASON"), anyString(), contentCaptor.capture(), anyInt());
+        String content = contentCaptor.getValue();
+        assertTrue(content.contains("\n"),
+                "单行输出应按「• 」重拼为换行，实际=" + content);
+        assertEquals(2, content.split("\n").length,
+                "应拆成与条目数一致的换行段，实际=" + content);
+    }
+
+    @Test
     @DisplayName("LLM 返回空时回退罗马音逐条列表（仍带换行）")
     void fallbackUsesLineSeparatedRomajiList() {
         when(aniListClient.getCurrentSeasonAnime(1)).thenReturn(List.of(

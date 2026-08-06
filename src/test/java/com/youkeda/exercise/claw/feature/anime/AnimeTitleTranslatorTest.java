@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -30,6 +31,19 @@ class AnimeTitleTranslatorTest {
 
     private Anime anime(String title, String titleJa) {
         return new Anime(1, title, titleJa, "", "RELEASING", 12, List.of(), 80, 100000);
+    }
+
+    @Test
+    @DisplayName("调用 LLM 时预留推理安全的 max_tokens，避免 thinking 吃光预算")
+    void callsLlmWithReasoningSafeMaxTokens() {
+        when(llmClient.chatWithSystemPrompt(anyString(), anyString(), anyInt()))
+                .thenReturn("碧蓝之海 第三季");
+        translator.translate(anime("Grand Blue Season 3", "ぐらんぶる"));
+
+        ArgumentCaptor<Integer> maxTokensCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(llmClient).chatWithSystemPrompt(anyString(), anyString(), maxTokensCaptor.capture());
+        assertTrue(maxTokensCaptor.getValue() >= 2000,
+                "推理模型 max_tokens 需为 thinking+正文预留空间，当前=" + maxTokensCaptor.getValue());
     }
 
     @Test

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -107,15 +108,30 @@ public class AnimeSeasonSource implements NotificationSource {
     private String generateChineseRecommendation(List<Anime> subscriptions, List<Anime> top5) {
         try {
             String result = llmClient.chatWithSystemPrompt(
-                    "你是番剧推荐助手。", buildRecommendationPrompt(subscriptions, top5), 900);
+                    "你是番剧推荐助手。", buildRecommendationPrompt(subscriptions, top5),
+                    LLMClient.REASONING_SAFE_MAX_TOKENS);
             if (result != null && !result.isBlank()) {
-                return result.trim();
+                return joinBulletLines(result);
             }
             log.warn("LLM 推荐生成返回空，使用原片名兜底");
         } catch (Exception e) {
             log.warn("LLM 推荐生成失败，使用原片名兜底", e);
         }
         return fallbackList(top5);
+    }
+
+    /**
+     * 把 LLM 返回的推荐列表归一化为逐条换行。
+     *
+     * <p>不信任 LLM 的排版：它可能把多条挤成一行（用空格连接），也可能已逐条换行。
+     * 统一按「• 」切分后用 {@code \n} 重拼，保证微信侧每条独占一行。
+     */
+    private static String joinBulletLines(String content) {
+        return Arrays.stream(content.split("•"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> "• " + s)
+                .collect(Collectors.joining("\n"));
     }
 
     private String buildRecommendationPrompt(List<Anime> subscriptions, List<Anime> top5) {

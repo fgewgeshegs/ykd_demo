@@ -55,7 +55,8 @@ public class AnimeTitleTranslator {
         try {
             String titleJa = anime.getTitleJa() != null ? anime.getTitleJa() : "";
             String result = llmClient.chatWithSystemPrompt(
-                    SYSTEM_PROMPT, String.format(TRANSLATE_PROMPT, anime.getTitle(), titleJa), 900);
+                    SYSTEM_PROMPT, String.format(TRANSLATE_PROMPT, anime.getTitle(), titleJa),
+                    LLMClient.REASONING_SAFE_MAX_TOKENS);
             if (result == null || result.isBlank()) {
                 log.warn("译名 LLM 返回空 | title={}", anime.getTitle());
                 return null;
