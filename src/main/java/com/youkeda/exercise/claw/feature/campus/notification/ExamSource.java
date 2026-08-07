@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.feature.campus.notification;
-import com.youkeda.exercise.claw.notification.NotificationSource;
+import com.youkeda.exercise.claw.feature.campus.CampusSource;
 
 import com.youkeda.exercise.claw.feature.campus.classifier.ExamLLMClassifier;
 import com.youkeda.exercise.claw.feature.campus.classifier.ExamRuleClassifier;
@@ -24,7 +24,7 @@ import java.util.List;
 
 @Component
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
-public class ExamSource implements NotificationSource {
+public class ExamSource implements CampusSource {
 
     private static final Logger log = LoggerFactory.getLogger(ExamSource.class);
 

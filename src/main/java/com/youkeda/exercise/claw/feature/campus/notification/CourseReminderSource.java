@@ -1,5 +1,5 @@
 package com.youkeda.exercise.claw.feature.campus.notification;
-import com.youkeda.exercise.claw.notification.NotificationSource;
+import com.youkeda.exercise.claw.feature.campus.CampusSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
-public class CourseReminderSource implements NotificationSource {
+public class CourseReminderSource implements CampusSource {
 
     private static final Logger log = LoggerFactory.getLogger(CourseReminderSource.class);
 

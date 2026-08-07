@@ -1,37 +1,57 @@
 package com.youkeda.exercise.claw.feature.campus.collector;
 
 import com.youkeda.exercise.claw.domain.campus.NotificationItem;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.util.List;
+import java.util.function.Function;
 
+/**
+ * 校园通知列表采集器。
+ *
+ * <p>从教务处通知列表页抓取 HTML 并解析出条目，按调用方传入的 {@link CampusNoticeSource}
+ * 给每条 item 标注真实来源身份。被 Activity / Competition / Job 三个 Source 复用，
+ * 因此不再硬编码 COMPETITION（旧实现会让先跑的源污染后跑的源命名空间）。
+ *
+ * <p>HTML 获取统一委托 {@link CampusPageFetcher}（带 30s 缓存），一次调度内同一列表页
+ * 只抓一次，不再各自 Jsoup connect（旧实现同页被抓 4 次）。
+ */
 @Component("campusCompetitionCollector")
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
 public class CompetitionCollector {
 
     private static final Logger log = LoggerFactory.getLogger(CompetitionCollector.class);
-    private static final int TIMEOUT_SECONDS = 15;
     private static final String NJUPT_NOTICE_URL = "https://jwc.njupt.edu.cn/1622/list34.psp";
 
     private final CampusListPageParser parser = new CampusListPageParser();
+    private final CampusPageFetcher fetcher;
+
+    /** Spring 构造器（注入共享 fetcher）。@Autowired 必标：有测试 seam 第二构造器时，Spring 不会自动选注入构造器 */
+    @Autowired
+    public CompetitionCollector(CampusPageFetcher fetcher) {
+        this.fetcher = fetcher;
+    }
+
+    /** 测试 seam：注入 HTML 提供方，绕开网络（内部包一个 fetcher） */
+    CompetitionCollector(Function<String, String> htmlFetcher) {
+        this.fetcher = new CampusPageFetcher(htmlFetcher);
+    }
 
     /**
-     * 采集通知列表，所有标题返回，由 CompetitionClassifier 筛选比赛相关
+     * 采集通知列表，所有标题返回，由调用方 classifier 筛选。
+     *
+     * @param source 调用方（Activity / Competition / Job）的真实身份
+     * @return 通知条目列表，每条携带 {@code source} 身份；采集失败返回空列表
      */
-    public List<NotificationItem> collect() {
+    public List<NotificationItem> collect(CampusNoticeSource source) {
         try {
-            Document doc = Jsoup.connect(NJUPT_NOTICE_URL)
-                    .timeout((int) Duration.ofSeconds(TIMEOUT_SECONDS).toMillis())
-                    .userAgent("ClawBot-Campus/1.0")
-                    .get();
-            List<NotificationItem> items = parser.parse(doc.outerHtml(), NJUPT_NOTICE_URL, "COMPETITION");
-            log.info("比赛采集完成 | count={}", items.size());
+            String html = fetcher.fetchHtml(NJUPT_NOTICE_URL);
+            List<NotificationItem> items = parser.parse(html, NJUPT_NOTICE_URL, source.name());
+            log.info("比赛采集完成 | source={} | count={}", source, items.size());
             return items;
         } catch (Exception e) {
             log.error("比赛采集失败 | url={}", NJUPT_NOTICE_URL, e);

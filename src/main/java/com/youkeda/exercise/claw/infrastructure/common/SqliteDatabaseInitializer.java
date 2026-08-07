@@ -2,10 +2,12 @@ package com.youkeda.exercise.claw.infrastructure.common;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import jakarta.annotation.PostConstruct;
 
@@ -44,6 +46,15 @@ public class SqliteDatabaseInitializer {
 
     @Value("${spring.datasource.url}")
     private String datasourceUrl;
+
+    /**
+     * 迁移事务模板（生产由 Spring 注入）。
+     * <p>campus_notice 重建迁移需跨多条 DDL 保持同一连接，SQLite + Hikari 下
+     * 直接 BEGIN/COMMIT 会因连接池换连接而失效；用 TransactionTemplate 绑定事务。
+     * 测试直接 new 初始化器时不注入，降级为逐条执行（单连接 SQLite 下仍原子）。
+     */
+    @Autowired(required = false)
+    private TransactionTemplate txTemplate;
 
     public SqliteDatabaseInitializer(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -151,11 +162,14 @@ public class SqliteDatabaseInitializer {
         """);
 
         // 创建校园通知表
+        // 唯一约束为 UNIQUE(url, source)：同一通知可被多个 Source 采集（各自身份），
+        // 不同 Source 的同 URL 允许共存；同一 Source 的同 URL 才视为重复。
+        // source 列 NOT NULL 且无默认值——漏传身份直接报错，不静默污染。
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS campus_notice (
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
                 title             TEXT NOT NULL,
-                url               TEXT NOT NULL UNIQUE,
+                url               TEXT NOT NULL,
                 publish_at        TEXT,
                 content           TEXT DEFAULT '',
                 type              TEXT DEFAULT 'UNKNOWN',
@@ -164,7 +178,9 @@ public class SqliteDatabaseInitializer {
                 classifier_reason TEXT DEFAULT '',
                 status            TEXT DEFAULT 'UNPROCESSED',
                 processed_at      INTEGER,
-                created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+                created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                source            TEXT NOT NULL,
+                UNIQUE(url, source)
             )
         """);
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_url ON campus_notice(url)");
@@ -214,13 +230,21 @@ public class SqliteDatabaseInitializer {
             )
         """);
 
-        // === 校园通知框架迁移：为 campus_notice 添加 source 列 ===
+        // === 校园通知框架迁移：为 campus_notice 添加 source 列 + 复合唯一约束 ===
+        // 旧库缺 source 列时先补列（无默认值，兼容只缺列的中间态）；有 source 列则跳过。
+        // 单列 url UNIQUE 的旧表统一重建为 UNIQUE(url, source)（见 migrateLegacyCampusNotice）。
         try {
-            jdbcTemplate.execute("ALTER TABLE campus_notice ADD COLUMN source TEXT NOT NULL DEFAULT 'EXAM'");
-            log.info("DB迁移完成：campus_notice 添加 source 列");
+            boolean hasSourceCol = jdbcTemplate.queryForList("PRAGMA table_info(campus_notice)")
+                    .stream().anyMatch(row -> "source".equals(row.get("name")));
+            if (!hasSourceCol) {
+                jdbcTemplate.execute("ALTER TABLE campus_notice ADD COLUMN source TEXT");
+                log.info("DB迁移完成：campus_notice 添加 source 列");
+            }
         } catch (Exception e) {
-            log.debug("campus_notice.source 列已存在，跳过迁移");
+            log.debug("campus_notice.source 列迁移检测跳过：{}", e.getMessage());
         }
+
+        migrateLegacyCampusNotice();
 
         try {
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_notice_source ON campus_notice(source)");
@@ -337,6 +361,79 @@ public class SqliteDatabaseInitializer {
         } catch (Exception e) {
             log.warn("DB迁移异常：anime_subscription 添加 title_zh 列失败", e);
         }
+    }
+
+    /**
+     * 幂等迁移旧版 campus_notice 表（单列 url UNIQUE → 复合 UNIQUE(url, source)）。
+     *
+     * <p>背景：旧 DDL 是 {@code url TEXT NOT NULL UNIQUE}，但代码按 (url, source) 查重——
+     * 不同 Source 采集同 URL 时 INSERT 撞单列 UNIQUE 约束（SQLITE_CONSTRAINT_UNIQUE），
+     * 日志里即「去重写入失败」WARN 风暴。修复必须把约束也改成复合。
+     *
+     * <p>检测：PRAGMA index_list 上是否存在列恰为 [url, source] 的 UNIQUE 索引；
+     * 存在则跳过（全新库/已迁移库），不存在则重建。重建走「建新空表 → DROP 旧表 → RENAME」，
+     * 用 TransactionTemplate 保证同一连接（SQLite + Hikari 下裸 BEGIN/COMMIT 不可靠）。
+     *
+     * <p>历史数据按「清空重建」决策不保留：campus_notice 只是去重日志，旧行 source 全部
+     * 被 DEFAULT 'EXAM' 污染（无法可靠反推身份），保留只会让下次调度误判重复。
+     */
+    private void migrateLegacyCampusNotice() {
+        if (hasUniqueIndexOn(jdbcTemplate, "campus_notice", "url", "source")) {
+            return;
+        }
+        log.warn("DB迁移：campus_notice 为单列 url UNIQUE，重建为 UNIQUE(url, source)");
+
+        Runnable rebuild = () -> {
+            jdbcTemplate.execute("""
+                CREATE TABLE campus_notice_new (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title             TEXT NOT NULL,
+                    url               TEXT NOT NULL,
+                    publish_at        TEXT,
+                    content           TEXT DEFAULT '',
+                    type              TEXT DEFAULT 'UNKNOWN',
+                    confidence        REAL DEFAULT 0,
+                    score_source      TEXT DEFAULT 'NONE',
+                    classifier_reason TEXT DEFAULT '',
+                    status            TEXT DEFAULT 'UNPROCESSED',
+                    processed_at      INTEGER,
+                    created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                    source            TEXT NOT NULL,
+                    UNIQUE(url, source)
+                )
+                """);
+            jdbcTemplate.execute("DROP TABLE campus_notice");
+            jdbcTemplate.execute("ALTER TABLE campus_notice_new RENAME TO campus_notice");
+        };
+
+        try {
+            if (txTemplate != null) {
+                txTemplate.executeWithoutResult(status -> rebuild.run());
+            } else {
+                rebuild.run();
+            }
+            log.info("DB迁移完成：campus_notice 重建为 UNIQUE(url, source)（历史数据已清空）");
+        } catch (Exception e) {
+            log.error("DB迁移异常：campus_notice 重建失败", e);
+        }
+    }
+
+    /**
+     * PRAGMA 辅助：表上是否存在 UNIQUE 索引且其列集合恰好等于给定列。
+     * 不依赖索引名（SQLite 自动索引名为 sqlite_autoindex_*，不可靠）。
+     */
+    private static boolean hasUniqueIndexOn(JdbcTemplate jdbc, String table, String... expectedCols) {
+        var indexes = jdbc.queryForList("PRAGMA index_list(" + table + ")");
+        for (var idx : indexes) {
+            boolean unique = "1".equals(String.valueOf(idx.get("unique")));
+            if (!unique) continue;
+            var cols = jdbc.queryForList("PRAGMA index_info(" + idx.get("name") + ")");
+            var names = cols.stream().map(r -> String.valueOf(r.get("name"))).toList();
+            if (names.equals(java.util.List.of(expectedCols))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void cleanExpiredRecords() {
