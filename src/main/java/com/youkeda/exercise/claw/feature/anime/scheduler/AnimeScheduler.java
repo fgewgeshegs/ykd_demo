@@ -44,8 +44,8 @@ public class AnimeScheduler {
         this.backfillExecutor = backfillExecutor;
     }
 
-    /** 每天 08:00 检查播出更新 */
-    @Scheduled(cron = "0 0 8 * * *")
+    /** 每天 08:00 检查播出更新（可经 anime.cron 覆盖，如临时测试改时间） */
+    @Scheduled(cron = "${anime.cron:0 0 8 * * *}")
     public void dailyCheck() {
         log.info("===== AnimeScheduler 每日检查 =====");
 

@@ -19,6 +19,14 @@ import java.util.List;
 public class CampusListPageParser {
 
     /**
+     * 南邮教务处通知公告页默认 URL。
+     *
+     * <p>当前有效栏目是 1594（最新通知 2026-07）；旧栏目 1622 已废弃，内容停在 2013 年。
+     * 所有采集器经 {@code campus.notice-url} 配置注入此 URL，本常量是单一默认来源。
+     */
+    public static final String DEFAULT_NOTICE_URL = "https://jwc.njupt.edu.cn/1594/list.htm";
+
+    /**
      * @param html     通知列表页完整 HTML
      * @param baseUri  页面 URL（用于把相对 href 解析成绝对 URL）
      * @param source   条目的 source 标识（EXAM / COMPETITION）
@@ -31,7 +39,7 @@ public class CampusListPageParser {
         }
         Document doc = Jsoup.parse(html);
         if (baseUri == null || baseUri.isBlank()) {
-            baseUri = "https://jwc.njupt.edu.cn/1622/list34.psp";
+            baseUri = DEFAULT_NOTICE_URL;
         }
 
         for (Element li : doc.select("li.news")) {

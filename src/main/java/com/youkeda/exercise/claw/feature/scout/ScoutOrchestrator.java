@@ -227,9 +227,9 @@ public class ScoutOrchestrator {
     // ==================== 定时任务 3：画像更新（每天 19:45） ====================
 
     /**
-     * 定时画像更新：分析用户行为 + 重建画像
+     * 定时画像更新：分析用户行为 + 重建画像（可经 scout.profile-cron 覆盖）
      */
-    @Scheduled(cron = "0 45 19 * * *")
+    @Scheduled(cron = "${scout.profile-cron:0 45 19 * * *}")
     public void scheduledProfileUpdate() {
         log.info("========== 定时画像更新 ==========");
         try {

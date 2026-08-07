@@ -3,6 +3,7 @@ package com.youkeda.exercise.claw.feature.campus.collector;
 import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,6 +47,41 @@ class CompetitionCollectorTest {
         assertEquals(2, items.size());
         assertEquals("JOB", items.get(0).getSource(),
                 "同一页面由不同 Source 采集，身份应为调用方传入的 JOB");
+    }
+
+    @Test
+    void defaultNoticeUrlPointsToCurrentColumn1594() {
+        // 捕获 collect 实际请求的 URL（通过 seam 注入的 htmlFetcher）
+        List<String> capturedUrls = new ArrayList<>();
+        CompetitionCollector collector = new CompetitionCollector(url -> {
+            capturedUrls.add(url);
+            return FIXTURE_HTML;
+        });
+
+        collector.collect(CampusNoticeSource.ACTIVITY);
+
+        assertEquals(1, capturedUrls.size(), "collect 应请求通知列表页");
+        String url = capturedUrls.get(0);
+        assertTrue(url.contains("/1594/list.htm"),
+                "默认通知 URL 应指向当前有效栏目 1594/list.htm，实际=" + url);
+        assertFalse(url.contains("1622"), "不应再指向废弃栏目 1622，实际=" + url);
+    }
+
+    @Test
+    void configuredNoticeUrlOverridesDefault() {
+        // 显式传入自定义 URL（对应 @Value 配置 campus.notice-url 覆盖默认值）
+        List<String> capturedUrls = new ArrayList<>();
+        String customUrl = "https://example.com/1594/list.htm";
+        CompetitionCollector collector = new CompetitionCollector(url -> {
+            capturedUrls.add(url);
+            return FIXTURE_HTML;
+        }, customUrl);
+
+        collector.collect(CampusNoticeSource.ACTIVITY);
+
+        assertEquals(1, capturedUrls.size());
+        assertEquals(customUrl, capturedUrls.get(0),
+                "配置的自定义 URL 应覆盖默认通知栏目 URL");
     }
 
     @Test

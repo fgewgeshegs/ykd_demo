@@ -4,6 +4,7 @@ import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -25,20 +26,33 @@ import java.util.function.Function;
 public class CompetitionCollector {
 
     private static final Logger log = LoggerFactory.getLogger(CompetitionCollector.class);
-    private static final String NJUPT_NOTICE_URL = "https://jwc.njupt.edu.cn/1622/list34.psp";
 
     private final CampusListPageParser parser = new CampusListPageParser();
     private final CampusPageFetcher fetcher;
+    private final String noticeUrl;
 
-    /** Spring 构造器（注入共享 fetcher）。@Autowired 必标：有测试 seam 第二构造器时，Spring 不会自动选注入构造器 */
+    /**
+     * Spring 构造器（注入共享 fetcher + 通知列表页 URL）。
+     *
+     * <p>URL 来自配置 {@code campus.notice-url}，默认 {@link CampusListPageParser#DEFAULT_NOTICE_URL}
+     * （当前有效栏目 1594）。@Autowired 必标：有测试 seam 第二构造器时，Spring 不会自动选注入构造器。
+     */
     @Autowired
-    public CompetitionCollector(CampusPageFetcher fetcher) {
+    public CompetitionCollector(CampusPageFetcher fetcher,
+                                @Value("${campus.notice-url:" + CampusListPageParser.DEFAULT_NOTICE_URL + "}") String noticeUrl) {
         this.fetcher = fetcher;
+        this.noticeUrl = noticeUrl;
     }
 
-    /** 测试 seam：注入 HTML 提供方，绕开网络（内部包一个 fetcher） */
+    /** 测试 seam：注入 HTML 提供方，绕开网络（内部包一个 fetcher），URL 用默认值 */
     CompetitionCollector(Function<String, String> htmlFetcher) {
+        this(htmlFetcher, CampusListPageParser.DEFAULT_NOTICE_URL);
+    }
+
+    /** 测试 seam：注入 HTML 提供方 + 显式 URL（验证配置可覆盖默认） */
+    CompetitionCollector(Function<String, String> htmlFetcher, String noticeUrl) {
         this.fetcher = new CampusPageFetcher(htmlFetcher);
+        this.noticeUrl = noticeUrl;
     }
 
     /**
@@ -49,12 +63,12 @@ public class CompetitionCollector {
      */
     public List<NotificationItem> collect(CampusNoticeSource source) {
         try {
-            String html = fetcher.fetchHtml(NJUPT_NOTICE_URL);
-            List<NotificationItem> items = parser.parse(html, NJUPT_NOTICE_URL, source.name());
+            String html = fetcher.fetchHtml(noticeUrl);
+            List<NotificationItem> items = parser.parse(html, noticeUrl, source.name());
             log.info("比赛采集完成 | source={} | count={}", source, items.size());
             return items;
         } catch (Exception e) {
-            log.error("比赛采集失败 | url={}", NJUPT_NOTICE_URL, e);
+            log.error("比赛采集失败 | url={}", noticeUrl, e);
             return List.of();
         }
     }

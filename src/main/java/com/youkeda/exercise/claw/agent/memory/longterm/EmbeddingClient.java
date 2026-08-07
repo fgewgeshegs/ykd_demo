@@ -116,8 +116,7 @@ public class EmbeddingClient {
 
             // 2. 检查模型是否已拉取
             String model = props.getModel();
-            boolean modelPulled = tagsResp.body() != null
-                    && tagsResp.body().contains("\"" + model + "\"");
+            boolean modelPulled = isModelPulled(tagsResp.body(), model);
             if (!modelPulled) {
                 log.warn("⚠️  Embedding 模型未拉取 | model={} | 请运行：ollama pull {}",
                         model, model);
@@ -153,6 +152,32 @@ public class EmbeddingClient {
             openCircuit();
             log.warn("⚠️  Embedding 服务预检查失败 | error={} | 请确认 Ollama 已启动：ollama serve",
                     e.getMessage());
+        }
+    }
+
+    /**
+     * 判断 /api/tags 响应中是否已拉取指定模型。
+     *
+     * <p>修复背景：Ollama 对不带 tag 的 pull 会把模型存成 {@code bge-m3:latest}，旧实现用
+     * {@code contains("\"bge-m3\"")} 精确匹配裸名，永远匹配不上 → 每次启动都误报
+     * 「模型未拉取」并打开熔断器。此处解析 JSON，匹配 name 本身或其带任意 tag 的形式。
+     */
+    private boolean isModelPulled(String tagsBody, String model) {
+        if (tagsBody == null || tagsBody.isBlank()) return false;
+        try {
+            JsonNode root = objectMapper.readTree(tagsBody);
+            JsonNode models = root.get("models");
+            if (models == null || !models.isArray()) return false;
+            for (JsonNode m : models) {
+                String name = m.path("name").asText("");
+                if (name.equals(model) || name.startsWith(model + ":")) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            log.warn("解析 Ollama tags 响应失败 | model={} | error={}", model, e.getMessage());
+            return false;
         }
     }
 

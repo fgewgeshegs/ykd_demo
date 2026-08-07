@@ -168,7 +168,7 @@ public class ExamSource implements CampusSource {
     private String resolveSchoolUrl(String school) {
         if (school == null) return null;
         if (school.contains("南邮") || school.contains("南京邮电")) {
-            return CampusNoticeCollector.NJUPT_NOTICE_URL;
+            return collector.getNoticeUrl();
         }
         log.warn("未配置的学校: {}", school);
         return null;

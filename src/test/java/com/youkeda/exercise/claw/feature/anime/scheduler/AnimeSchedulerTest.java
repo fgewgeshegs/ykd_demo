@@ -10,12 +10,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.scheduling.annotation.Scheduled;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -96,6 +99,16 @@ class AnimeSchedulerTest {
         verify(mockExecutor).execute(any(Runnable.class));
         // 调用线程上回填逻辑并未执行（executor mock 不会真正跑任务）
         verify(subscriptionStore, never()).updateTitleZh(anyInt(), anyString());
+    }
+
+    @Test
+    void dailyCheckCronIsConfigurableViaAnimeCron() throws NoSuchMethodException {
+        // 防回归：dailyCheck 的 cron 必须可通过 anime.cron 配置（硬编码 08:00 会让错过窗口无法补偿测试）
+        Method method = AnimeScheduler.class.getMethod("dailyCheck");
+        Scheduled ann = method.getAnnotation(Scheduled.class);
+
+        assertTrue(ann != null && ann.cron().contains("${anime.cron:"),
+                "dailyCheck cron 应包含 ${anime.cron: 占位符，实际=" + (ann != null ? ann.cron() : "<无 @Scheduled>"));
     }
 
     @Test
