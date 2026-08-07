@@ -36,15 +36,22 @@ public class AnimeSubscriptionStore {
         }
         long now = System.currentTimeMillis() / 1000;
         jdbc.update("""
-            INSERT OR IGNORE INTO anime_subscription
-            (anilist_id, title, title_ja, cover_url, status, genres, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, anime.getAnilistId(), anime.getTitle(), anime.getTitleJa(),
+            INSERT INTO anime_subscription
+            (anilist_id, title, title_ja, title_zh, cover_url, status, genres, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(anilist_id) DO UPDATE SET
+                title_zh = COALESCE(excluded.title_zh, anime_subscription.title_zh)
+            """, anime.getAnilistId(), anime.getTitle(), anime.getTitleJa(), anime.getTitleZh(),
             anime.getCoverUrl(), anime.getStatus(), genresJson, now);
     }
 
     public void unsubscribe(int anilistId) {
         jdbc.update("DELETE FROM anime_subscription WHERE anilist_id = ?", anilistId);
+    }
+
+    /** 回填空缺的中文译名 */
+    public void updateTitleZh(int anilistId, String titleZh) {
+        jdbc.update("UPDATE anime_subscription SET title_zh = ? WHERE anilist_id = ?", titleZh, anilistId);
     }
 
     public List<Anime> listAll() {
@@ -75,6 +82,7 @@ public class AnimeSubscriptionStore {
             anime.setAnilistId(rs.getInt("anilist_id"));
             anime.setTitle(rs.getString("title"));
             anime.setTitleJa(rs.getString("title_ja"));
+            anime.setTitleZh(rs.getString("title_zh"));
             anime.setCoverUrl(rs.getString("cover_url"));
             anime.setStatus(rs.getString("status"));
             // 反序列化 genres

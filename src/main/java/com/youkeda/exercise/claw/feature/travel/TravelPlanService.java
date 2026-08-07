@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.youkeda.exercise.claw.agent.runtime.TravelDeliveryCredentialSource;
+import com.youkeda.exercise.claw.feature.budget.OptionCostResult;
+import com.youkeda.exercise.claw.feature.budget.OptionCostStatus;
+import com.youkeda.exercise.claw.feature.budget.PlanCostResult;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +24,7 @@ import java.util.regex.Pattern;
  * 不维护编排状态（stage 管理已移除），不替 LLM 决定下一步做什么。
  */
 @Service
-public class TravelPlanService {
+public class TravelPlanService implements TravelDeliveryCredentialSource {
 
     private static final Pattern DAYS_PATTERN = Pattern.compile("(\\d+)\\s*天");
     private static final Pattern NIGHTS_PATTERN = Pattern.compile("(\\d+)\\s*晚");
@@ -97,6 +101,83 @@ public class TravelPlanService {
 
     public TravelPlanDraft getDraft() {
         return stateStore.get(resolveDefaultUserId());
+    }
+
+    /**
+     * 交付凭证：需求已收集齐（collect 凭证）+ 存在有效核算结果（cost 凭证）+ 核算完整度。
+     *
+     * <p>供 {@code TravelReplyGuard} 做跨轮校验。cost 凭证判定用 {@code costResult != null}——
+     * 数据变更时 {@link #invalidateAllOptions} 会把 costResult 清 null 并置 STALE，故非 null 即核算有效。
+     * costComplete 区分「核算完整」与「PARTIAL（存在缺失价格）」：PARTIAL 时守卫要求回复如实披露缺失项，
+     * 防止 LLM 把未确认价格的结果当作确定总费用交付。
+     */
+    @Override
+    public Optional<TravelDeliveryCredentialSource.DeliveryCredential> getCredential(String userId) {
+        if (userId == null) return Optional.empty();
+        TravelPlanDraft draft = stateStore.get(userId);
+        if (draft == null) return Optional.empty();
+        boolean requirementsComplete = findMissing(draft).isEmpty();
+        List<TravelPlanOption> costed = draft.getOptions().stream()
+                .filter(option -> option.getCostResult() != null)
+                .toList();
+        boolean costCalculated = !costed.isEmpty();
+        boolean costComplete = !costed.isEmpty() && costed.stream().allMatch(this::isCostComplete);
+        List<String> costMissingItems = costed.stream()
+                .flatMap(option -> costResultMissingItems(option).stream())
+                .distinct()
+                .toList();
+        return Optional.of(new TravelDeliveryCredentialSource.DeliveryCredential(
+                requirementsComplete, costCalculated, costComplete, costMissingItems));
+    }
+
+    /** 核算结果是否完整：costStatus=SUCCESS 且无缺失价格项。 */
+    private boolean isCostComplete(TravelPlanOption option) {
+        try {
+            OptionCostResult cost = objectMapper.treeToValue(option.getCostResult(), OptionCostResult.class);
+            return cost.getCostStatus() == OptionCostStatus.SUCCESS
+                    && (cost.getMissingPriceItems() == null || cost.getMissingPriceItems().isEmpty());
+        } catch (Exception e) {
+            // 反序列化失败按不完整处理（fail-closed：不授予「完整核算」凭证）
+            return false;
+        }
+    }
+
+    /** 核算结果中的缺失价格项列表。 */
+    private List<String> costResultMissingItems(TravelPlanOption option) {
+        try {
+            OptionCostResult cost = objectMapper.treeToValue(option.getCostResult(), OptionCostResult.class);
+            return cost.getMissingPriceItems() != null ? cost.getMissingPriceItems() : List.of();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * 记录成本核算凭证：按 planId 匹配候选方案，把核算结果回写 option.costResult。
+     *
+     * <p>travel_calculate_cost 是纯计算工具（结果默认只进当轮 toolStatuses），
+     * 此处把它持久化到 draft，使守卫能跨轮验证「预算结论有核算凭证」。
+     * 用户无活动方案时静默跳过（不把核算写进无关状态）。
+     */
+    public void recordCostCalculation(String userId, PlanCostResult result) {
+        if (userId == null || result == null || result.getPlans() == null) return;
+        TravelPlanDraft draft = stateStore.get(userId);
+        if (draft == null) return;
+        boolean changed = false;
+        for (OptionCostResult cost : result.getPlans()) {
+            if (cost == null || cost.getPlanId() == null) continue;
+            for (TravelPlanOption option : draft.getOptions()) {
+                if (cost.getPlanId().equals(option.getOptionId())) {
+                    option.setCostResult(objectMapper.valueToTree(cost));
+                    option.setCostStatus(CostStatus.NOT_CALCULATED); // 重新核算，清除 STALE 失效标记
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if (changed) {
+            stateStore.save(userId, draft);
+        }
     }
 
     // ==================== Action Handlers ====================

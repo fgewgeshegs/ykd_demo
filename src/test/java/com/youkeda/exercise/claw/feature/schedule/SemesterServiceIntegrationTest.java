@@ -37,7 +37,7 @@ class SemesterServiceIntegrationTest {
     private SemesterService semesterService;
     private CourseRepository courseRepository;
     private CourseService courseService;
-    private SemesterProperties semesterConfig;
+    private SemesterProperties semesterProperties;
     private String dbPath;
 
     private void setField(Object target, String fieldName, Object value) {
@@ -68,12 +68,12 @@ class SemesterServiceIntegrationTest {
         courseRepository.init();
 
         // 初始化 SemesterProperties（不设置 semesterStart，使用默认值）
-        semesterConfig = new SemesterProperties();
+        semesterProperties = new SemesterProperties();
 
         // 初始化 CourseService
         ObjectMapper objectMapper = new ObjectMapper();
         CourseParser courseParser = new CourseParser(objectMapper);
-        courseService = new CourseService(courseRepository, courseParser, semesterConfig, semesterService);
+        courseService = new CourseService(courseRepository, courseParser, semesterProperties, semesterService);
     }
 
     @Nested

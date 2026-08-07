@@ -43,6 +43,15 @@ public class ReminderScheduler {
 
             for (AnimeScheduleStore.ReminderTask task : pending) {
                 try {
+                    // 守卫：任务已到提醒时间但播出时间已过（如应用宕机跨过 15 分钟提醒窗口，
+                    // 或任务迟到），不再推送“即将播出”，直接标记已发送避免下次重复处理。
+                    if (task.getAiringAt() <= now) {
+                        scheduleStore.markReminderSent(task.getId());
+                        log.info("提醒跳过：已播出 | taskId={} | episode={} | airingAt={}",
+                            task.getId(), task.getEpisode(), task.getAiringAt());
+                        continue;
+                    }
+
                     Anime anime = subscriptionStore.findByAnilistId(task.getAnilistId());
                     if (anime == null) continue;
 
@@ -51,7 +60,7 @@ public class ReminderScheduler {
                         .atZone(ZoneId.of("Asia/Tokyo"))
                         .format(DateTimeFormatter.ofPattern("HH:mm"));
 
-                    String message = "🎬 《" + anime.getTitle() + "》第 "
+                    String message = "🎬 《" + anime.getDisplayTitle() + "》第 "
                         + task.getEpisode() + " 集即将在 " + airTime + " 播出！";
 
                     // 通过统一事件总线推送（批次 3 落地）
@@ -61,7 +70,7 @@ public class ReminderScheduler {
                     scheduleStore.markReminderSent(task.getId());
                     scheduleStore.markEpisodeNotified(task.getAnilistId(), task.getEpisode());
                     log.info("播出提醒已发送 | title={} | episode={}",
-                        anime.getTitle(), task.getEpisode());
+                        anime.getDisplayTitle(), task.getEpisode());
                 } catch (Exception e) {
                     log.warn("提醒发送失败 | taskId={}", task.getId(), e);
                 }

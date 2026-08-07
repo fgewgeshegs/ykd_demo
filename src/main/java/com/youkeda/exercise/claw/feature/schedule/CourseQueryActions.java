@@ -26,7 +26,7 @@ public class CourseQueryActions {
 
     private final CourseService courseService;
     private final CourseRepository courseRepository;
-    private final SemesterProperties semesterConfig;
+    private final SemesterProperties semesterProperties;
     private final SemesterService semesterService;
     private final CourseMessageFormatter messageFormatter;
     private final ObjectMapper objectMapper;
@@ -34,14 +34,14 @@ public class CourseQueryActions {
 
     public CourseQueryActions(CourseService courseService,
                               CourseRepository courseRepository,
-                              SemesterProperties semesterConfig,
+                              SemesterProperties semesterProperties,
                               SemesterService semesterService,
                               CourseMessageFormatter messageFormatter,
                               ObjectMapper objectMapper,
                               CourseImportStateManager importStateManager) {
         this.courseService = courseService;
         this.courseRepository = courseRepository;
-        this.semesterConfig = semesterConfig;
+        this.semesterProperties = semesterProperties;
         this.semesterService = semesterService;
         this.messageFormatter = messageFormatter;
         this.objectMapper = objectMapper;
@@ -243,7 +243,7 @@ public class CourseQueryActions {
         if (week > 0) {
             return week;
         }
-        return semesterConfig.getCurrentWeek();
+        return semesterProperties.getCurrentWeek();
     }
 
     private String errorJson(String message) {

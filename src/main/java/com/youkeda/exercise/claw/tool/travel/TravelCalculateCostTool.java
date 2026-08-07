@@ -9,6 +9,8 @@ import com.youkeda.exercise.claw.agent.runtime.ToolExecutionContext;
 import com.youkeda.exercise.claw.agent.runtime.ToolRegistry;
 import com.youkeda.exercise.claw.feature.budget.BatchPlanCostRequest;
 import com.youkeda.exercise.claw.feature.budget.BudgetCalculatorService;
+import com.youkeda.exercise.claw.feature.budget.PlanCostResult;
+import com.youkeda.exercise.claw.feature.travel.TravelPlanService;
 import org.springframework.stereotype.Component;
 
 /** 将旅游方案成本核算注册为可供 LLM 调用的独立工具。 */
@@ -16,12 +18,15 @@ import org.springframework.stereotype.Component;
 public class TravelCalculateCostTool extends AbstractTool {
 
     private final BudgetCalculatorService calculatorService;
+    private final TravelPlanService planService;
 
     public TravelCalculateCostTool(BudgetCalculatorService calculatorService,
-                                         ObjectMapper objectMapper,
-                                         ToolRegistry registry) {
+                                   TravelPlanService planService,
+                                   ObjectMapper objectMapper,
+                                   ToolRegistry registry) {
         super(registry, objectMapper);
         this.calculatorService = calculatorService;
+        this.planService = planService;
     }
 
     @Override
@@ -76,7 +81,12 @@ public class TravelCalculateCostTool extends AbstractTool {
     public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             BatchPlanCostRequest request = objectMapper.readValue(argumentsJson, BatchPlanCostRequest.class);
-            return objectMapper.writeValueAsString(calculatorService.calculate(request));
+            PlanCostResult result = calculatorService.calculate(request);
+            // 核算凭证回写 draft（供跨轮守卫校验），不改变工具返回内容
+            if (context != null && context.userId() != null && !context.userId().isBlank()) {
+                planService.recordCostCalculation(context.userId(), result);
+            }
+            return objectMapper.writeValueAsString(result);
         } catch (Exception e) {
             ObjectNode result = objectMapper.createObjectNode();
             result.put("status", "INVALID_ARGUMENT");

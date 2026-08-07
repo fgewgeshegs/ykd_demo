@@ -37,6 +37,16 @@ public class LLMClient {
     private static final String SYSTEM_PROMPT_PATH = "prompts/system-prompt.txt";
     private static final String DEFAULT_SYSTEM_PROMPT = "你是 Claw助手，一个智能AI助手。";
 
+    /**
+     * 推理模型下安全的输出 token 上限。
+     *
+     * <p>DeepSeek 推理模型的 thinking 会占用 max_tokens 预算：设 900 时（如动漫
+     * 译名/季度推荐），1665 字符 reasoning 即触发 finish_reason=length、正文为空，
+     * 调用方只能走罗马音兜底。此值给 thinking + 正文都留足空间；主对话链路传 0
+     * （不设上限）不受影响。
+     */
+    public static final int REASONING_SAFE_MAX_TOKENS = 4000;
+
     /** LLM 调用最大重试次数（指数退避） */
     private static final int MAX_RETRIES = 2;
     /** 重试初始退避延迟（毫秒） */

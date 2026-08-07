@@ -32,11 +32,11 @@ public class SearchService {
 
     private static final Logger log = LoggerFactory.getLogger(SearchService.class);
 
-    private final WebSearchProperties config;
+    private final WebSearchProperties webSearchProperties;
     private final ObjectMapper objectMapper;
 
-    public SearchService(WebSearchProperties config, ObjectMapper objectMapper) {
-        this.config = config;
+    public SearchService(WebSearchProperties webSearchProperties, ObjectMapper objectMapper) {
+        this.webSearchProperties = webSearchProperties;
         this.objectMapper = objectMapper;
     }
 
@@ -47,7 +47,7 @@ public class SearchService {
      * @return 搜索结果 JSON（含 answer 摘要 + results 列表），失败返回 error JSON
      */
     public String search(String query) {
-        return search(query, config.getMaxResults());
+        return search(query, webSearchProperties.getMaxResults());
     }
 
     /**
@@ -61,11 +61,11 @@ public class SearchService {
         try {
             // 1. 构建 POST JSON 请求体
             ObjectNode body = objectMapper.createObjectNode();
-            body.put("api_key", config.getKey());
+            body.put("api_key", webSearchProperties.getKey());
             body.put("query", query);
-            body.put("search_depth", config.getSearchDepth());
+            body.put("search_depth", webSearchProperties.getSearchDepth());
             body.put("max_results", Math.min(maxResults, 20));
-            body.put("include_answer", config.getIncludeAnswer());
+            body.put("include_answer", webSearchProperties.getIncludeAnswer());
             body.put("include_raw_content", false);
             body.put("include_images", false);
 
@@ -74,12 +74,12 @@ public class SearchService {
 
             // 2. POST 请求
             HttpClient httpClient = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(config.getTimeout()))
+                    .connectTimeout(Duration.ofSeconds(webSearchProperties.getTimeout()))
                     .build();
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(config.getUrl()))
-                    .timeout(Duration.ofSeconds(config.getTimeout()))
+                    .uri(URI.create(webSearchProperties.getUrl()))
+                    .timeout(Duration.ofSeconds(webSearchProperties.getTimeout()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
@@ -117,11 +117,11 @@ public class SearchService {
     public String searchByDate(String query, int maxResults, int freshnessDays) {
         try {
             ObjectNode body = objectMapper.createObjectNode();
-            body.put("api_key", config.getKey());
+            body.put("api_key", webSearchProperties.getKey());
             body.put("query", query);
-            body.put("search_depth", config.getSearchDepth());
+            body.put("search_depth", webSearchProperties.getSearchDepth());
             body.put("max_results", Math.min(maxResults, 20));
-            body.put("include_answer", config.getIncludeAnswer());
+            body.put("include_answer", webSearchProperties.getIncludeAnswer());
             body.put("include_raw_content", false);
             body.put("include_images", false);
             body.put("sort_by", "date"); // 按时间排序
@@ -134,12 +134,12 @@ public class SearchService {
             log.info("Tavily 搜索（按时间）| query={} | maxResults={}", query, maxResults);
 
             HttpClient httpClient = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(config.getTimeout()))
+                    .connectTimeout(Duration.ofSeconds(webSearchProperties.getTimeout()))
                     .build();
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(config.getUrl()))
-                    .timeout(Duration.ofSeconds(config.getTimeout()))
+                    .uri(URI.create(webSearchProperties.getUrl()))
+                    .timeout(Duration.ofSeconds(webSearchProperties.getTimeout()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();

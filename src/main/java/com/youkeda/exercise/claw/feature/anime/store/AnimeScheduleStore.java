@@ -46,7 +46,7 @@ public class AnimeScheduleStore {
             """, new AnimeEpisodeRowMapper(), from, to);
     }
 
-    /** 创建提醒任务 */
+    /** 创建提醒任务（幂等：同集已存在则忽略，由 UNIQUE(anilist_id, episode) 保证） */
     public void createReminderTask(int anilistId, int episode, long remindTime, long airingAt) {
         long now = System.currentTimeMillis() / 1000;
         jdbc.update("""
@@ -56,14 +56,13 @@ public class AnimeScheduleStore {
             """, anilistId, episode, remindTime, airingAt, now);
     }
 
-    /** 获取所有待执行的提醒任务 */
+    /** 获取所有待执行的提醒任务（airing_at 从任务表自身读取，不再 join anime_schedule） */
     public List<ReminderTask> getPendingReminders(long now) {
         return jdbc.query("""
-            SELECT r.*, s.airing_at AS airing_at
-            FROM anime_reminder_task r
-            LEFT JOIN anime_schedule s ON r.anilist_id = s.anilist_id AND r.episode = s.episode
-            WHERE r.status = 'PENDING' AND r.remind_time <= ?
-            ORDER BY r.remind_time ASC
+            SELECT id, anilist_id, episode, remind_time, airing_at, status, created_at
+            FROM anime_reminder_task
+            WHERE status = 'PENDING' AND remind_time <= ?
+            ORDER BY remind_time ASC
             """, new ReminderTaskRowMapper(), now);
     }
 

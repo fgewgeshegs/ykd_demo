@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.feature.campus.notification;
-import com.youkeda.exercise.claw.notification.NotificationSource;
+import com.youkeda.exercise.claw.feature.campus.CampusSource;
 
 import com.youkeda.exercise.claw.feature.campus.classifier.CompetitionClassifier;
+import com.youkeda.exercise.claw.feature.campus.collector.CampusNoticeSource;
 import com.youkeda.exercise.claw.feature.campus.collector.CompetitionCollector;
 import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import com.youkeda.exercise.claw.feature.campus.policy.DefaultPolicy;
@@ -19,7 +20,7 @@ import java.util.List;
 
 @Component
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
-public class CompetitionSource implements NotificationSource {
+public class CompetitionSource implements CampusSource {
 
     private static final Logger log = LoggerFactory.getLogger(CompetitionSource.class);
     private static final CompetitionRules RULES = new CompetitionRules();
@@ -53,7 +54,7 @@ public class CompetitionSource implements NotificationSource {
         log.info("===== CompetitionSource 检查 =====");
 
         // 1. 采集
-        List<NotificationItem> items = collector.collect();
+        List<NotificationItem> items = collector.collect(CampusNoticeSource.COMPETITION);
         if (items.isEmpty()) return;
 
         // 2. 去重

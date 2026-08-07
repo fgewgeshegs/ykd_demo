@@ -2,6 +2,9 @@
 # Claw Assistant Configuration
 # ============================================
 
+# @Scheduled 全局调度器线程池大小（默认 4，避免各定时点共享单线程互相阻塞）
+spring.task.scheduling.pool.size=4
+
 # Skill definitions and deterministic trigger policies
 spring.config.import=classpath:config/skills.yml,classpath:config/skill-triggers.yml
 
@@ -105,6 +108,10 @@ spring.datasource.driver-class-name=org.sqlite.JDBC
 # Campus Exam Reminder（考试提醒）
 # ============================================
 campus.enabled=true
+# 每日通知检查 cron（默认每天 08:00，可覆盖，如测试改 0 0 20 * * *）
+campus.cron=0 0 8 * * *
+# 南邮教务处通知公告列表页 URL（默认当前有效栏目 1594，旧栏目 1622 已废弃）
+campus.notice-url=https://jwc.njupt.edu.cn/1594/list.htm
 
 storage.enabled=true
 
@@ -199,6 +206,8 @@ scout.search-task-count=5
 scout.max-results-per-task=10
 # 定时任务 cron 表达式（每天早8点）
 scout.cron=0 0 8 * * *
+# 画像更新 cron（默认每天 19:45，可覆盖）
+scout.profile-cron=0 45 19 * * *
 
 # Qdrant 信息库（独立于记忆库）
 scout.qdrant.collection=scout_information
@@ -228,6 +237,8 @@ scout.rss.feeds[11]=https://hnrss.org/frontpage
 # ============================================
 anime.enabled=true
 anime.seasonRecommendation.enabled=true
+# 每日播出检查 cron（默认每天 08:00，可覆盖，如测试改 0 0 20 * * *）
+anime.cron=0 0 8 * * *
 
 # ============================================
 # Agent Runtime（Agent 执行）

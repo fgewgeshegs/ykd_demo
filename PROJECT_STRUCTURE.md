@@ -125,14 +125,14 @@ D:\ykd-project\test\
         │   │   ├── weather/                           # 天气查询模块
         │   │   │   ├── WeatherFunction.java           # 天气查询工具
         │   │   │   ├── WeatherTool.java               # 天气 API 调用层
-        │   │   │   ├── WeatherProperties.java             # 天气 API 配置
+        │   │   │   ├── WeatherProperties.java         # 天气 API 配置
         │   │   │   ├── WeatherResponse.java           # 天气响应模型
         │   │   │   └── WeatherCommand.java            # CLI weather 命令
         │   │   │
         │   │   ├── websearch/                         # 网页搜索模块
         │   │   │   ├── WebSearchFunction.java         # 网页搜索工具
         │   │   │   ├── SearchService.java             # Tavily 搜索服务
-        │   │   │   └── WebSearchProperties.java           # Tavily API 配置
+        │   │   │   └── WebSearchProperties.java       # Tavily API 配置
         │   │   │
         │   │   ├── holiday/                           # 节假日查询模块
         │   │   │   ├── HolidayCheckFunction.java      # 节假日查询工具

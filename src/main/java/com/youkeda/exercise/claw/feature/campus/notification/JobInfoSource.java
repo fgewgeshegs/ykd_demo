@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.feature.campus.notification;
-import com.youkeda.exercise.claw.notification.NotificationSource;
+import com.youkeda.exercise.claw.feature.campus.CampusSource;
 
 import com.youkeda.exercise.claw.feature.campus.classifier.JobClassifier;
+import com.youkeda.exercise.claw.feature.campus.collector.CampusNoticeSource;
 import com.youkeda.exercise.claw.feature.campus.collector.CompetitionCollector;
 import com.youkeda.exercise.claw.domain.campus.NotificationItem;
 import com.youkeda.exercise.claw.feature.campus.policy.DefaultPolicy;
@@ -23,7 +24,7 @@ import java.util.List;
  */
 @Component
 @ConditionalOnProperty(name = "campus.enabled", havingValue = "true")
-public class JobInfoSource implements NotificationSource {
+public class JobInfoSource implements CampusSource {
 
     private static final Logger log = LoggerFactory.getLogger(JobInfoSource.class);
     private static final JobRules RULES = new JobRules();
@@ -57,7 +58,7 @@ public class JobInfoSource implements NotificationSource {
         log.info("===== JobInfoSource 检查 =====");
 
         // 1. 采集（复用教务处通知列表）
-        List<NotificationItem> items = collector.collect();
+        List<NotificationItem> items = collector.collect(CampusNoticeSource.JOB);
         if (items.isEmpty()) return;
 
         // 2. 去重（按 url + source 联合键）

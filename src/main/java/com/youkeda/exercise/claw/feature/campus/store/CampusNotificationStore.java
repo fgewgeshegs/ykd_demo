@@ -26,25 +26,24 @@ public class CampusNotificationStore {
     }
 
     /**
-     * 与已有记录去重（按 url + source 联合判断），返回全新的通知列表并插入DB
+     * 与已有记录去重，返回全新的通知列表并插入DB。
+     *
+     * <p>依赖表级复合约束 UNIQUE(url, source) 做原子去重：INSERT OR IGNORE，
+     * 影响行数为 1 即新插入，0 即已存在（含并发下两个线程同时插入时，后到者被
+     * 约束忽略而非抛异常）。旧实现 SELECT→INSERT 两步在并发下会重复插入或
+     * 抛 SQLITE_CONSTRAINT_UNIQUE 进 catch（日志「去重写入失败」风暴）。
      */
     public List<NotificationItem> deduplicate(List<NotificationItem> fetched) {
         List<NotificationItem> newItems = new ArrayList<>();
         for (NotificationItem item : fetched) {
             try {
-                // 先检查 (url, source) 是否已存在
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM campus_notice WHERE url = ? AND source = ?",
-                    Integer.class, item.getUrl(), item.getSource());
-                if (count != null && count > 0) {
-                    continue; // 已存在，跳过
-                }
-
-                jdbc.update("""
-                    INSERT INTO campus_notice (title, url, publish_at, source, status)
+                int inserted = jdbc.update("""
+                    INSERT OR IGNORE INTO campus_notice (title, url, publish_at, source, status)
                     VALUES (?, ?, ?, ?, 'UNPROCESSED')
                     """, item.getTitle(), item.getUrl(), item.getPublishAt(), item.getSource());
-                newItems.add(item);
+                if (inserted > 0) {
+                    newItems.add(item);
+                }
             } catch (Exception e) {
                 log.warn("去重写入失败 | url={} | source={}", item.getUrl(), item.getSource(), e);
             }

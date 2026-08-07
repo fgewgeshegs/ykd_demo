@@ -25,7 +25,7 @@ public class CourseImportFlowActions {
 
     private final CourseService courseService;
     private final CourseRepository courseRepository;
-    private final SemesterProperties semesterConfig;
+    private final SemesterProperties semesterProperties;
     private final CourseImportStateManager importStateManager;
     private final SemesterDetector semesterDetector;
     private final SemesterRepository semesterRepository;
@@ -35,7 +35,7 @@ public class CourseImportFlowActions {
 
     public CourseImportFlowActions(CourseService courseService,
                                    CourseRepository courseRepository,
-                                   SemesterProperties semesterConfig,
+                                   SemesterProperties semesterProperties,
                                    CourseImportStateManager importStateManager,
                                    SemesterDetector semesterDetector,
                                    SemesterRepository semesterRepository,
@@ -44,7 +44,7 @@ public class CourseImportFlowActions {
                                    ObjectMapper objectMapper) {
         this.courseService = courseService;
         this.courseRepository = courseRepository;
-        this.semesterConfig = semesterConfig;
+        this.semesterProperties = semesterProperties;
         this.importStateManager = importStateManager;
         this.semesterDetector = semesterDetector;
         this.semesterRepository = semesterRepository;
@@ -631,6 +631,6 @@ public class CourseImportFlowActions {
         if (week > 0) {
             return week;
         }
-        return semesterConfig.getCurrentWeek();
+        return semesterProperties.getCurrentWeek();
     }
 }

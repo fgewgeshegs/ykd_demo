@@ -62,6 +62,9 @@ public class TravelSaveOptionsTool extends AbstractTool {
     public String execute(String argumentsJson, ToolExecutionContext context) {
         try {
             ObjectNode args = (ObjectNode) objectMapper.readTree(argumentsJson);
+            // 必须注入 action，否则 TravelPlanService 按空 action 落入 default→collect，
+            // 方案从不写入 draft（回归：save 后 select 报"未找到候选方案"）
+            args.put("action", "save_options");
             return objectMapper.writeValueAsString(planService.handle(args));
         } catch (Exception e) {
             log.error("travel_save_options 执行失败 | error={}", e.getMessage());

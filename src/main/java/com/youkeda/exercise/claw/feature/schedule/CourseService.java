@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -25,16 +24,16 @@ public class CourseService {
 
     private final CourseRepository courseRepository;
     private final CourseParser courseParser;
-    private final SemesterProperties semesterConfig;
+    private final SemesterProperties semesterProperties;
     private final SemesterService semesterService;
 
     public CourseService(CourseRepository courseRepository,
                          CourseParser courseParser,
-                         SemesterProperties semesterConfig,
+                         SemesterProperties semesterProperties,
                          SemesterService semesterService) {
         this.courseRepository = courseRepository;
         this.courseParser = courseParser;
-        this.semesterConfig = semesterConfig;
+        this.semesterProperties = semesterProperties;
         this.semesterService = semesterService;
     }
 
@@ -242,7 +241,7 @@ public class CourseService {
             return week;
         }
         // Fallback: 系统默认配置
-        return semesterConfig.getCurrentWeek();
+        return semesterProperties.getCurrentWeek();
     }
 
     /**

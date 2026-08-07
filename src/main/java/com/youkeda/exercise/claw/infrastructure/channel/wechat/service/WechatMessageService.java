@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 微信消息监听服务
  *
  * 职责：
- * - 定时轮询微信消息（新 SDK getUpdates）
+ * - 定时轮询微信消息（ SDK getUpdates）
  * - 将消息交由 MessageRouter 路由分发
  * - 根据 WechatReply 类型（TEXT/IMAGE/VOICE/FILE）调用对应的发送方法
  */
@@ -78,7 +78,7 @@ public class WechatMessageService {
     }
 
     /**
-     * 消息轮询主循环（适配新 SDK getUpdates + snake_case 模型）
+     * 消息轮询主循环（适配 SDK getUpdates + snake_case 模型）
      */
     private void pollLoop() {
         boolean loginWarned = false;

@@ -12,8 +12,10 @@ import org.springframework.stereotype.Component;
  * <p>职责：持久化机器人登录状态（连接/断开/失败），
  * 项目重启后可通过 {@link #getLastStatus()} 快速判断上次登录结果。
  *
- * <p>注意：SDK 不支持 Token 持久化，每次重启必须重新扫码。
- * 此模块只记录状态元数据，不保存登录凭证。
+ * <p>注意：此模块只记录状态元数据，不保存登录凭证。
+ * 登录凭证的持久化与恢复由
+ * {@link com.youkeda.exercise.claw.infrastructure.channel.wechat.login.BotSessionStore}
+ * 负责（ResumeContext 存入 claw.db 的 bot_session 表，7 天有效期，启动时自动恢复）。
  *
  * <p>P0-7 收敛：原「BotSessionManager」用裸 JDBC 写 {@code claw-bot.db}，
  * 与 {@link com.youkeda.exercise.claw.infrastructure.channel.wechat.login.BotSessionStore}

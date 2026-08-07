@@ -49,7 +49,7 @@ public class ScheduleReminderService {
     private int reminderToleranceSeconds;
 
     private final CourseRepository courseRepository;
-    private final SemesterProperties semesterConfig;
+    private final SemesterProperties semesterProperties;
     private final WechatILinkClient wechatClient;
     private final SemesterService semesterService;
     private final ScheduleTimeResolver timeResolver;
@@ -58,12 +58,12 @@ public class ScheduleReminderService {
     private final ConcurrentHashMap<String, Boolean> notifiedCache = new ConcurrentHashMap<>();
 
     public ScheduleReminderService(CourseRepository courseRepository,
-                                   SemesterProperties semesterConfig,
+                                   SemesterProperties semesterProperties,
                                    WechatILinkClient wechatClient,
                                    SemesterService semesterService,
                                    ScheduleTimeResolver timeResolver) {
         this.courseRepository = courseRepository;
-        this.semesterConfig = semesterConfig;
+        this.semesterProperties = semesterProperties;
         this.wechatClient = wechatClient;
         this.semesterService = semesterService;
         this.timeResolver = timeResolver;
@@ -135,7 +135,7 @@ public class ScheduleReminderService {
         if (week > 0) {
             return week;
         }
-        return semesterConfig.getCurrentWeek();
+        return semesterProperties.getCurrentWeek();
     }
 
     /**
