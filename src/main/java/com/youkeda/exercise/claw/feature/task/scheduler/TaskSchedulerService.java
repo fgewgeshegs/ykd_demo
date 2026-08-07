@@ -5,7 +5,9 @@ import com.youkeda.exercise.claw.feature.task.executor.AgentTaskExecutor;
 import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.feature.task.repository.ScheduledTaskRepository;
 import com.youkeda.exercise.claw.feature.task.service.RepeatCalculator;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRecordRepository;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationType;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -55,10 +57,11 @@ public class TaskSchedulerService {
     private int executorPoolSize;
 
     private final ScheduledTaskRepository taskRepository;
-    private final WechatILinkClient wechatClient;
+    private final NotificationRouter notificationRouter;
     private final RepeatCalculator repeatCalculator;
     private final AgentTaskExecutor agentTaskExecutor;
     private final ScheduleReminderService scheduleReminderService;
+    private final NotificationRecordRepository notificationRecordRepo;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService scheduler;
@@ -67,17 +70,21 @@ public class TaskSchedulerService {
 
     /** 扫描计数器，用于控制课程提醒的扫描频率 */
     private int scanCounter = 0;
+    /** notification_record 清理计数器（每 14400 次 ≈ 每天一次） */
+    private int cleanupCounter = 0;
 
     public TaskSchedulerService(ScheduledTaskRepository taskRepository,
-                                WechatILinkClient wechatClient,
+                                NotificationRouter notificationRouter,
                                 RepeatCalculator repeatCalculator,
                                 AgentTaskExecutor agentTaskExecutor,
-                                ScheduleReminderService scheduleReminderService) {
+                                ScheduleReminderService scheduleReminderService,
+                                NotificationRecordRepository notificationRecordRepo) {
         this.taskRepository = taskRepository;
-        this.wechatClient = wechatClient;
+        this.notificationRouter = notificationRouter;
         this.repeatCalculator = repeatCalculator;
         this.agentTaskExecutor = agentTaskExecutor;
         this.scheduleReminderService = scheduleReminderService;
+        this.notificationRecordRepo = notificationRecordRepo;
     }
 
     @PostConstruct
@@ -133,6 +140,13 @@ public class TaskSchedulerService {
                 scanCounter = 0;
                 taskExecutor.execute(() -> safeCheckReminders());
             }
+
+            // 3. notification_record 定期清理（每 14400 次 ≈ 每天一次）
+            cleanupCounter++;
+            if (cleanupCounter >= 14400) {
+                cleanupCounter = 0;
+                taskExecutor.execute(() -> safeCleanupNotificationRecords());
+            }
         } catch (Exception e) {
             log.error("定时任务调度器扫描异常", e);
         }
@@ -153,6 +167,18 @@ public class TaskSchedulerService {
             scheduleReminderService.checkReminders();
         } catch (Throwable t) {
             log.error("执行池内课前提醒扫描异常", t);
+        }
+    }
+
+    /** 执行池内安全清理过期通知记录 */
+    private void safeCleanupNotificationRecords() {
+        try {
+            int deleted = notificationRecordRepo.deleteOlderThan(30);
+            if (deleted > 0) {
+                log.info("通知记录清理完成 | deleted={}", deleted);
+            }
+        } catch (Throwable t) {
+            log.error("执行池内通知记录清理异常", t);
         }
     }
 
@@ -203,7 +229,7 @@ public class TaskSchedulerService {
      */
     private void executeReminderTask(ScheduledTask task) {
         String message = buildReminderMessage(task);
-        wechatClient.sendTextMessage(task.getUserId(), message);
+        notificationRouter.send(task.getUserId(), NotificationType.TASK_REMINDER, message);
     }
 
     /**

@@ -160,6 +160,12 @@
             <version>1.3.0</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Spring Boot Mail: QQ SMTP notification fallback -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

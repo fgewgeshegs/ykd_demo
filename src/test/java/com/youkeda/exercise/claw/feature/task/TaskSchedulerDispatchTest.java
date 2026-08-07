@@ -6,7 +6,9 @@ import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
 import com.youkeda.exercise.claw.feature.task.repository.ScheduledTaskRepository;
 import com.youkeda.exercise.claw.feature.task.scheduler.TaskSchedulerService;
 import com.youkeda.exercise.claw.feature.task.service.RepeatCalculator;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRecordRepository;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,13 +47,16 @@ class TaskSchedulerDispatchTest {
     private RepeatCalculator repeatCalculator;
 
     @Mock
-    private WechatILinkClient wechatClient;
+    private NotificationRouter notificationRouter;
 
     @Mock
     private AgentTaskExecutor agentTaskExecutor;
 
     @Mock
     private ScheduleReminderService scheduleReminderService;
+
+    @Mock
+    private NotificationRecordRepository notificationRecordRepo;
 
     private TaskSchedulerService scheduler;
 
@@ -62,7 +67,7 @@ class TaskSchedulerDispatchTest {
         taskRepository.init();
         repeatCalculator = new RepeatCalculator();
 
-        scheduler = new TaskSchedulerService(taskRepository, wechatClient, repeatCalculator, agentTaskExecutor, scheduleReminderService);
+        scheduler = new TaskSchedulerService(taskRepository, notificationRouter, repeatCalculator, agentTaskExecutor, scheduleReminderService, notificationRecordRepo);
         // 设置 running=true 让调度器的 checkAndExecute 可以执行
         setField(scheduler, "running", new java.util.concurrent.atomic.AtomicBoolean(true));
         // P0-2：调度器改为异步执行池（taskExecutor.execute(...)）。测试直接反射调用
@@ -111,7 +116,7 @@ class TaskSchedulerDispatchTest {
         checkAndExecute.invoke(scheduler);
 
         // 验证：发送了微信消息
-        verify(wechatClient, times(1)).sendTextMessage(eq("user1"), contains("开会提醒"));
+        verify(notificationRouter, times(1)).send(eq("user1"), eq(NotificationType.TASK_REMINDER), contains("开会提醒"));
         verify(agentTaskExecutor, never()).execute(any());
 
         // 验证：任务已标记 DONE
@@ -143,7 +148,7 @@ class TaskSchedulerDispatchTest {
         assertEquals(ScheduledTask.TASK_TYPE_AGENT, taskCaptor.getValue().getTaskType());
 
         // 验证：没有发送普通文字提醒
-        verify(wechatClient, never()).sendTextMessage(eq("user2"), anyString());
+        verify(notificationRouter, never()).send(eq("user2"), any(), anyString());
 
         // 验证：一次性 Agent 任务已标记 DONE
         ScheduledTask found = taskRepository.findById(task.getId());
@@ -174,7 +179,7 @@ class TaskSchedulerDispatchTest {
         checkAndExecute.invoke(scheduler);
 
         // 验证：两个任务都被执行
-        verify(wechatClient, times(1)).sendTextMessage(anyString(), anyString());
+        verify(notificationRouter, times(1)).send(anyString(), eq(NotificationType.TASK_REMINDER), anyString());
         verify(agentTaskExecutor, times(1)).execute(any());
 
         // 验证：两个任务都标记为 DONE
@@ -232,7 +237,7 @@ class TaskSchedulerDispatchTest {
 
         // 验证：即使已到期，暂停任务不会被调度器执行
         verify(agentTaskExecutor, never()).execute(any());
-        verify(wechatClient, never()).sendTextMessage(anyString(), anyString());
+        verify(notificationRouter, never()).send(anyString(), any(), anyString());
 
         // 验证：任务状态保持 PAUSED
         ScheduledTask found = taskRepository.findById(task.getId());

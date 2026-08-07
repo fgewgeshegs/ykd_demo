@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.feature.scout.notifier;
 
 import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationType;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,14 +23,14 @@ public class NotificationService {
     private static final int MAX_REPORT_CHARS = 1800;
     private static final String REPORT_FOOTER = "---\n由 AI 信息猎手 Agent 自动生成";
 
-    private final WechatILinkClient wechatClient;
+    private final NotificationRouter notificationRouter;
     private final WechatUserManager userManager;
     private final RecommendationSummaryService summaryService;
 
-    public NotificationService(WechatILinkClient wechatClient,
+    public NotificationService(NotificationRouter notificationRouter,
                                WechatUserManager userManager,
                                RecommendationSummaryService summaryService) {
-        this.wechatClient = wechatClient;
+        this.notificationRouter = notificationRouter;
         this.userManager = userManager;
         this.summaryService = summaryService;
     }
@@ -53,8 +54,8 @@ public class NotificationService {
             return;
         }
         try {
-            if (!wechatClient.sendTextMessage(
-                    ownerUserId, "信息猎手本次运行失败，请稍后重试。")) {
+            if (!notificationRouter.send(
+                    ownerUserId, NotificationType.NEWS_REPORT, "信息猎手本次运行失败，请稍后重试。")) {
                 log.error("信息猎手失败通知发送失败");
             }
         } catch (Exception e) {
@@ -77,7 +78,7 @@ public class NotificationService {
 
         try {
             for (int i = 0; i < reportChunks.size(); i++) {
-                if (!wechatClient.sendTextMessage(ownerUserId, reportChunks.get(i))) {
+                if (!notificationRouter.send(ownerUserId, NotificationType.NEWS_REPORT, reportChunks.get(i))) {
                     log.error("推荐明细第 {}/{} 段发送失败",
                             i + 1, reportChunks.size());
                     return;
@@ -86,7 +87,7 @@ public class NotificationService {
 
             String summary = summaryService.summarize(recommendations);
             if (summary != null && !summary.isBlank()
-                    && !wechatClient.sendTextMessage(ownerUserId, summary)) {
+                    && !notificationRouter.send(ownerUserId, NotificationType.NEWS_REPORT, summary)) {
                 log.error("推荐明细已发送，但综合总结发送失败");
             }
             log.info("推荐推送成功 | count={} | chunks={}",

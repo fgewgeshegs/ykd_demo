@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.feature.schedule;
 
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationType;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,7 +51,7 @@ public class ScheduleReminderService {
 
     private final CourseRepository courseRepository;
     private final SemesterProperties semesterProperties;
-    private final WechatILinkClient wechatClient;
+    private final NotificationRouter notificationRouter;
     private final SemesterService semesterService;
     private final ScheduleTimeResolver timeResolver;
 
@@ -59,12 +60,12 @@ public class ScheduleReminderService {
 
     public ScheduleReminderService(CourseRepository courseRepository,
                                    SemesterProperties semesterProperties,
-                                   WechatILinkClient wechatClient,
+                                   NotificationRouter notificationRouter,
                                    SemesterService semesterService,
                                    ScheduleTimeResolver timeResolver) {
         this.courseRepository = courseRepository;
         this.semesterProperties = semesterProperties;
-        this.wechatClient = wechatClient;
+        this.notificationRouter = notificationRouter;
         this.semesterService = semesterService;
         this.timeResolver = timeResolver;
     }
@@ -178,7 +179,7 @@ public class ScheduleReminderService {
         String message = buildReminderMessage(course, timeStr, currentWeek);
 
         try {
-            wechatClient.sendTextMessage(course.getUserId(), message);
+            notificationRouter.send(course.getUserId(), NotificationType.COURSE_REMINDER, message);
             log.info("课前提醒已发送 | userId={} | course={} | time={}",
                     course.getUserId(), course.getCourseName(), timeStr);
         } catch (Exception e) {

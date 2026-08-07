@@ -3,7 +3,8 @@ package com.youkeda.exercise.claw.feature.task.executor;
 import com.youkeda.exercise.claw.agent.AgentContext;
 import com.youkeda.exercise.claw.agent.ReActAgentExecutor;
 import com.youkeda.exercise.claw.feature.task.model.ScheduledTask;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationType;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.model.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +29,7 @@ import org.springframework.stereotype.Component;
  *   ScheduledTask → AgentTaskExecutor
  *       → 创建 AgentContext（userId + content + TEXT）
  *       → ReActAgentExecutor.execute(context)
- *       → 结果 → WechatILinkClient.sendTextMessage()
+ *       → 结果 → NotificationRouter.send()
  * </pre>
  */
 @Component
@@ -37,12 +38,12 @@ public class AgentTaskExecutor {
     private static final Logger log = LoggerFactory.getLogger(AgentTaskExecutor.class);
 
     private final ReActAgentExecutor agentExecutor;
-    private final WechatILinkClient wechatClient;
+    private final NotificationRouter notificationRouter;
 
     public AgentTaskExecutor(ReActAgentExecutor agentExecutor,
-                             WechatILinkClient wechatClient) {
+                             NotificationRouter notificationRouter) {
         this.agentExecutor = agentExecutor;
-        this.wechatClient = wechatClient;
+        this.notificationRouter = notificationRouter;
     }
 
     /**
@@ -75,7 +76,7 @@ public class AgentTaskExecutor {
                 + "📋 任务：" + content + "\n\n"
                 + "📝 结果：\n" + result;
 
-        wechatClient.sendTextMessage(userId, wxMessage);
+        notificationRouter.send(userId, NotificationType.AGENT_RESULT, wxMessage);
 
         log.info("AgentTaskExecutor 执行完成 | id={} | userId={} | resultLength={}",
                 task.getId(), userId, result != null ? result.length() : 0);

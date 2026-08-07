@@ -1,7 +1,8 @@
 package com.youkeda.exercise.claw.feature.scout.notifier;
 
 import com.youkeda.exercise.claw.feature.scout.judge.Recommendation;
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationType;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -16,47 +17,47 @@ class NotificationServiceDeliveryTest {
 
     @Test
     void sendsOnlyAConciseActionableMessageForWorkflowFailure() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+        NotificationRouter notificationRouter = mock(NotificationRouter.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
-        when(wechatClient.sendTextMessage(anyString(), anyString())).thenReturn(true);
+        when(notificationRouter.send(anyString(), any(), anyString())).thenReturn(true);
         NotificationService service = new NotificationService(
-                wechatClient, userManager,
+                notificationRouter, userManager,
                 mock(RecommendationSummaryService.class));
 
         service.notifyFailure();
 
-        verify(wechatClient).sendTextMessage(
-                "owner-1", "信息猎手本次运行失败，请稍后重试。");
+        verify(notificationRouter).send(
+                eq("owner-1"), eq(NotificationType.NEWS_REPORT), eq("信息猎手本次运行失败，请稍后重试。"));
     }
 
     @Test
     void doesNotSendWhenOwnerIsUnavailable() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+        NotificationRouter notificationRouter = mock(NotificationRouter.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn(null);
         NotificationService service = new NotificationService(
-                wechatClient, userManager, summaryService);
+                notificationRouter, userManager, summaryService);
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
                 "https://example.com", 0.9f, Recommendation.Tier.STRONG,
                 System.currentTimeMillis())));
 
-        verify(wechatClient, never()).sendTextMessage(any(), anyString());
+        verify(notificationRouter, never()).send(any(), any(), anyString());
         verify(summaryService, never()).summarize(anyList());
     }
 
     @Test
-    void doesNotSummarizeWhenWechatSendFails() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+    void doesNotSummarizeWhenSendFails() {
+        NotificationRouter notificationRouter = mock(NotificationRouter.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
-        when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(false);
+        when(notificationRouter.send(eq("owner-1"), any(), anyString())).thenReturn(false);
         NotificationService service = new NotificationService(
-                wechatClient, userManager, summaryService);
+                notificationRouter, userManager, summaryService);
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
@@ -67,34 +68,34 @@ class NotificationServiceDeliveryTest {
     }
 
     @Test
-    void sendsSummaryAfterWechatSendSucceeds() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+    void sendsSummaryAfterSendSucceeds() {
+        NotificationRouter notificationRouter = mock(NotificationRouter.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
-        when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
+        when(notificationRouter.send(eq("owner-1"), any(), anyString())).thenReturn(true);
         when(summaryService.summarize(anyList())).thenReturn("📌 信息猎手总结\n\n总结内容");
         NotificationService service = new NotificationService(
-                wechatClient, userManager, summaryService);
+                notificationRouter, userManager, summaryService);
 
         service.notifyWithSummary(List.of(new Recommendation(
                 "rec-1", "title", "summary", "reason", "suggestion",
                 "https://example.com", 0.9f, Recommendation.Tier.STRONG,
                 System.currentTimeMillis())));
 
-        verify(wechatClient, times(2)).sendTextMessage(eq("owner-1"), anyString());
+        verify(notificationRouter, times(2)).send(eq("owner-1"), eq(NotificationType.NEWS_REPORT), anyString());
     }
 
     @Test
     void groupsStrongAndDiscoveryRecommendationsInTheReport() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+        NotificationRouter notificationRouter = mock(NotificationRouter.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
-        when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
+        when(notificationRouter.send(eq("owner-1"), any(), anyString())).thenReturn(true);
         when(summaryService.summarize(anyList())).thenReturn("📌 信息猎手总结\n\n综合结论");
         NotificationService service = new NotificationService(
-                wechatClient, userManager, summaryService);
+                notificationRouter, userManager, summaryService);
 
         service.notifyWithSummary(List.of(
                 new Recommendation("strong", "强推荐", "summary", "reason", "suggestion",
@@ -105,25 +106,22 @@ class NotificationServiceDeliveryTest {
                         Recommendation.Tier.DISCOVERY, System.currentTimeMillis())));
 
         ArgumentCaptor<String> report = ArgumentCaptor.forClass(String.class);
-        verify(wechatClient, times(2)).sendTextMessage(eq("owner-1"), report.capture());
-        org.junit.jupiter.api.Assertions.assertTrue(
-                report.getAllValues().get(0).contains("🔥 强推荐"));
-        org.junit.jupiter.api.Assertions.assertTrue(
-                report.getAllValues().get(0).contains("👀 值得扫一眼"));
-        org.junit.jupiter.api.Assertions.assertTrue(
-                report.getAllValues().get(1).contains("📌 信息猎手总结"));
+        verify(notificationRouter, times(2)).send(eq("owner-1"), eq(NotificationType.NEWS_REPORT), report.capture());
+        assertTrue(report.getAllValues().get(0).contains("🔥 强推荐"));
+        assertTrue(report.getAllValues().get(0).contains("👀 值得扫一眼"));
+        assertTrue(report.getAllValues().get(1).contains("📌 信息猎手总结"));
     }
 
     @Test
     void splitsLongDetailReportAtRecommendationBoundariesBeforeSummary() {
-        WechatILinkClient wechatClient = mock(WechatILinkClient.class);
+        NotificationRouter notificationRouter = mock(NotificationRouter.class);
         WechatUserManager userManager = mock(WechatUserManager.class);
         RecommendationSummaryService summaryService = mock(RecommendationSummaryService.class);
         when(userManager.getOwnerUserId()).thenReturn("owner-1");
-        when(wechatClient.sendTextMessage(eq("owner-1"), anyString())).thenReturn(true);
+        when(notificationRouter.send(eq("owner-1"), any(), anyString())).thenReturn(true);
         when(summaryService.summarize(anyList())).thenReturn("📌 信息猎手总结\n\n综合结论");
         NotificationService service = new NotificationService(
-                wechatClient, userManager, summaryService);
+                notificationRouter, userManager, summaryService);
 
         String longSummary = "这是一段较长的推荐摘要，用于验证长文本会按完整条目分段发送。".repeat(12);
         List<Recommendation> recommendations = java.util.stream.IntStream.rangeClosed(1, 6)
@@ -142,8 +140,8 @@ class NotificationServiceDeliveryTest {
         service.notifyWithSummary(recommendations);
 
         ArgumentCaptor<String> messages = ArgumentCaptor.forClass(String.class);
-        verify(wechatClient, atLeast(3))
-                .sendTextMessage(eq("owner-1"), messages.capture());
+        verify(notificationRouter, atLeast(3))
+                .send(eq("owner-1"), eq(NotificationType.NEWS_REPORT), messages.capture());
         List<String> sent = messages.getAllValues();
         assertTrue(sent.get(0).startsWith("🔍 信息猎手发现 6 条"));
         assertTrue(sent.stream().limit(sent.size() - 1L)

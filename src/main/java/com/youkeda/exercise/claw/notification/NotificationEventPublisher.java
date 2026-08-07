@@ -1,6 +1,7 @@
 package com.youkeda.exercise.claw.notification;
 
-import com.youkeda.exercise.claw.infrastructure.channel.wechat.client.WechatILinkClient;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationRouter;
+import com.youkeda.exercise.claw.infrastructure.channel.NotificationType;
 import com.youkeda.exercise.claw.infrastructure.channel.wechat.user.WechatUserManager;
 import com.youkeda.exercise.claw.notification.model.NotificationEvent;
 import org.slf4j.Logger;
@@ -22,12 +23,12 @@ public class NotificationEventPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationEventPublisher.class);
 
-    private final WechatILinkClient wechatClient;
+    private final NotificationRouter notificationRouter;
     private final WechatUserManager userManager;
 
-    public NotificationEventPublisher(WechatILinkClient wechatClient,
+    public NotificationEventPublisher(NotificationRouter notificationRouter,
                                       WechatUserManager userManager) {
-        this.wechatClient = wechatClient;
+        this.notificationRouter = notificationRouter;
         this.userManager = userManager;
     }
 
@@ -53,12 +54,10 @@ public class NotificationEventPublisher {
             return;
         }
         try {
-            if (!wechatClient.sendTextMessage(ownerUserId, content)) {
-                log.error("通知发送失败 | source={} | title={}", event.getSource(), event.getTitle());
-            } else {
-                log.info("通知已推送 | source={} | title={}",
-                        event.getSource(), event.getTitle());
-            }
+            NotificationType type = mapEventSourceToType(event.getSource());
+            notificationRouter.send(ownerUserId, type, content);
+            log.info("通知已推送 | source={} | title={} | type={}",
+                    event.getSource(), event.getTitle(), type);
         } catch (Exception e) {
             log.error("通知发送异常 | source={} | title={}", event.getSource(), event.getTitle(), e);
         }
@@ -68,5 +67,14 @@ public class NotificationEventPublisher {
     public void publish(String source, String title, String content, int priority) {
         publish(new NotificationEvent(source, title, content, null, priority,
                 System.currentTimeMillis() / 1000));
+    }
+
+    private static NotificationType mapEventSourceToType(String source) {
+        if (source == null) return NotificationType.GENERAL;
+        return switch (source) {
+            case "ANIME" -> NotificationType.ANIME_REMINDER;
+            case "EXAM", "ACTIVITY", "JOB", "COMPETITION" -> NotificationType.CAMPUS_NOTICE;
+            default -> NotificationType.GENERAL;
+        };
     }
 }

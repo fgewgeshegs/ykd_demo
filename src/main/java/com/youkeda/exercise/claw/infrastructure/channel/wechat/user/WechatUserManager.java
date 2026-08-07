@@ -3,10 +3,12 @@ package com.youkeda.exercise.claw.infrastructure.channel.wechat.user;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 微信用户活跃记录管理器。
@@ -56,6 +58,10 @@ public class WechatUserManager {
 
     private final JdbcTemplate jdbc;
 
+    /** 默认收件邮箱（从配置注入，用户未绑定时兜底） */
+    @Value("${mail.default-recipient:}")
+    private String defaultRecipient;
+
     public WechatUserManager(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
@@ -64,6 +70,7 @@ public class WechatUserManager {
     public void init() {
         try {
             jdbc.execute(TABLE_DDL);
+            ensureColumn("email", "TEXT");
             log.info("wechat_users 表初始化完成 | datasource=claw.db");
         } catch (Exception e) {
             log.error("wechat_users 表初始化失败", e);
@@ -122,6 +129,63 @@ public class WechatUserManager {
             log.error("查询用户数失败", e);
         }
         return 0;
+    }
+
+    // ==================== 邮箱绑定 ====================
+
+    /**
+     * 获取用户的邮箱地址。
+     * 优先级：用户绑定的邮箱 > 配置的默认收件地址。
+     *
+     * @param userId 用户标识
+     * @return 邮箱地址，未绑定且无默认值时返回 null
+     */
+    public String getUserEmail(String userId) {
+        if (userId == null || userId.isBlank()) return defaultRecipientOrNull();
+        try {
+            String email = jdbc.queryForObject(
+                    "SELECT email FROM wechat_users WHERE user_id = ?",
+                    String.class, userId);
+            if (email != null && !email.isBlank()) return email;
+        } catch (Exception e) {
+            log.debug("查询用户邮箱失败 | userId={}", userId);
+        }
+        return defaultRecipientOrNull();
+    }
+
+    /**
+     * 设置用户的邮箱。
+     */
+    public void setUserEmail(String userId, String email) {
+        if (userId == null || userId.isBlank()) return;
+        try {
+            int rows = jdbc.update("UPDATE wechat_users SET email = ? WHERE user_id = ?",
+                    email, userId);
+            if (rows > 0) {
+                log.info("用户邮箱已更新 | userId={} | email={}", userId, email);
+            }
+        } catch (Exception e) {
+            log.error("设置用户邮箱失败 | userId={} | email={}", userId, email, e);
+        }
+    }
+
+    private String defaultRecipientOrNull() {
+        return (defaultRecipient != null && !defaultRecipient.isBlank()) ? defaultRecipient : null;
+    }
+
+    /** 兼容旧表：若列不存在则 ALTER TABLE 新增 */
+    private void ensureColumn(String columnName, String definition) {
+        try {
+            List<Map<String, Object>> columns = jdbc.queryForList("PRAGMA table_info(wechat_users)");
+            boolean exists = columns.stream()
+                    .anyMatch(col -> columnName.equals(col.get("name")));
+            if (!exists) {
+                jdbc.execute("ALTER TABLE wechat_users ADD COLUMN " + columnName + " " + definition);
+                log.info("已为 wechat_users 新增列 | column={}", columnName);
+            }
+        } catch (Exception e) {
+            log.warn("检查/新增列失败 | column={} | error={}", columnName, e.getMessage());
+        }
     }
 
     // ==================== 学校绑定 ====================
