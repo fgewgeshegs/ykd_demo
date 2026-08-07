@@ -114,10 +114,11 @@ public class EmbeddingClient {
                 return;
             }
 
-            // 2. 检查模型是否已拉取
+            // 2. 检查模型是否已拉取（Ollama 返回的模型名带 tag 如 "bge-m3:latest"，匹配前缀即可）
             String model = props.getModel();
             boolean modelPulled = tagsResp.body() != null
-                    && tagsResp.body().contains("\"" + model + "\"");
+                    && (tagsResp.body().contains("\"" + model + "\"")
+                        || tagsResp.body().contains("\"" + model + ":"));
             if (!modelPulled) {
                 log.warn("⚠️  Embedding 模型未拉取 | model={} | 请运行：ollama pull {}",
                         model, model);
